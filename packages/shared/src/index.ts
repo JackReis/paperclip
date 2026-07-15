@@ -204,6 +204,7 @@ export {
   ISSUE_EXECUTION_DECISION_OUTCOMES,
   GOAL_LEVELS,
   GOAL_STATUSES,
+  GOAL_STATUS_TRANSITIONS,
   PROJECT_STATUSES,
   ENVIRONMENT_DRIVERS,
   ENVIRONMENT_STATUSES,
@@ -215,6 +216,7 @@ export {
   ENVIRONMENT_CUSTOM_IMAGE_SETUP_SESSION_STATUSES,
   ENVIRONMENT_CUSTOM_IMAGE_SETUP_CONNECTION_TYPES,
   ROUTINE_STATUSES,
+  ROUTINE_STATUS_TRANSITIONS,
   ROUTINE_CONCURRENCY_POLICIES,
   ROUTINE_CATCH_UP_POLICIES,
   ROUTINE_TRIGGER_KINDS,
@@ -823,6 +825,7 @@ export type {
   IssueTreePreviewTotals,
   IssueTreePreviewWarning,
   Goal,
+  SyncMetadata,
   Approval,
   ApprovalComment,
   BudgetPolicy,
@@ -1024,7 +1027,17 @@ export type {
   QuotaWindow,
   ProviderQuotaResult,
 } from "./types/index.js";
-export { COMPANY_SEARCH_SCOPES, COMPANY_SEARCH_SORTS, COMPANY_SEARCH_UPDATED_WITHIN_OPTIONS } from "./types/index.js";
+export {
+  COMPANY_SEARCH_SCOPES, COMPANY_SEARCH_SORTS, COMPANY_SEARCH_UPDATED_WITHIN_OPTIONS } from "./types/index.js";
+export type {
+  MemoryPlaneEventEntityType,
+  MemoryPlaneLifecycleEvent,
+  MemoryPlaneDeliveryResult,
+  MemoryPlaneName,
+  MemoryPlaneFanoutResult,
+  Ob1InstanceConfig,
+  DeadLetterEntry,
+} from "./types/index.js";
 export {
   ISSUE_REFERENCE_IDENTIFIER_RE,
   buildIssueReferenceHref,
