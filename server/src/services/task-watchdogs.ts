@@ -1280,6 +1280,11 @@ export function taskWatchdogService(db: Db, deps: TaskWatchdogServiceDeps = {}) 
 
   async function evaluateWatchdog(row: IssueWatchdogRow, opts: { runId?: string | null } = {}) {
     const watchdog = await markTerminalWatchdogIssueReviewed(row, opts);
+    try {
+      await assertWatchdogAgentInvokable(db, watchdog.companyId, watchdog.watchdogAgentId);
+    } catch {
+      return { state: "skipped" as const, reason: "watchdog_agent_not_invokable" };
+    }
     const sourceIssue = await db
       .select()
       .from(issues)
