@@ -1100,6 +1100,92 @@ describeEmbeddedPostgres("heartbeat orphaned process recovery", () => {
       .then((rows) => rows.map((row) => row.blockerIssueId));
   }
 
+  async function seedUnassignedBlockerFixture() {
+    const companyId = randomUUID();
+    const creatorAgentId = randomUUID();
+    const blockedAssigneeAgentId = randomUUID();
+    const blockerIssueId = randomUUID();
+    const blockedIssueId = randomUUID();
+    const pauseRootIssueId = randomUUID();
+    const issuePrefix = `T${companyId.replace(/-/g, "").slice(0, 6).toUpperCase()}`;
+
+    await db.insert(companies).values({
+      id: companyId,
+      name: "Paperclip",
+      issuePrefix,
+      defaultResponsibleUserId: "responsible-user",
+      requireBoardApprovalForNewAgents: false,
+    });
+    await db.insert(agents).values([
+      {
+        id: creatorAgentId,
+        companyId,
+        name: "SecurityEngineer",
+        role: "engineer",
+        status: "idle",
+        adapterType: "codex_local",
+        adapterConfig: {},
+        runtimeConfig: {},
+        permissions: {},
+      },
+      {
+        id: blockedAssigneeAgentId,
+        companyId,
+        name: "CodexCoder",
+        role: "engineer",
+        status: "idle",
+        adapterType: "codex_local",
+        adapterConfig: {},
+        runtimeConfig: {},
+        permissions: {},
+      },
+    ]);
+    await db.insert(issues).values([
+      {
+        id: blockerIssueId,
+        companyId,
+        parentId: pauseRootIssueId,
+        title: "Fix blocker",
+        status: "todo",
+        priority: "high",
+        createdByAgentId: creatorAgentId,
+        responsibleUserId: "responsible-user",
+        issueNumber: 1,
+        identifier: `${issuePrefix}-1`,
+      },
+      {
+        id: blockedIssueId,
+        companyId,
+        title: "Blocked work",
+        status: "blocked",
+        priority: "high",
+        assigneeAgentId: blockedAssigneeAgentId,
+        responsibleUserId: "responsible-user",
+        issueNumber: 2,
+        identifier: `${issuePrefix}-2`,
+      },
+      {
+        id: pauseRootIssueId,
+        companyId,
+        title: "Quarantined work tree",
+        status: "todo",
+        priority: "high",
+        responsibleUserId: "responsible-user",
+        issueNumber: 3,
+        identifier: `${issuePrefix}-3`,
+      },
+    ]);
+    await db.insert(issueRelations).values({
+      companyId,
+      issueId: blockerIssueId,
+      relatedIssueId: blockedIssueId,
+      type: "blocks",
+      createdByAgentId: creatorAgentId,
+    });
+
+    return { companyId, creatorAgentId, blockerIssueId, pauseRootIssueId, issuePrefix };
+  }
+
   async function seedQueuedIssueRunFixture() {
     const companyId = randomUUID();
     const agentId = randomUUID();
@@ -4928,74 +5014,7 @@ describeEmbeddedPostgres("heartbeat orphaned process recovery", () => {
   });
 
   it("assigns open unassigned blockers back to their creator agent", async () => {
-    const companyId = randomUUID();
-    const creatorAgentId = randomUUID();
-    const blockedAssigneeAgentId = randomUUID();
-    const blockerIssueId = randomUUID();
-    const blockedIssueId = randomUUID();
-    const issuePrefix = `T${companyId.replace(/-/g, "").slice(0, 6).toUpperCase()}`;
-    await db.insert(companies).values({
-      id: companyId,
-      name: "Paperclip",
-      issuePrefix,
-      defaultResponsibleUserId: "responsible-user",
-      requireBoardApprovalForNewAgents: false,
-    });
-    await db.insert(agents).values([
-      {
-        id: creatorAgentId,
-        companyId,
-        name: "SecurityEngineer",
-        role: "engineer",
-        status: "idle",
-        adapterType: "codex_local",
-        adapterConfig: {},
-        runtimeConfig: {},
-        permissions: {},
-      },
-      {
-        id: blockedAssigneeAgentId,
-        companyId,
-        name: "CodexCoder",
-        role: "engineer",
-        status: "idle",
-        adapterType: "codex_local",
-        adapterConfig: {},
-        runtimeConfig: {},
-        permissions: {},
-      },
-    ]);
-    await db.insert(issues).values([
-      {
-        id: blockerIssueId,
-        companyId,
-        title: "Fix blocker",
-        status: "todo",
-        priority: "high",
-        createdByAgentId: creatorAgentId,
-        responsibleUserId: "responsible-user",
-        issueNumber: 1,
-        identifier: `${issuePrefix}-1`,
-      },
-      {
-        id: blockedIssueId,
-        companyId,
-        title: "Blocked work",
-        status: "blocked",
-        priority: "high",
-        assigneeAgentId: blockedAssigneeAgentId,
-        responsibleUserId: "responsible-user",
-        issueNumber: 2,
-        identifier: `${issuePrefix}-2`,
-      },
-    ]);
-    await db.insert(issueRelations).values({
-      companyId,
-      issueId: blockerIssueId,
-      relatedIssueId: blockedIssueId,
-      type: "blocks",
-      createdByAgentId: creatorAgentId,
-    });
+    const { creatorAgentId, blockerIssueId, issuePrefix } = await seedUnassignedBlockerFixture();
     const heartbeat = heartbeatService(db);
 
     const result = await heartbeat.reconcileStrandedAssignedIssues();
@@ -5025,6 +5044,74 @@ describeEmbeddedPostgres("heartbeat orphaned process recovery", () => {
       }),
     ]);
 
+    const runId = wakeups[0]?.runId;
+    if (runId) {
+      await waitForRunToSettle(heartbeat, runId);
+    }
+  });
+
+  it("skips unassigned blocker recovery while the blocker is under an active pause hold", async () => {
+    const { companyId, creatorAgentId, blockerIssueId, pauseRootIssueId } = await seedUnassignedBlockerFixture();
+    await db.insert(issueTreeHolds).values({
+      companyId,
+      rootIssueId: pauseRootIssueId,
+      mode: "pause",
+      status: "active",
+      reason: "Manual quarantine",
+      createdByActorType: "user",
+      createdByUserId: "board-user",
+    });
+    const heartbeat = heartbeatService(db);
+
+    const result = await heartbeat.reconcileStrandedAssignedIssues();
+
+    expect(result.orphanBlockersAssigned).toBe(0);
+    const blocker = await db.select().from(issues).where(eq(issues.id, blockerIssueId)).then((rows) => rows[0] ?? null);
+    expect(blocker?.assigneeAgentId).toBeNull();
+    expect(await db.select().from(issueComments).where(eq(issueComments.issueId, blockerIssueId))).toHaveLength(0);
+    expect(await db.select().from(agentWakeupRequests).where(eq(agentWakeupRequests.agentId, creatorAgentId))).toHaveLength(0);
+  });
+
+  it("restores unassigned blocker recovery after the pause hold is released", async () => {
+    const { companyId, creatorAgentId, blockerIssueId, pauseRootIssueId } = await seedUnassignedBlockerFixture();
+    const [hold] = await db.insert(issueTreeHolds).values({
+      companyId,
+      rootIssueId: pauseRootIssueId,
+      mode: "pause",
+      status: "active",
+      reason: "Manual quarantine",
+      createdByActorType: "user",
+      createdByUserId: "board-user",
+    }).returning();
+    const heartbeat = heartbeatService(db);
+
+    const heldResult = await heartbeat.reconcileStrandedAssignedIssues();
+    expect(heldResult.orphanBlockersAssigned).toBe(0);
+
+    await db.update(issueTreeHolds).set({
+      status: "released",
+      releasedAt: new Date(),
+      releasedByActorType: "user",
+      releasedByUserId: "board-user",
+      releaseReason: "Quarantine cleared",
+      updatedAt: new Date(),
+    }).where(eq(issueTreeHolds.id, hold!.id));
+
+    const releasedResult = await heartbeat.reconcileStrandedAssignedIssues();
+
+    expect(releasedResult.orphanBlockersAssigned).toBe(1);
+    const blocker = await db.select().from(issues).where(eq(issues.id, blockerIssueId)).then((rows) => rows[0] ?? null);
+    expect(blocker?.assigneeAgentId).toBe(creatorAgentId);
+    const wakeups = await db.select().from(agentWakeupRequests).where(eq(agentWakeupRequests.agentId, creatorAgentId));
+    expect(wakeups).toEqual([
+      expect.objectContaining({
+        reason: "issue_assigned",
+        payload: expect.objectContaining({
+          issueId: blockerIssueId,
+          mutation: "unassigned_blocker_recovery",
+        }),
+      }),
+    ]);
     const runId = wakeups[0]?.runId;
     if (runId) {
       await waitForRunToSettle(heartbeat, runId);
