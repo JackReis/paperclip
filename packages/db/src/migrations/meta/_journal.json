@@ -943,6 +943,7 @@
     {
       "idx": 136,
       "version": "7",
+<<<<<<< HEAD
       "when": 1783555200000,
       "tag": "0136_acpx_default_engine_migration",
       "breakpoints": true
@@ -1281,6 +1282,20 @@
       "version": "7",
       "when": 1784824200000,
       "tag": "0184_routine_goal_sync_metadata",
+      "breakpoints": true
+    },
+    {
+      "idx": 185,
+      "version": "7",
+      "when": 1783025824120,
+      "tag": "0185_environment_custom_image_templates_reconciliation",
+      "breakpoints": true
+    },
+    {
+      "idx": 186,
+      "version": "7",
+      "when": 1783025924120,
+      "tag": "0186_agent_sessions",
       "breakpoints": true
     }
   ]
