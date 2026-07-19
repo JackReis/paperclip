@@ -265,18 +265,62 @@ function parseHermesOutput(stdout: string, stderr: string): ParsedOutput {
   const combined = stdout + "\n" + stderr;
   const result: ParsedOutput = {};
 
-  // In quiet mode, Hermes outputs:
-  //   <response text>
-  //
-  //   session_id: <id>
-  const sessionMatch = stdout.match(SESSION_ID_REGEX);
-  if (sessionMatch?.[1]) {
-    result.sessionId = sessionMatch?.[1] ?? null;
-    // The response is everything before the session_id line
-    const sessionLineIdx = stdout.lastIndexOf("\nsession_id:");
-    if (sessionLineIdx > 0) {
-      result.response = cleanResponse(stdout.slice(0, sessionLineIdx));
+  // Handle the case where session_id may appear first or last in quiet mode
+  // Look through the entire combined output for session_id lines to find what's valid
+  let sessionIdLine = "";
+  let responseText = stdout;
+
+  // First, see if there's any session ID line 
+  const sessionIdMatch = combined.match(SESSION_ID_REGEX);
+  
+  // If we found a session_id and there are multiple lines with it, parse carefully
+  if (sessionIdMatch?.[1]) {
+    result.sessionId = sessionIdMatch?.[1] ?? null;
+    
+    // In quiet mode with Hermes 0.18.2, there's an edge case where session_id 
+    // might appear at the start of stdout before response text.
+    // We need to scan through all lines to determine proper structure:
+    const lines = stdout.split("\n");
+    let foundSessionLineIndex = -1;
+    
+    // Find line containing session_id  
+    for (let i = 0; i < lines.length; i++) {
+      if (lines[i].startsWith("session_id:")) {
+        foundSessionLineIndex = i;
+        sessionIdLine = lines[i];
+        break;
+      }
     }
+    
+    // If we found a session line, determine if it's at the start or end
+    if (foundSessionLineIndex >= 0) {
+      // Build properly structured response from content before/after 
+      let actualResponseLines: string[] = [];
+      
+      if (foundSessionLineIndex === 0) {
+        // Session ID comes first - response is what comes after, but 
+        // we need to find where the actual text begins (after session id line)
+        const sessionLineEnd = stdout.indexOf(sessionIdLine) + sessionIdLine.length;
+        const remaining = stdout.slice(sessionLineEnd).trim();
+        if (remaining) {
+          result.response = cleanResponse(remaining);
+        }
+      } else {
+        // Session ID comes after response - this is the regular case
+        const responseBeforeSession = lines.slice(0, foundSessionLineIndex).join("\n");
+        result.response = cleanResponse(responseBeforeSession);  
+      }
+    } else {
+      // Regular case - session line exists but wasn't detected properly in line parsing
+      const sessionLineIdx = stdout.lastIndexOf("\nsession_id:");
+      if (sessionLineIdx > 0) {
+        result.response = cleanResponse(stdout.slice(0, sessionLineIdx));
+      } else {
+        // If no session line or not found properly, treat the whole stdout as response  
+        result.response = cleanResponse(stdout);
+      }
+    }
+    
   } else {
     // Legacy format (non-quiet mode)
     const legacyMatch = combined.match(SESSION_ID_REGEX_LEGACY);
