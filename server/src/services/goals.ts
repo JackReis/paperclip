@@ -1,6 +1,7 @@
 import { and, asc, eq, isNull } from "drizzle-orm";
 import type { Db } from "@paperclipai/db";
-import { goals } from "@paperclipai/db";
+import { goals, routines } from "@paperclipai/db";
+import { isValidGoalStatusTransition } from "@paperclipai/shared";
 
 type GoalReader = Pick<Db, "select">;
 
@@ -55,6 +56,12 @@ export function goalService(db: Db) {
 
     getDefaultCompanyGoal: (companyId: string) => getDefaultCompanyGoal(db, companyId),
 
+    listRoutinesForGoal: (goalId: string) =>
+      db
+        .select()
+        .from(routines)
+        .where(eq(routines.goalId, goalId)),
+
     create: (companyId: string, data: Omit<typeof goals.$inferInsert, "companyId">) =>
       db
         .insert(goals)
@@ -69,6 +76,34 @@ export function goalService(db: Db) {
         .where(eq(goals.id, id))
         .returning()
         .then((rows) => rows[0] ?? null),
+
+    /**
+     * Update with status transition validation.
+     * If the status is changing, validates that the transition is allowed.
+     * Throws an Error if the transition is invalid.
+     */
+    updateWithTransition: async (id: string, data: Partial<typeof goals.$inferInsert>) => {
+      if (data.status !== undefined) {
+        const existing = await db
+          .select()
+          .from(goals)
+          .where(eq(goals.id, id))
+          .then((rows) => rows[0] ?? null);
+        if (existing && existing.status !== data.status) {
+          if (!isValidGoalStatusTransition(existing.status, data.status as string)) {
+            throw new Error(
+              `Invalid goal status transition: ${existing.status} -> ${data.status}`,
+            );
+          }
+        }
+      }
+      return db
+        .update(goals)
+        .set({ ...data, updatedAt: new Date() })
+        .where(eq(goals.id, id))
+        .returning()
+        .then((rows) => rows[0] ?? null);
+    },
 
     remove: (id: string) =>
       db

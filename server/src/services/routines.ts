@@ -54,6 +54,7 @@ import {
   pluginOperationIssueOriginKind,
   stringifyRoutineVariableValue,
   syncRoutineVariablesWithTemplate,
+  isValidRoutineStatusTransition,
 } from "@paperclipai/shared";
 import { trackRoutineRun } from "@paperclipai/shared/telemetry";
 import { conflict, forbidden, notFound, unauthorized, unprocessable } from "../errors.js";
@@ -1466,7 +1467,7 @@ export function routineService(
   }
 
   async function finalizeRun(runId: string, patch: Partial<typeof routineRuns.$inferInsert>, executor: Db = db) {
-    return executor
+    const updated = await executor
       .update(routineRuns)
       .set({
         ...patch,
@@ -1475,6 +1476,25 @@ export function routineService(
       .where(eq(routineRuns.id, runId))
       .returning()
       .then((rows) => rows[0] ?? null);
+
+    // Emit activity log for routine_run completion (completed or failed)
+    if (updated && (updated.status === "completed" || updated.status === "failed")) {
+      await logActivity(executor as Db, {
+        companyId: updated.companyId,
+        actorType: "system",
+        actorId: "routine-runner",
+        action: "routine_run.completed",
+        entityType: "routine_run",
+        entityId: updated.id,
+        details: {
+          routineId: updated.routineId,
+          status: updated.status,
+          failureReason: updated.failureReason,
+        },
+      });
+    }
+
+    return updated;
   }
 
   async function createWebhookSecret(
@@ -2076,6 +2096,14 @@ export function routineService(
 
     getDescriptionDocument: async (routineId: string) => getRoutineDescriptionDocument(routineId),
 
+    delete: async (id: string): Promise<boolean> => {
+      const result = await db
+        .delete(routines)
+        .where(eq(routines.id, id))
+        .returning({ id: routines.id });
+      return result.length > 0;
+    },
+
     create: async (companyId: string, input: CreateRoutine, actor: Actor): Promise<Routine> => {
       await assertProject(companyId, input.projectId ?? null);
       await assertRoutineFolder(companyId, input.folderId ?? null);
@@ -2117,6 +2145,7 @@ export function routineService(
             catchUpPolicy: input.catchUpPolicy,
             variables,
             env,
+            syncMetadata: input.syncMetadata ?? null,
             responsibleUserId,
             createdByAgentId: actor.agentId ?? null,
             createdByUserId: actor.userId ?? null,
@@ -2159,6 +2188,14 @@ export function routineService(
       const requestedStatus = patch.status ?? existing.status;
       if (patch.status === "active") {
         assertRoutineCanEnable(patch.status, nextAssigneeAgentId);
+      }
+      // Validate status transition
+      if (patch.status !== undefined && existing.status !== patch.status) {
+        if (!isValidRoutineStatusTransition(existing.status, patch.status)) {
+          throw conflict(
+            `Invalid routine status transition: ${existing.status} -> ${patch.status}`,
+          );
+        }
       }
       const nextStatus = patch.assigneeAgentId === undefined
         ? requestedStatus
