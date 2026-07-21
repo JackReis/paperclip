@@ -873,3 +873,9 @@ export {
 } from "./tool-access.js";
 export * from "./skill-policy.js";
 export * from "./app-definition.js";
+export {
+  memoryPlaneEventEntityTypeSchema,
+  memoryPlaneLifecycleEventSchema,
+  ob1InstanceConfigSchema,
+  type MemoryPlaneLifecycleEventInput,
+} from "./memory-plane-event.js";

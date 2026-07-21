@@ -2157,6 +2157,7 @@ export function createTestHarness(options: TestHarnessOptions): TestHarness {
           status: input.status ?? "planned",
           parentId: input.parentId ?? null,
           ownerAgentId: input.ownerAgentId ?? null,
+          syncMetadata: input.syncMetadata ?? null,
           createdAt: now,
           updatedAt: now,
         };

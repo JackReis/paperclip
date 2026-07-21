@@ -883,3 +883,5 @@ export type {
   PluginDatabaseNamespaceStatus,
 } from "./plugin.js";
 export * from "./app-definition.js";
+export * from "./sync-metadata.js";
+export * from "./memory-plane-event.js";
