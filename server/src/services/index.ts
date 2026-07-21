@@ -136,3 +136,12 @@ export {
 } from "./codex-auth-reconciliation.js";
 export { reconcilePersistedRuntimeServicesOnStartup, restartDesiredRuntimeServicesOnStartup } from "./workspace-runtime.js";
 export { createStorageServiceFromConfig, getStorageService } from "../storage/index.js";
+export {
+  configureMemoryPlaneObserver,
+  createLifecycleEvent,
+  publishLifecycleEvent,
+  getObserverConfig,
+  getDeadLetterEntries,
+  clearDeadLetterEntries,
+  type MemoryPlaneObserverConfig,
+} from "./memory-plane-observer.js";

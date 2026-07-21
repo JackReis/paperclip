@@ -31,6 +31,8 @@ const mockEnvironmentService = vi.hoisted(() => ({
 const mockLogActivity = vi.hoisted(() => vi.fn());
 const mockGetTelemetryClient = vi.hoisted(() => vi.fn());
 const mockTelemetryTrack = vi.hoisted(() => vi.fn());
+const mockCreateLifecycleEvent = vi.hoisted(() => vi.fn(() => ({ id: "mock-event-id" })));
+const mockPublishLifecycleEvent = vi.hoisted(() => vi.fn(() => Promise.resolve({ allSucceeded: true })));
 
 vi.mock("../telemetry.js", () => ({
   getTelemetryClient: mockGetTelemetryClient,
@@ -44,6 +46,8 @@ vi.mock("../services/index.js", () => ({
   projectService: () => mockProjectService,
   secretService: () => mockSecretService,
   workspaceOperationService: () => mockWorkspaceOperationService,
+  createLifecycleEvent: mockCreateLifecycleEvent,
+  publishLifecycleEvent: mockPublishLifecycleEvent,
 }));
 
 vi.mock("../services/workspace-runtime.js", () => ({
@@ -64,6 +68,8 @@ function registerModuleMocks() {
     projectService: () => mockProjectService,
     secretService: () => mockSecretService,
     workspaceOperationService: () => mockWorkspaceOperationService,
+    createLifecycleEvent: mockCreateLifecycleEvent,
+    publishLifecycleEvent: mockPublishLifecycleEvent,
   }));
 
   vi.doMock("../services/workspace-runtime.js", () => ({

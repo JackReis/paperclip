@@ -24,6 +24,14 @@ const ACTIVITY_ACTION_TO_PLUGIN_EVENT: Readonly<Record<string, PluginEventType>>
   budget_soft_threshold_crossed: "budget.incident.opened",
   budget_hard_threshold_crossed: "budget.incident.opened",
   budget_incident_resolved: "budget.incident.resolved",
+  routine_created: "routine.created",
+  routine_updated: "routine.updated",
+  routine_run_triggered: "routine_run.started",
+  routine_run_skipped: "routine_run.completed",
+  routine_run_completed: "routine_run.completed",
+  goal_created: "goal.created",
+  goal_updated: "goal.updated",
+  goal_status_changed: "goal.status_changed",
 };
 
 let _pluginEventBus: PluginEventBus | null = null;

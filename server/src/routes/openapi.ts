@@ -2218,12 +2218,23 @@ registry.registerPath({
   method: "patch",
   path: "/api/routines/{id}",
   tags: ["routines"],
-  summary: "Update a routine",
+  summary: "Update a routine (with status transition validation)",
+  description: "Updates a routine. If status is changed, validates that the transition is allowed by the ROUTINE_STATUS_TRANSITIONS map. Returns 409 for invalid transitions.",
   request: {
     params: z.object({ id: z.string() }),
     body: jsonBody(updateRoutineSchema),
   },
-  responses: { 200: r.ok(), 400: r.badRequest, 401: r.unauthorized },
+  responses: { 200: r.ok(), 400: r.badRequest, 401: r.unauthorized, 404: r.notFound, 409: r.conflict },
+});
+
+registry.registerPath({
+  method: "delete",
+  path: "/api/routines/{id}",
+  tags: ["routines"],
+  summary: "Delete a routine",
+  description: "Soft-deletes a routine. Requires board access. Returns 204 on success.",
+  request: { params: z.object({ id: z.string() }) },
+  responses: { 204: r.noContent, 401: r.unauthorized, 403: r.forbidden, 404: r.notFound },
 });
 
 registry.registerPath({
@@ -2334,15 +2345,26 @@ registry.registerPath({
 });
 
 registry.registerPath({
+  method: "get",
+  path: "/api/goals/{id}/routines",
+  tags: ["goals"],
+  summary: "List routines linked to a goal (bidirectional lookup)",
+  description: "Returns all routines where goalId matches the specified goal ID.",
+  request: { params: z.object({ id: z.string() }) },
+  responses: { 200: r.ok(), 401: r.unauthorized, 404: r.notFound },
+});
+
+registry.registerPath({
   method: "patch",
   path: "/api/goals/{id}",
   tags: ["goals"],
-  summary: "Update a goal",
+  summary: "Update a goal (with status transition validation)",
+  description: "Updates a goal. If status is changed, validates that the transition is allowed by the GOAL_STATUS_TRANSITIONS map. Returns 409 for invalid transitions.",
   request: {
     params: z.object({ id: z.string() }),
     body: jsonBody(updateGoalSchema),
   },
-  responses: { 200: r.ok(), 400: r.badRequest, 401: r.unauthorized },
+  responses: { 200: r.ok(), 400: r.badRequest, 401: r.unauthorized, 404: r.notFound, 409: r.conflict },
 });
 
 registry.registerPath({
