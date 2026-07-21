@@ -489,8 +489,11 @@ export {
 export {
   createGoalSchema,
   updateGoalSchema,
+  goalSyncMetadataSchema,
+  isValidGoalStatusTransition,
   type CreateGoal,
   type UpdateGoal,
+  type GoalSyncMetadataInput,
 } from "./goal.js";
 
 export {
@@ -563,12 +566,15 @@ export {
   routineRevisionSnapshotSchema,
   runRoutineSchema,
   rotateRoutineTriggerSecretSchema,
+  routineSyncMetadataSchema,
+  isValidRoutineStatusTransition,
   type CreateRoutine,
   type UpdateRoutine,
   type CreateRoutineTrigger,
   type UpdateRoutineTrigger,
   type RunRoutine,
   type RotateRoutineTriggerSecret,
+  type RoutineSyncMetadataInput,
 } from "./routine.js";
 
 export {
@@ -695,3 +701,9 @@ export {
   type SetPluginState,
   type ListPluginState,
 } from "./plugin.js";
+export {
+  memoryPlaneEventEntityTypeSchema,
+  memoryPlaneLifecycleEventSchema,
+  ob1InstanceConfigSchema,
+  type MemoryPlaneLifecycleEventInput,
+} from "./memory-plane-event.js";

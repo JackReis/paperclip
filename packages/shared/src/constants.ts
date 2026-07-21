@@ -475,8 +475,17 @@ export type IssueExecutionDecisionOutcome = (typeof ISSUE_EXECUTION_DECISION_OUT
 export const GOAL_LEVELS = ["company", "team", "agent", "task"] as const;
 export type GoalLevel = (typeof GOAL_LEVELS)[number];
 
-export const GOAL_STATUSES = ["planned", "active", "achieved", "cancelled"] as const;
+export const GOAL_STATUSES = ["draft", "planned", "active", "paused", "achieved", "cancelled"] as const;
 export type GoalStatus = (typeof GOAL_STATUSES)[number];
+
+export const GOAL_STATUS_TRANSITIONS: Record<GoalStatus, GoalStatus[]> = {
+  draft: ["planned", "active", "cancelled"],
+  planned: ["active", "cancelled"],
+  active: ["paused", "achieved", "cancelled"],
+  paused: ["active", "cancelled"],
+  achieved: [],
+  cancelled: [],
+};
 
 export const PROJECT_STATUSES = [
   "backlog",
@@ -543,8 +552,16 @@ export const ENVIRONMENT_CUSTOM_IMAGE_SETUP_CONNECTION_TYPES = [
 export type EnvironmentCustomImageSetupConnectionType =
   (typeof ENVIRONMENT_CUSTOM_IMAGE_SETUP_CONNECTION_TYPES)[number];
 
-export const ROUTINE_STATUSES = ["active", "paused", "archived"] as const;
+export const ROUTINE_STATUSES = ["draft", "active", "paused", "completed", "archived"] as const;
 export type RoutineStatus = (typeof ROUTINE_STATUSES)[number];
+
+export const ROUTINE_STATUS_TRANSITIONS: Record<RoutineStatus, RoutineStatus[]> = {
+  draft: ["active", "archived"],
+  active: ["paused", "completed", "archived"],
+  paused: ["active", "archived"],
+  completed: ["archived"],
+  archived: [],
+};
 
 export const ROUTINE_CONCURRENCY_POLICIES = ["coalesce_if_active", "always_enqueue", "skip_if_active"] as const;
 export type RoutineConcurrencyPolicy = (typeof ROUTINE_CONCURRENCY_POLICIES)[number];
@@ -1291,8 +1308,13 @@ export const PLUGIN_EVENT_TYPES = [
   "agent.run.finished",
   "agent.run.failed",
   "agent.run.cancelled",
+  "routine.created",
+  "routine.updated",
+  "routine_run.started",
+  "routine_run.completed",
   "goal.created",
   "goal.updated",
+  "goal.status_changed",
   "approval.created",
   "approval.decided",
   "budget.incident.opened",

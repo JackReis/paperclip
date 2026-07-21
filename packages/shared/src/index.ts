@@ -1664,6 +1664,8 @@ export {
   type PluginStateScopeKey,
   type SetPluginState,
   type ListPluginState,
+  isValidGoalStatusTransition,
+  isValidRoutineStatusTransition,
 } from "./validators/index.js";
 
 export { API_PREFIX, API } from "./api.js";

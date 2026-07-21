@@ -19,6 +19,22 @@ import { goals } from "./goals.js";
 import { heartbeatRuns } from "./heartbeat_runs.js";
 import type { RoutineEnvConfig, RoutineRevisionSnapshotV1, RoutineVariable } from "@paperclipai/shared";
 
+/**
+ * Metadata for external system sync references.
+ * Supports Beads task IDs, Linear labels, Ringer manifest references, and other
+ * external tracking system links.
+ */
+export interface RoutineSyncMetadata {
+  /** Beads task/template ID if this routine is synced to Beads. */
+  beadId?: string | null;
+  /** Linear label identifier for read-only project map projection. */
+  linearLabel?: string | null;
+  /** Ringer manifest reference (run ID or manifest key) linked to this routine. */
+  ringerManifestRef?: string | null;
+  /** Additional external system references. */
+  externalRefs?: Record<string, string>;
+}
+
 export const routines = pgTable(
   "routines",
   {
@@ -40,6 +56,7 @@ export const routines = pgTable(
     originId: text("origin_id"),
     variables: jsonb("variables").$type<RoutineVariable[]>().notNull().default([]),
     env: jsonb("env").$type<RoutineEnvConfig>(),
+    syncMetadata: jsonb("sync_metadata").$type<RoutineSyncMetadata>().default({}),
     latestRevisionId: uuid("latest_revision_id"),
     latestRevisionNumber: integer("latest_revision_number").notNull().default(1),
     createdByAgentId: uuid("created_by_agent_id").references(() => agents.id, { onDelete: "set null" }),

@@ -67,6 +67,22 @@ export interface RoutineVariable {
 
 export type RoutineEnvConfig = Record<string, EnvBinding>;
 
+/**
+ * Metadata for external system sync references on Routines.
+ * Supports Beads task IDs, Linear labels, Ringer manifest references, and other
+ * external tracking system links.
+ */
+export interface RoutineSyncMetadata {
+  /** Beads task/template ID if this routine is synced to Beads. */
+  beadId?: string | null;
+  /** Linear label identifier for read-only project map projection. */
+  linearLabel?: string | null;
+  /** Ringer manifest reference (run ID or manifest key) linked to this routine. */
+  ringerManifestRef?: string | null;
+  /** Additional external system references. */
+  externalRefs?: Record<string, string>;
+}
+
 export interface Routine {
   id: string;
   companyId: string;
@@ -84,6 +100,7 @@ export interface Routine {
   originId?: string | null;
   variables: RoutineVariable[];
   env?: RoutineEnvConfig | null;
+  syncMetadata?: RoutineSyncMetadata | null;
   latestRevisionId: string | null;
   latestRevisionNumber: number;
   createdByAgentId: string | null;

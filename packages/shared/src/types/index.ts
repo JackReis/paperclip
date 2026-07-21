@@ -459,7 +459,8 @@ export type {
   IssueTreePreviewTotals,
   IssueTreePreviewWarning,
 } from "./issue-tree-control.js";
-export type { Goal } from "./goal.js";
+export type { Goal, GoalSyncMetadata } from "./goal.js";
+export type { SyncMetadata } from "./sync-metadata.js";
 export type { Approval, ApprovalComment } from "./approval.js";
 export type {
   BudgetPolicy,
@@ -528,6 +529,7 @@ export type {
   RoutineRunSummary,
   RoutineExecutionIssueOrigin,
   RoutineListItem,
+  RoutineSyncMetadata,
 } from "./routine.js";
 export type { CostEvent, CostSummary, IssueCostSummary, CostByAgent, CostByProviderModel, CostByBiller, CostByAgentModel, CostWindowSpendRow, CostByProject } from "./cost.js";
 export type { FinanceEvent, FinanceSummary, FinanceByBiller, FinanceByKind } from "./finance.js";
@@ -678,3 +680,12 @@ export type {
   PluginDatabaseNamespaceMode,
   PluginDatabaseNamespaceStatus,
 } from "./plugin.js";
+export type {
+  MemoryPlaneEventEntityType,
+  MemoryPlaneLifecycleEvent,
+  MemoryPlaneDeliveryResult,
+  MemoryPlaneName,
+  MemoryPlaneFanoutResult,
+  Ob1InstanceConfig,
+  DeadLetterEntry,
+} from "./memory-plane-event.js";
