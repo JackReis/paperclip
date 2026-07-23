@@ -879,3 +879,5 @@ export {
   ob1InstanceConfigSchema,
   type MemoryPlaneLifecycleEventInput,
 } from "./memory-plane-event.js";
+export { isValidGoalStatusTransition } from "./goal.js";
+export { isValidRoutineStatusTransition } from "./routine.js";
