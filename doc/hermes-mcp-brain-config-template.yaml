@@ -1,0 +1,26 @@
+# Hermes MCP Server Configuration Template
+#
+# Add this entry to ~/.hermes/profiles/<profile>/config.yaml to enable brain search via MCP.
+#
+# This template is part of the Hermes Brain Search Wiring documentation.
+# See: doc/HERMES-BRAIN-WIRING.md
+#
+# IMPORTANT: When using enabled_toolsets on an agent, add "mcp-open-brain" to the list.
+# See the toolsets-allowlist section in HERMES-BRAIN-WIRING.md for details.
+
+mcp_servers:
+  open-brain:
+    # Path to the MCP wrapper script that connects to the local OB1 brain.
+    # The wrapper handles authentication and tool exposure via MCP.
+    command: /Users/hermes/.hermes/bin/openbrain-mcp-wrapper.sh
+
+    # Enable the MCP server for this profile. Defaults to true if omitted.
+    # Set to false to disable brain search without removing the entry.
+    enabled: true
+
+    # Optional: environment variables to pass to the wrapper script.
+    # The wrapper typically reads BRAIN_ACCESS_KEY from the brain's .env file.
+    # Uncomment and set if the wrapper location or key location differs.
+    # env:
+    #   BRAIN_ACCESS_KEY_FILE: /path/to/brain/.env
+    #   LOCAL_OB1_URL: http://127.0.0.1:8787
