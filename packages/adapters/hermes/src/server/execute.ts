@@ -213,12 +213,13 @@ export function buildPrompt(
 // Output parsing
 // ---------------------------------------------------------------------------
 
-/** Regex for a complete Hermes quiet-mode metadata line: "session_id: <id>" */
-const SESSION_ID_LINE_REGEX = /^session_id:\s*(\S+)\s*$/;
+/** Regex to extract session ID from Hermes quiet-mode output: "session_id: <id>"
+ *  Requires the session_id to be the only non-whitespace content on the line
+ *  to avoid matching inline prose like "session_id: this is response text". */
+const SESSION_ID_REGEX = /^session_id:\s*(\S+)\s*$/m;
 
-/** Regex for legacy session output format */
-const SESSION_ID_REGEX_LEGACY =
-  /^\s*session[_ ](?:id|saved)[:\s]+([a-zA-Z0-9_-]+)\s*$/im;
+/** Regex for legacy session output format — anchored to line start to avoid matching inline prose */
+const SESSION_ID_REGEX_LEGACY = /^session[_ ](?:id|saved)[:\s]+([a-zA-Z0-9_-]+)/im;
 
 /** Regex to extract token usage from Hermes output. */
 const TOKEN_USAGE_REGEX =
@@ -247,6 +248,9 @@ function cleanResponse(raw: string): string {
       const t = line.trim();
       if (!t) return true; // keep blank lines for paragraph separation
       if (t.startsWith("[tool]") || t.startsWith("[hermes]") || t.startsWith("[paperclip]")) return false;
+      // Only strip lines that are pure session_id metadata (single token, end of line).
+      // Lines like "session_id: this is response text" are agent prose and must be preserved.
+      if (SESSION_ID_REGEX.test(t)) return false;
       if (/^\[\d{4}-\d{2}-\d{2}T/.test(t)) return false;
       if (/^\[done\]\s*┊/.test(t)) return false;
       if (/^┊\s*[\p{Emoji_Presentation}]/u.test(t) && !/^┊\s*💬/.test(t)) return false;
@@ -271,44 +275,44 @@ function parseHermesOutput(stdout: string, stderr: string): ParsedOutput {
   const combined = stdout + "\n" + stderr;
   const result: ParsedOutput = {};
 
-  // Hermes quiet mode can emit metadata before or after response text. Remove
-  // only complete metadata lines, retain response text on both sides, and use
-  // the first session id if a runtime emits the line more than once.
-  const responseLines: string[] = [];
-  for (const line of stdout.split(/\r?\n/)) {
-    const sessionMatch = line.match(SESSION_ID_LINE_REGEX);
-    if (sessionMatch?.[1]) {
-      result.sessionId ??= sessionMatch[1];
-      continue;
-    }
-    responseLines.push(line);
-  }
-
-  // Cancelled Hermes runs can emit the final quiet-mode metadata on stderr.
-  // Remove only exact metadata lines from error classification, preserving all
-  // other stderr content and the stdout session id's priority.
-  const stderrForErrorsLines: string[] = [];
-  for (const line of stderr.split("\n")) {
-    const sessionMatch = line.match(SESSION_ID_LINE_REGEX);
-    if (sessionMatch?.[1]) {
-      result.sessionId ??= sessionMatch[1];
-      continue;
-    }
-    stderrForErrorsLines.push(line);
-  }
-  const stderrForErrors = stderrForErrorsLines.join("\n");
-
-  if (!result.sessionId) {
-    // Legacy format (non-quiet mode)
+  // Search combined output (stdout + stderr) for session_id.
+  // Hermes 0.18.2 may emit session_id on stderr (cancelled sessions)
+  // or before the response text in quiet mode. cleanResponse()
+  // already strips session_id lines, so we can pass the full stdout
+  // through it regardless of where session_id appears.
+  const sessionMatch = combined.match(SESSION_ID_REGEX);
+  if (sessionMatch?.[1]) {
+    result.sessionId = sessionMatch[1];
+  } else {
+    // Legacy format (non-quiet mode) — only search stdout, not stderr
     const legacyMatch = stdout.match(SESSION_ID_REGEX_LEGACY);
     if (legacyMatch?.[1]) {
       result.sessionId = legacyMatch[1];
     }
   }
 
-  const cleaned = cleanResponse(responseLines.join("\n"));
+  const cleaned = cleanResponse(stdout);
   if (cleaned.length > 0) {
     result.response = cleaned;
+  }
+
+  // Check for error patterns in stderr (after filtering session_id lines)
+  const stderrForErrors = stderr
+    .split("\n")
+    .filter((line) => !SESSION_ID_REGEX.test(line.trim()))
+    .join("\n");
+  if (stderrForErrors.trim()) {
+    const errorLines = stderrForErrors
+      .split("\n")
+      .filter((line) => /error|exception|traceback|failed/i.test(line))
+      .filter((line) => !/INFO|DEBUG|warn/i.test(line)); // skip log-level noise
+    if (errorLines.length > 0) {
+      result.errorMessage = errorLines.slice(0, 5).join("\n");
+    }
+  }
+  const costMatch = combined.match(COST_REGEX);
+  if (costMatch?.[1]) {
+    result.costUsd = parseFloat(costMatch[1]);
   }
 
   // Extract token usage
@@ -318,23 +322,6 @@ function parseHermesOutput(stdout: string, stderr: string): ParsedOutput {
       inputTokens: parseInt(usageMatch[1], 10) || 0,
       outputTokens: parseInt(usageMatch[2], 10) || 0,
     };
-  }
-
-  // Extract cost
-  const costMatch = combined.match(COST_REGEX);
-  if (costMatch?.[1]) {
-    result.costUsd = parseFloat(costMatch[1]);
-  }
-
-  // Check for error patterns in stderr
-  if (stderrForErrors.trim()) {
-    const errorLines = stderrForErrors
-      .split("\n")
-      .filter((line) => /error|exception|traceback|failed/i.test(line))
-      .filter((line) => !/INFO|DEBUG|warn/i.test(line)); // skip log-level noise
-    if (errorLines.length > 0) {
-      result.errorMessage = errorLines.slice(0, 5).join("\n");
-    }
   }
 
   return result;
