@@ -382,8 +382,7 @@ export async function execute(
     try {
       agentInstructions = await fs.readFile(instructionsFilePath, "utf-8");
       const loadedInstructionsLength = agentInstructions.length;
-      const instructionsFileDir = path.dirname(instructionsFilePath);
-      agentInstructions += `\nThe above agent instructions were loaded from ${instructionsFilePath}. Resolve any relative file references from ${instructionsFileDir}/.`;
+      agentInstructions += `\nThe above agent instructions came from the current Paperclip instruction document. Resolve relative file references from the current Paperclip instruction bundle.`;
       await ctx.onLog(
         "stdout",
         `[hermes] Loaded agent instructions from ${instructionsFilePath} (${loadedInstructionsLength} chars)\n`,
@@ -538,7 +537,8 @@ export async function execute(
   const parsed = parseHermesOutput(stdout, stderr);
 
   // Older Hermes releases can return 0 after exhausting every provider. Require
-  // the complete terminal envelope so ordinary HTTP-error prose stays successful.
+  // the complete terminal envelope so ordinary agent prose mentioning HTTP
+  // errors is not misclassified.
   const combinedOutput = `${stdout}\n${stderr}`;
   const terminalProviderExhaustion =
     /API call failed \(attempt \d+\/\d+\)/i.test(combinedOutput) &&
