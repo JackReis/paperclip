@@ -492,4 +492,90 @@ describe("task watchdog subtree classifier", () => {
 
     expect(result.state).toBe("not_applicable");
   });
+
+  describe("JAC-3882: leaves waiting on a board-owned open human gate", () => {
+    const gateId = "gate-1";
+    const boardGateOpen = {
+      companyId,
+      issueId: gateId,
+      status: "todo",
+      assigneeAgentId: null,
+      assigneeUserId: "local-board",
+    };
+
+    it("treats a leaf validly blocked on an open board-owned gate as a waiting path, not a stop", () => {
+      const result = classify({
+        issues: [issue({ status: "blocked" })],
+        blockers: [{ companyId, blockedIssueId: sourceId, blockerIssueId: gateId }],
+        blockerIssues: [boardGateOpen],
+      });
+
+      expect(result.state).toBe("waiting_on_gate");
+      if (result.state !== "waiting_on_gate") return;
+      expect(result.waitingLeafIssueIds).toEqual([sourceId]);
+      expect(result.gateBlockerIssueIds).toEqual([gateId]);
+    });
+
+    it("does not re-wake across evaluations while the human gate stays open (no fingerprint to churn)", () => {
+      const first = classify({
+        issues: [issue({ status: "blocked" })],
+        blockers: [{ companyId, blockedIssueId: sourceId, blockerIssueId: gateId }],
+        blockerIssues: [boardGateOpen],
+      });
+      // A watchdog-authored reminder comment (latestCommentAt advances) must not
+      // flip a waiting-on-gate leaf back into a firing stop.
+      const afterComment = classify({
+        issues: [issue({ status: "blocked", latestCommentAt: new Date("2026-06-18T20:00:00.000Z") })],
+        blockers: [{ companyId, blockedIssueId: sourceId, blockerIssueId: gateId }],
+        blockerIssues: [boardGateOpen],
+      });
+      expect(first.state).toBe("waiting_on_gate");
+      expect(afterComment.state).toBe("waiting_on_gate");
+    });
+
+    it("still stops when the blocking gate is closed", () => {
+      const result = classify({
+        issues: [issue({ status: "blocked" })],
+        blockers: [{ companyId, blockedIssueId: sourceId, blockerIssueId: gateId }],
+        blockerIssues: [{ ...boardGateOpen, status: "done" }],
+      });
+      expect(result.state).toBe("stopped");
+    });
+
+    it("still stops when the blocker is agent-owned (an agent can move it forward)", () => {
+      const result = classify({
+        issues: [issue({ status: "blocked" })],
+        blockers: [{ companyId, blockedIssueId: sourceId, blockerIssueId: gateId }],
+        blockerIssues: [{ ...boardGateOpen, assigneeAgentId: "agent-9" }],
+      });
+      expect(result.state).toBe("stopped");
+    });
+
+    it("still stops without blocker metadata (legacy callers unaffected)", () => {
+      const result = classify({
+        issues: [issue({ status: "blocked" })],
+        blockers: [{ companyId, blockedIssueId: sourceId, blockerIssueId: gateId }],
+      });
+      expect(result.state).toBe("stopped");
+    });
+
+    it("still fires on a genuinely-stopped sibling and excludes the gate-waiting leaf from the fingerprint", () => {
+      const stoppedSibling = "child-2";
+      const result = classify({
+        issues: [
+          issue({ status: "in_progress" }),
+          issue({ id: childId, parentId: sourceId, status: "blocked" }),
+          issue({ id: stoppedSibling, parentId: sourceId, status: "in_review" }),
+        ],
+        blockers: [{ companyId, blockedIssueId: childId, blockerIssueId: gateId }],
+        blockerIssues: [boardGateOpen],
+      });
+
+      expect(result.state).toBe("stopped");
+      if (result.state !== "stopped") return;
+      // The gate-waiting leaf (childId) must not appear in the stopped-leaf set
+      // used for the fingerprint; only the genuinely-stopped sibling remains.
+      expect(result.stoppedLeaves.map((leaf) => leaf.issueId)).toEqual([stoppedSibling]);
+    });
+  });
 });
