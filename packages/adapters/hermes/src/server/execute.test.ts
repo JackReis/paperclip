@@ -1,125 +1,22 @@
 /**
  * Tests for parseHermesOutput — the Hermes quiet-mode output parser.
  *
- * Covers the two edges from JAC-3706:
+ * Imports the production parser from execute.ts directly (no re-implemented
+ * regexes here) so these tests fail if the shipped parsing behavior changes.
+ *
+ * Covers the two edges from the quiet-output parsing bug:
  *   1. session_id emitted before response text in quiet mode
  *   2. session_id emitted on stderr (cancelled sessions)
  *
  * Also preserves the existing false-green/error semantics:
  *   - Successful terminal narration must not become an adapter error
  *   - Real stderr errors must be retained
+ *   - Prose or placeholder tokens must never become resumable session metadata
  */
 
 import { describe, expect, it } from "vitest";
 
-// parseHermesOutput is not exported — we test it indirectly through
-// the cleanResponse and SESSION_ID_REGEX patterns it uses.
-// For direct testing, we replicate the core logic inline.
-
-/** Regex to extract session ID from Hermes quiet-mode output: "session_id: <id>"
- *  Requires the session_id to be the only non-whitespace content on the line
- *  to avoid matching inline prose like "session_id: this is response text". */
-const SESSION_ID_REGEX = /^session_id:\s*(\S+)\s*$/m;
-
-/** Regex for legacy session output format — anchored to line start to avoid matching inline prose */
-const SESSION_ID_REGEX_LEGACY = /^session[_ ](?:id|saved)[:\s]+([a-zA-Z0-9_-]+)/im;
-
-/** Regex to extract token usage from Hermes output. */
-const TOKEN_USAGE_REGEX =
-  /tokens?[:\s]+(\d+)\s*(?:input|in)\b.*?(\d+)\s*(?:output|out)\b/i;
-
-/** Regex to extract cost from Hermes output. */
-const COST_REGEX = /(?:cost|spent)[:\s]*\$?([\d.]+)/i;
-
-interface ParsedOutput {
-  sessionId?: string;
-  response?: string;
-  usage?: { inputTokens: number; outputTokens: number };
-  costUsd?: number;
-  errorMessage?: string;
-}
-
-/** Strip noise lines from a Hermes response (tool output, system messages, etc.) */
-function cleanResponse(raw: string): string {
-  return raw
-    .split("\n")
-    .filter((line) => {
-      const t = line.trim();
-      if (!t) return true;
-      if (t.startsWith("[tool]") || t.startsWith("[hermes]") || t.startsWith("[paperclip]")) return false;
-      // Only strip lines that are pure session_id metadata (single token, end of line).
-      // Lines like "session_id: this is response text" are agent prose and must be preserved.
-      if (SESSION_ID_REGEX.test(t)) return false;
-      if (/^\[\d{4}-\d{2}-\d{2}T/.test(t)) return false;
-      if (/^\[done\]\s*┊/.test(t)) return false;
-      if (/^┊\s*[\p{Emoji_Presentation}]/u.test(t) && !/^┊\s*💬/.test(t)) return false;
-      if (/^\p{Emoji_Presentation}\s*(Completed|Running|Error)?\s*$/u.test(t)) return false;
-      return true;
-    })
-    .map((line) => {
-      let t = line.replace(/^[\s]*┊\s*💬\s*/, "").trim();
-      t = t.replace(/^\[done\]\s*/, "").trim();
-      return t;
-    })
-    .join("\n")
-    .replace(/\n{3,}/g, "\n\n")
-    .trim();
-}
-
-function parseHermesOutput(stdout: string, stderr: string): ParsedOutput {
-  const combined = stdout + "\n" + stderr;
-  const result: ParsedOutput = {};
-
-  const sessionMatch = combined.match(SESSION_ID_REGEX);
-  if (sessionMatch?.[1]) {
-    result.sessionId = sessionMatch[1];
-  } else {
-    // Legacy format (non-quiet mode) — only search stdout, not stderr
-    const legacyMatch = stdout.match(SESSION_ID_REGEX_LEGACY);
-    if (legacyMatch?.[1]) {
-      result.sessionId = legacyMatch[1];
-    }
-  }
-
-  const cleaned = cleanResponse(stdout);
-  if (cleaned.length > 0) {
-    result.response = cleaned;
-  }
-
-  const usageMatch = combined.match(TOKEN_USAGE_REGEX);
-  if (usageMatch) {
-    result.usage = {
-      inputTokens: parseInt(usageMatch[1], 10) || 0,
-      outputTokens: parseInt(usageMatch[2], 10) || 0,
-    };
-  }
-
-  const costMatch = combined.match(COST_REGEX);
-  if (costMatch?.[1]) {
-    result.costUsd = parseFloat(costMatch[1]);
-  }
-
-  // Check for error patterns in stderr (after filtering session_id lines)
-  const stderrForErrors = stderr
-    .split("\n")
-    .filter((line) => !SESSION_ID_REGEX.test(line.trim()))
-    .join("\n");
-  if (stderrForErrors.trim()) {
-    const errorLines = stderrForErrors
-      .split("\n")
-      .filter((line) => /error|exception|traceback|failed/i.test(line))
-      .filter((line) => !/INFO|DEBUG|warn/i.test(line)); // skip log-level noise
-    if (errorLines.length > 0) {
-      result.errorMessage = errorLines.slice(0, 5).join("\n");
-    }
-  }
-
-  return result;
-}
-
-// ---------------------------------------------------------------------------
-// Tests
-// ---------------------------------------------------------------------------
+import { isResumableSessionId, parseHermesOutput } from "./execute.js";
 
 describe("parseHermesOutput", () => {
   describe("session_id extraction", () => {
@@ -176,8 +73,8 @@ describe("parseHermesOutput", () => {
     });
 
     it("does not match inline prose mentioning session_id (anchor guard)", () => {
-      // The $ anchor on SESSION_ID_REGEX prevents matching prose like:
-      //   "session_id: this is response text"
+      // The line anchors on the session regex prevent matching prose like:
+      //   "I checked the session_id: it was valid."
       // Only a genuine "session_id: <single-token>" on its own line should match.
       const parsed = parseHermesOutput(
         "I checked the session_id: it was valid.\n\nsession_id: abc123\n",
@@ -188,38 +85,72 @@ describe("parseHermesOutput", () => {
       expect(parsed.response).toContain("session_id: it was valid");
     });
 
-    it("does not extract sessionId from inline prose with the $ anchor", () => {
-      // NOTE: The $ anchor on SESSION_ID_REGEX prevents matching multi-token prose
-      // in MOST cases, but multiline .match() can still capture a single word
-      // after "session_id:" if the rest of the line is also valid \S+ tokens.
-      // The primary defense is that cleanResponse uses SESSION_ID_REGEX.test()
-      // on each trimmed line, which requires the ENTIRE line to be just
-      // "session_id: <token>" — inline prose won't match there.
-      // Here in parseHermesOutput, combined.match() scans across lines,
-      // so "session_id: this" can capture "this" as a session ID candidate.
-      // The cleanResponse step then strips it if it's NOT a pure session_id line.
+    it("does not extract a sessionId from multi-token prose", () => {
+      // "session_id: this is response text" is agent prose. The anchored quiet
+      // regex cannot match it (non-whitespace remains after "this"), and the
+      // legacy fallback's "this" candidate fails isResumableSessionId(), so no
+      // session metadata is produced at all.
       const parsed = parseHermesOutput(
         "session_id: this is response text\n",
         "",
       );
-      // The regex captures the first \S+ token ("this") from the prose line.
-      // This is a known limitation of .match() across multiline strings —
-      // the $ anchor alone cannot fully prevent it when \s* consumes trailing whitespace.
-      // The cleanResponse step ensures the response text is preserved regardless.
-      expect(parsed.sessionId).toBe("this");
-      // The response should still contain the prose (not stripped by cleanResponse
+      expect(parsed.sessionId).toBeUndefined();
+      // The response keeps the prose (not stripped by cleanResponse
       // since the line isn't a pure session_id line)
       expect(parsed.response).toContain("session_id: this is response text");
     });
 
+    it("does not persist placeholder tokens as session metadata", () => {
+      // "session_id: unavailable" is a single token and matches the quiet
+      // regex shape, but it is a placeholder, not a session id. Persisting it
+      // would make the next run attempt `--resume unavailable`.
+      const parsed = parseHermesOutput(
+        "I could not create a session.\n\nsession_id: unavailable\n",
+        "",
+      );
+      expect(parsed.sessionId).toBeUndefined();
+      expect(parsed.response).toContain("I could not create a session.");
+    });
+
+    it("skips an invalid candidate and still finds a later real session id", () => {
+      const parsed = parseHermesOutput(
+        "session_id: unavailable\nRetried and succeeded.\n\nsession_id: abc123\n",
+        "",
+      );
+      expect(parsed.sessionId).toBe("abc123");
+    });
+
     it("does not extract legacy sessionId from mid-line (anchor guard)", () => {
-      // The ^ anchor on SESSION_ID_REGEX_LEGACY prevents matching inline text.
+      // The ^ anchor on the legacy session regex prevents matching inline text.
       const parsed = parseHermesOutput(
         "The session id: fake-123 was mentioned inline\nsession saved: real-456\n",
         "",
       );
       expect(parsed.sessionId).toBe("real-456");
     });
+  });
+
+  describe("isResumableSessionId", () => {
+    it.each(["abc123", "session-1", "20260718_200327_457d83", "crlf-1"])(
+      "accepts id-shaped token %s",
+      (token) => {
+        expect(isResumableSessionId(token)).toBe(true);
+      },
+    );
+
+    it.each(["unavailable", "Unavailable", "none", "null", "unknown", "n/a"])(
+      "rejects placeholder token %s",
+      (token) => {
+        expect(isResumableSessionId(token)).toBe(false);
+      },
+    );
+
+    it.each(["this", "ab", "", "has space", "-leading"])(
+      "rejects non-id-shaped token %j",
+      (token) => {
+        expect(isResumableSessionId(token)).toBe(false);
+      },
+    );
   });
 
   describe("response preservation (false-green prevention)", () => {
@@ -252,8 +183,8 @@ describe("parseHermesOutput", () => {
     });
 
     it("preserves inline session_id prose (not a genuine session_id line)", () => {
-      // The $ anchor means "session_id: this is response text" is NOT stripped —
-      // it's agent prose, not metadata, because it doesn't end with a bare token.
+      // A mid-line "session_id: abc123" mention is agent prose, not metadata,
+      // because the line doesn't consist solely of "session_id: <token>".
       const parsed = parseHermesOutput(
         "The session_id: abc123 was the one I used.\n\nsession_id: real-session-id\n",
         "",
