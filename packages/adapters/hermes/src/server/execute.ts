@@ -219,8 +219,42 @@ export function buildPrompt(
  *  to avoid matching inline prose like "session_id: this is response text". */
 const SESSION_ID_REGEX = /^session_id:\s*(\S+)\s*$/m;
 
-/** Regex for legacy session output format — anchored to line start to avoid matching inline prose */
-const SESSION_ID_REGEX_LEGACY = /^session[_ ](?:id|saved)[:\s]+([a-zA-Z0-9_-]+)/im;
+/** Global scan variants of the session regexes. `[^\S\n]` is "whitespace except
+ *  newline" so a candidate never spans lines and trailing `\r` is tolerated. */
+const SESSION_ID_SCAN_REGEX = /^session_id:[^\S\n]*(\S+)[^\S\n]*$/gm;
+const SESSION_ID_SCAN_REGEX_LEGACY = /^session[_ ](?:id|saved)[:\s]+([a-zA-Z0-9_-]+)/gim;
+
+/** Placeholder words Hermes (or agent prose) may print where an id belongs.
+ *  Persisting one as session metadata makes the next run attempt
+ *  `--resume unavailable` and silently break session continuity. */
+const SESSION_ID_SENTINELS = new Set([
+  "unavailable",
+  "undefined",
+  "unknown",
+  "missing",
+  "pending",
+  "error",
+  "none",
+  "null",
+  "n/a",
+]);
+
+/** True when a captured token is shaped like a real Hermes session id and is
+ *  safe to persist as resumable session metadata. Exported for tests. */
+export function isResumableSessionId(value: string): boolean {
+  if (SESSION_ID_SENTINELS.has(value.toLowerCase())) return false;
+  return /^[A-Za-z0-9][A-Za-z0-9._-]{5,127}$/.test(value);
+}
+
+/** Scan `text` with a global session regex and return the first candidate that
+ *  passes `isResumableSessionId`. */
+function findResumableSessionId(text: string, regex: RegExp): string | undefined {
+  for (const match of text.matchAll(regex)) {
+    const candidate = match[1];
+    if (candidate && isResumableSessionId(candidate)) return candidate;
+  }
+  return undefined;
+}
 
 /** Regex to extract token usage from Hermes output. */
 const TOKEN_USAGE_REGEX =
@@ -272,7 +306,7 @@ function cleanResponse(raw: string): string {
 // Output parsing
 // ---------------------------------------------------------------------------
 
-function parseHermesOutput(stdout: string, stderr: string): ParsedOutput {
+export function parseHermesOutput(stdout: string, stderr: string): ParsedOutput {
   const combined = stdout + "\n" + stderr;
   const result: ParsedOutput = {};
 
@@ -281,15 +315,14 @@ function parseHermesOutput(stdout: string, stderr: string): ParsedOutput {
   // or before the response text in quiet mode. cleanResponse()
   // already strips session_id lines, so we can pass the full stdout
   // through it regardless of where session_id appears.
-  const sessionMatch = combined.match(SESSION_ID_REGEX);
-  if (sessionMatch?.[1]) {
-    result.sessionId = sessionMatch[1];
-  } else {
+  // Every candidate is validated with isResumableSessionId() so response text
+  // like "session_id: unavailable" is never persisted as resumable metadata.
+  const sessionId =
+    findResumableSessionId(combined, SESSION_ID_SCAN_REGEX) ??
     // Legacy format (non-quiet mode) — only search stdout, not stderr
-    const legacyMatch = stdout.match(SESSION_ID_REGEX_LEGACY);
-    if (legacyMatch?.[1]) {
-      result.sessionId = legacyMatch[1];
-    }
+    findResumableSessionId(stdout, SESSION_ID_SCAN_REGEX_LEGACY);
+  if (sessionId) {
+    result.sessionId = sessionId;
   }
 
   const cleaned = cleanResponse(stdout);
