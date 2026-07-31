@@ -51,6 +51,7 @@ import {
 import {
   detectModel,
   resolveProvider,
+  resolveHermesConfigPath,
 } from "./detect-model.js";
 
 // ---------------------------------------------------------------------------
@@ -366,7 +367,9 @@ export async function execute(
 
   if (!explicitProvider) {
     try {
-      detectedConfig = await detectModel();
+      // Read the same Hermes profile that preflight (testEnvironment) checks:
+      // config.env.HERMES_HOME selects a custom profile directory.
+      detectedConfig = await detectModel(resolveHermesConfigPath(config));
     } catch {
       // Non-fatal — detection failure shouldn't block execution
     }
