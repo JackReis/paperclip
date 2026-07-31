@@ -97,6 +97,19 @@ export type TaskWatchdogClassifierRelation = {
   blockedIssueId: string;
 };
 
+// Ownership + status of an issue that *blocks* a watched leaf. The blocking
+// issue is frequently outside the watched subtree (e.g. a board-owned human
+// gate), so its material state is supplied separately rather than read from the
+// walked subtree. Used to tell a legitimate "waiting on a human decision" wait
+// apart from a suspicious stop. See JAC-3882.
+export type TaskWatchdogClassifierBlockerIssue = {
+  companyId: string;
+  issueId: string;
+  status: string;
+  assigneeAgentId: string | null;
+  assigneeUserId: string | null;
+};
+
 export type TaskWatchdogClassifierConfig = Pick<
   IssueWatchdogSummary,
   "companyId" | "issueId" | "lastReviewedFingerprint"
@@ -184,6 +197,16 @@ export type TaskWatchdogClassifierResult =
     pendingIssueIds: string[];
   }
   | {
+    // Every non-terminal leaf is validly blocked on an open, board-owned human
+    // gate. That is a legitimate waiting path — a human still has to act — so
+    // the watchdog does not fire. See JAC-3882.
+    state: "waiting_on_gate";
+    reason: string;
+    includedIssueIds: string[];
+    waitingLeafIssueIds: string[];
+    gateBlockerIssueIds: string[];
+  }
+  | {
     state: "already_reviewed";
     reason: string;
     includedIssueIds: string[];
@@ -210,6 +233,11 @@ export type TaskWatchdogClassifierInput = {
   activeRuns?: TaskWatchdogClassifierPath[];
   queuedWakeRequests?: TaskWatchdogClassifierPath[];
   blockers?: TaskWatchdogClassifierRelation[];
+  // Material state of the issues that block watched leaves. Lets the classifier
+  // treat a leaf that is validly blocked on an *open, board-owned* human gate as
+  // a live waiting path rather than a suspicious stop. Omit to disable the guard
+  // (legacy behavior — every blocked leaf counts as stopped).
+  blockerIssues?: TaskWatchdogClassifierBlockerIssue[];
   pendingInteractions?: TaskWatchdogClassifierWaitingPath[];
   pendingApprovals?: TaskWatchdogClassifierWaitingPath[];
   // Timestamp the evaluation reads its snapshot at. When provided together
@@ -369,6 +397,16 @@ function stableStopFingerprint(input: {
   return `task_watchdog_stop:${createHash("sha256").update(payload).digest("hex")}`;
 }
 
+// A blocker issue is a "board-owned open gate" when it is still open (not
+// done/cancelled) and owned by a human/board principal with no agent assignee —
+// i.e. no agent is going to move it forward, so a leaf blocked on it is validly
+// waiting on a human decision rather than stalled. See JAC-3882.
+function isBoardOwnedOpenGate(meta: TaskWatchdogClassifierBlockerIssue): boolean {
+  if (isTerminalIssueStatus(meta.status)) return false;
+  if (meta.assigneeAgentId != null) return false;
+  return typeof meta.assigneeUserId === "string" && meta.assigneeUserId.length > 0;
+}
+
 function materialLeaf(leaf: TaskWatchdogStoppedLeaf): TaskWatchdogMaterialLeaf {
   return {
     issueId: leaf.issueId,
@@ -520,8 +558,48 @@ export function classifyTaskWatchdogSubtree(input: TaskWatchdogClassifierInput):
     blockersByIssueId.set(relation.blockedIssueId, list);
   }
 
+  // JAC-3882: a leaf that is `blocked` with a first-class blocker on an open,
+  // board-owned human gate is validly waiting on a human decision, not stalled.
+  // Keep such leaves out of the stopped-leaf set (and the stop fingerprint) so
+  // the watchdog neither fires on them nor churns/re-wakes when the only thing
+  // left is a legitimate human wait.
+  const blockerIssueMetaById = new Map(
+    (input.blockerIssues ?? [])
+      .filter((meta) => meta.companyId === input.watchdog.companyId)
+      .map((meta) => [meta.issueId, meta] as const),
+  );
+  const boardGateBlockerIdsFor = (issueId: string) =>
+    (blockersByIssueId.get(issueId) ?? []).filter((blockerId) => {
+      const meta = blockerIssueMetaById.get(blockerId);
+      return meta != null && isBoardOwnedOpenGate(meta);
+    });
+  const includedLeafIssues = included.filter(
+    (issue) =>
+      (includedChildrenByParentId.get(issue.id) ?? []).length === 0 &&
+      !isTerminalIssueStatus(issue.status),
+  );
+  const waitingOnGateLeafIds = new Set(
+    includedLeafIssues
+      .filter((issue) => issue.status === "blocked" && boardGateBlockerIdsFor(issue.id).length > 0)
+      .map((issue) => issue.id),
+  );
+  if (waitingOnGateLeafIds.size > 0 && waitingOnGateLeafIds.size === includedLeafIssues.length) {
+    const gateBlockerIssueIds = [
+      ...new Set([...waitingOnGateLeafIds].flatMap((issueId) => boardGateBlockerIdsFor(issueId))),
+    ].sort();
+    return {
+      state: "waiting_on_gate",
+      reason:
+        "Every non-terminal leaf in the watched subtree is validly blocked on an open, board-owned human gate.",
+      includedIssueIds: includedIds,
+      waitingLeafIssueIds: [...waitingOnGateLeafIds].sort(),
+      gateBlockerIssueIds,
+    };
+  }
+
   const nonTerminalIssues = included
     .filter((issue) => !isTerminalIssueStatus(issue.status))
+    .filter((issue) => !waitingOnGateLeafIds.has(issue.id))
     .sort((left, right) => left.id.localeCompare(right.id));
   const waitsByIssueId = Object.fromEntries(nonTerminalIssues
     .map((issue) => [issue.id, {
@@ -545,6 +623,7 @@ export function classifyTaskWatchdogSubtree(input: TaskWatchdogClassifierInput):
   const leaves = included
     .filter((issue) => (includedChildrenByParentId.get(issue.id) ?? []).length === 0)
     .filter((issue) => !isTerminalIssueStatus(issue.status))
+    .filter((issue) => !waitingOnGateLeafIds.has(issue.id))
     .sort((left, right) => left.id.localeCompare(right.id))
     .map((issue) => ({
       issueId: issue.id,
@@ -1152,6 +1231,27 @@ export function taskWatchdogService(db: Db, deps: TaskWatchdogServiceDeps = {}) 
       .map((row) => row.id);
     const completedRunIssueIds = await collectCompletedRunIssueIds(companyId, freshIssueIds);
 
+    // JAC-3882: fetch the material state (status + ownership) of the issues that
+    // *block* watched leaves. The blocking issue is frequently a board-owned
+    // human gate outside the walked subtree, so the classifier can only tell a
+    // valid "waiting on a human" wait apart from a real stop with this metadata.
+    const blockerIssueIds = [...new Set(blockerRows.map((row) => row.blockerIssueId))];
+    const blockerIssues = blockerIssueIds.length === 0
+      ? []
+      : await db
+        .select({
+          companyId: issues.companyId,
+          issueId: issues.id,
+          status: issues.status,
+          assigneeAgentId: issues.assigneeAgentId,
+          assigneeUserId: issues.assigneeUserId,
+        })
+        .from(issues)
+        .where(and(
+          eq(issues.companyId, companyId),
+          inArray(issues.id, blockerIssueIds),
+        ));
+
     return {
       watchdog: {
         ...summarizeIssueWatchdog(watchdog),
@@ -1176,6 +1276,7 @@ export function taskWatchdogService(db: Db, deps: TaskWatchdogServiceDeps = {}) 
         issueId: issueIdFromWakePayload(row.payload),
       })),
       blockers: blockerRows,
+      blockerIssues,
       pendingInteractions: interactionRows,
       pendingApprovals: approvalRows,
       evaluatedAt,
