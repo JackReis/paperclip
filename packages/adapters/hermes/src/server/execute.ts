@@ -391,7 +391,11 @@ export async function execute(
     try {
       agentInstructions = await fs.readFile(instructionsFilePath, "utf-8");
       const loadedInstructionsLength = agentInstructions.length;
-      agentInstructions += `\nThe above agent instructions came from the current Paperclip instruction document. Resolve relative file references from the current Paperclip instruction bundle.`;
+      // Hermes runs from the workspace directory, not the bundle directory, so
+      // relative resource references in the instructions only resolve if the
+      // prompt names the bundle's base directory explicitly.
+      const instructionsDir = path.dirname(path.resolve(instructionsFilePath));
+      agentInstructions += `\nThe above agent instructions came from the current Paperclip instruction document. Resolve relative file references against the instruction bundle directory: ${instructionsDir}`;
       await ctx.onLog(
         "stdout",
         `[hermes] Loaded agent instructions from ${instructionsFilePath} (${loadedInstructionsLength} chars)\n`,
