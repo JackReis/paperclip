@@ -1616,12 +1616,13 @@ export interface PluginGoalsClient {
     status?: Goal["status"];
     parentId?: string;
     ownerAgentId?: string;
+    syncMetadata?: Goal["syncMetadata"];
   }): Promise<Goal>;
   update(
     goalId: string,
     patch: Partial<Pick<
       Goal,
-      "title" | "description" | "level" | "status" | "parentId" | "ownerAgentId"
+      "title" | "description" | "level" | "status" | "parentId" | "ownerAgentId" | "syncMetadata"
     >>,
     companyId: string,
   ): Promise<Goal>;

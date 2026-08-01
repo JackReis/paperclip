@@ -2558,6 +2558,7 @@ const issueListSelect = {
   hiddenAt: issues.hiddenAt,
   createdAt: issues.createdAt,
   updatedAt: issues.updatedAt,
+  sessionId: issues.sessionId,
 };
 
 function withActiveRuns(
