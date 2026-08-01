@@ -15,8 +15,8 @@ import {
   startEmbeddedPostgresTestDatabase,
 } from "./test-embedded-postgres.js";
 
-const RECONCILIATION_MIGRATION = "0136_environment_custom_image_templates_reconciliation.sql";
-const AGENT_SESSIONS_MIGRATION = "0137_agent_sessions.sql";
+const RECONCILIATION_MIGRATION = "0185_environment_custom_image_templates_reconciliation.sql";
+const AGENT_SESSIONS_MIGRATION = "0186_agent_sessions.sql";
 const LOCAL_0125_AGENT_SESSIONS_HASH = "d53c4598fd1813fdff5c3fabdc8e6192bc665b3ec9031ae795c0e9d0955b08e6";
 
 const protectedMigrationHashes = {
@@ -262,8 +262,8 @@ describe("agent sessions migration artifacts", () => {
     ) as { entries: Array<{ idx: number; tag: string }> };
 
     expect(journal.entries.slice(-2)).toEqual([
-      { idx: 136, version: "7", when: 1783025824120, tag: "0136_environment_custom_image_templates_reconciliation", breakpoints: true },
-      { idx: 137, version: "7", when: 1783025924120, tag: "0137_agent_sessions", breakpoints: true },
+      { idx: 185, version: "7", when: 1783025824120, tag: "0185_environment_custom_image_templates_reconciliation", breakpoints: true },
+      { idx: 186, version: "7", when: 1783025924120, tag: "0186_agent_sessions", breakpoints: true },
     ]);
     await expect(fs.promises.access(new URL("./migrations/0125_agent_sessions.sql", import.meta.url))).rejects.toThrow();
     await expect(migrationContent(RECONCILIATION_MIGRATION)).resolves.toContain("CREATE TABLE IF NOT EXISTS");
