@@ -17,34 +17,19 @@ import { dirname, isAbsolute, join } from "node:path";
 import { promisify } from "node:util";
 
 import { HERMES_CLI, DEFAULT_MODEL, ADAPTER_TYPE, VALID_PROVIDERS } from "../shared/constants.js";
-import { detectModel, resolveProvider, inferProviderFromModel } from "./detect-model.js";
+import {
+  detectModel,
+  resolveProvider,
+  inferProviderFromModel,
+  resolveHermesHome,
+  resolveHermesConfigPath,
+} from "./detect-model.js";
 import { resolveHermesCommand } from "./execute.js";
 
 const execFileAsync = promisify(execFile);
 
 function asString(v: unknown): string | undefined {
   return typeof v === "string" ? v : undefined;
-}
-
-function configEnvString(config: Record<string, unknown>, key: string): string | undefined {
-  const env = config.env;
-  if (!env || typeof env !== "object" || Array.isArray(env)) return undefined;
-
-  const rawValue = (env as Record<string, unknown>)[key];
-  if (typeof rawValue === "string" && rawValue.length > 0) return rawValue;
-  if (!rawValue || typeof rawValue !== "object" || Array.isArray(rawValue)) return undefined;
-
-  const resolvedValue = (rawValue as { value?: unknown }).value;
-  return typeof resolvedValue === "string" && resolvedValue.length > 0
-    ? resolvedValue
-    : undefined;
-}
-
-function resolveHermesHome(config: Record<string, unknown>): string {
-  return configEnvString(config, "HERMES_HOME") ?? join(
-    process.env.HOME || process.env.USERPROFILE || "/root",
-    ".hermes",
-  );
 }
 
 // ---------------------------------------------------------------------------
@@ -395,7 +380,7 @@ export async function testEnvironment(
   // 5. Detect Hermes config once for the remaining checks.
   let detectedConfig: Awaited<ReturnType<typeof detectModel>> | null = null;
   try {
-    detectedConfig = await detectModel(join(hermesHome, "config.yaml"));
+    detectedConfig = await detectModel(resolveHermesConfigPath(config));
   } catch {
     // Non-fatal
   }
