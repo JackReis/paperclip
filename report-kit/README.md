@@ -103,7 +103,7 @@ Open `sample-report.html` in a browser to see a complete fleet health report wit
 | `sample-data-devin-deepwiki.json` | Machine-readable sample data contract (Devin/DeepWiki research report) |
 | `report-kit.test.mjs` | QA regression test suite (Node.js native `node:test` runner) — validates renderer syntax, schema, sample data, template placeholders, zip integrity, and README presence |
 | `README.md` | This file |
-| `report-kit.zip` | Archive of all 6 content files (excludes tests and this README) for distribution |
+| `report-kit.zip` | Archive of all 6 content files (excludes the QA test suite `report-kit.test.mjs`) for distribution |
 
 ## Running Tests
 
