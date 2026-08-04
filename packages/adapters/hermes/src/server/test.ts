@@ -144,8 +144,8 @@ function checkModel(
   if (!model || model === "auto") {
     return {
       level: "info",
-      message: "No model specified — Hermes will use its configured default model",
-      hint: "Set a model explicitly in Paperclip only if you want to override your local Hermes configuration.",
+      message: `No model specified — adapter will use DEFAULT_MODEL (${DEFAULT_MODEL})`,
+      hint: "Set a model explicitly in Paperclip only if you want to override the built-in default.",
       code: "hermes_configured_default_model",
     };
   }

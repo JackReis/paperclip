@@ -18,20 +18,25 @@ export const DEFAULT_TIMEOUT_SEC = 1800;
 export const DEFAULT_GRACE_SEC = 10;
 
 /**
- * Default model to use if none specified.
+ * Default model to use if none specified in adapterConfig.
  *
- * Use "auto" so that Hermes resolves the model from the user's local
- * Hermes config.yaml — preventing the adapter from overriding a
- * user's configured default (e.g. MiniMax, OpenRouter, etc.) during
- * Paperclip onboarding.
+ * Set to "ollama-launch/qwen3-coder:30b" so that hermes_local agents with
+ * empty adapterConfig (the fleet-wide default) resolve to a deterministic
+ * local Ollama model on :11434 rather than deferring to the user's Hermes
+ * config provider — which, when NOUS_API_KEY is absent or the config
+ * provider is wrong, produces 404s and truncated tracebacks on every run.
  *
- * Note: As of JAC-4603, all hermes_local agents have empty adapterConfig,
- * so model resolution delegates to Hermes config.yaml. The Hermes config
- * now defaults to qwen3-coder:30b via ollama-launch (local Ollama :11434)
- * to avoid cloud provider rate limits (NOUS_API_KEY quota exhaustion,
- * OpenRouter 429s, XAI 403s).
+ * The "ollama-launch/" prefix is a recognized VALID_PROVIDERS entry, so
+ * inferProviderFromModel() extracts it directly and the adapter passes
+ * both `-m ollama-launch/qwen3-coder:30b` and `--provider ollama-launch`
+ * to the Hermes CLI.
+ *
+ * As of JAC-4603, this change replaces the previous DEFAULT_MODEL="auto"
+ * which caused all 20 errored agents to defer to Hermes config.yaml (provider:
+ * openrouter), hit HTTP 404 for qwen3-coder:30b, and fail with truncated
+ * tracebacks.
  */
-export const DEFAULT_MODEL = "auto";
+export const DEFAULT_MODEL = "ollama-launch/qwen3-coder:30b";
 
 /**
  * Valid --provider choices for the hermes CLI.

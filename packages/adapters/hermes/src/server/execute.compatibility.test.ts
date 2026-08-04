@@ -91,17 +91,27 @@ describe("hermes-local compatibility invocation", () => {
     expect(spawnedArgs()).not.toContain("-Q");
   });
 
-  it.each([{}, { model: "auto", provider: "auto" }])(
-    "omits auto model and provider flags so Hermes can use its profile (%o)",
-    async (config) => {
-      const result = await execute(makeCtx(config));
-      expect(spawnedArgs()).not.toContain("auto");
-      expect(spawnedArgs()).not.toContain("-m");
-      expect(spawnedArgs()).not.toContain("--provider");
-      expect(result.model).toBe("auto");
-      expect(result.provider).toBe("auto");
-    },
-  );
+  it("uses the DEFAULT_MODEL (ollama-launch/qwen3-coder:30b) when adapterConfig is empty, passing -m and --provider", async () => {
+    // JAC-4603: DEFAULT_MODEL changed from "auto" to "ollama-launch/qwen3-coder:30b"
+    // so that empty-adapterConfig agents resolve to a deterministic local Ollama
+    // model instead of deferring to a potentially-broken Hermes config provider.
+    const result = await execute(makeCtx());
+    expect(result.model).toBe("ollama-launch/qwen3-coder:30b");
+    expect(result.provider).toBe("ollama-launch");
+    expect(spawnedArgs()).toContain("-m");
+    expect(spawnedArgs()).toContain("ollama-launch/qwen3-coder:30b");
+    expect(spawnedArgs()).toContain("--provider");
+    expect(spawnedArgs()).toContain("ollama-launch");
+  });
+
+  it("omits auto model and provider flags so Hermes can use its profile when explicitly set to auto", async () => {
+    const result = await execute(makeCtx({ model: "auto", provider: "auto" }));
+    expect(spawnedArgs()).not.toContain("auto");
+    expect(spawnedArgs()).not.toContain("-m");
+    expect(spawnedArgs()).not.toContain("--provider");
+    expect(result.model).toBe("auto");
+    expect(result.provider).toBe("auto");
+  });
 
   it("forwards ctx.onSpawn to runChildProcess", async () => {
     const ctx = makeCtx();
