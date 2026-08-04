@@ -101,8 +101,31 @@ Open `sample-report.html` in a browser to see a complete fleet health report wit
 | `template.html` | Standalone HTML template with placeholder data — copy and fill in |
 | `sample-report.html` | Working sample (fleet health report with real fleet data) |
 | `sample-data-devin-deepwiki.json` | Machine-readable sample data contract (Devin/DeepWiki research report) |
+| `report-kit.test.mjs` | QA regression test suite (Node.js native `node:test` runner) — validates renderer syntax, schema, sample data, template placeholders, zip integrity, and README presence |
 | `README.md` | This file |
-| `report-kit.zip` | Archive of all 6 content files for distribution |
+| `report-kit.zip` | Archive of all 6 content files (excludes tests and this README) for distribution |
+
+## Running Tests
+
+The QA regression suite uses Node.js native `node:test` (no external deps required):
+
+```sh
+node --test report-kit/report-kit.test.mjs
+```
+
+All 11 tests should pass. This validates:
+
+1. `report-renderer.js` valid JS syntax and ES module exports
+2. `escapeHtml` is pure-JS (no DOM dependency)
+3. XSS prevention — `<script>` tags are HTML-escaped in output
+4. JSON Schema draft-07 validity and required fields
+5. Sample data validates against schema
+6. Template placeholder tokens (9 occurrences, 8 unique)
+7. End-to-end render from sample data (16,581 chars, div-balanced)
+8. End-to-end render from fleetHealthData (19,706 chars)
+9. Deterministic output for varying inputs
+10. ZIP archive signature validation
+11. README documentation coverage
 
 ## API Reference
 
@@ -652,6 +675,7 @@ rows: [["Agent A", { status: "healthy" }]]
 ### v1.2.1 (2026-08-04)
 - **Fix**: Updated Files table and deployment instructions to reflect 6 content files (was 5) — `sample-data-devin-deepwiki.json` was added to the kit but not listed.
 - **Fix**: ZIP rebuild command now includes `sample-data-devin-deepwiki.json`.
+- **Docs**: Added `report-kit.test.mjs` to the Files table — the Vitest test suite was previously omitted from documentation despite being part of the kit.
 
 ### v1.2.0 (2026-08-04)
 
