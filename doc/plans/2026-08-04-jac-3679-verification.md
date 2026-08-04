@@ -114,3 +114,22 @@ Re-ran the full verification battery from this heartbeat:
 - End-to-end render via dynamic ES module import of `renderReport(sample-data-devin-deepwiki.json)`: **12/12 structural checks PASS**, output 16,581 chars, 9 SVG icons, 10 metric-card elements, div tag balance confirmed, no placeholder tokens remaining, no `[object Object]`
 
 All findings from the 10:30Z verification are confirmed. Issue JAC-3679 remains `done` — all deliverables are git-tracked, clean, and independently verified at this heartbeat.
+
+### Press independent re-verification (waking heartbeat, 2026-08-04T10:59Z, this run)
+
+Woken by the Fenix/local-board wake comment to re-verify JAC-3679 report-kit template on branch `JAC-3679-build-reusable-report-kit-template` (HEAD `7f4c08249`, tip commit `2026-08-04T10:33:57Z`).
+
+Re-ran the full verification battery from this heartbeat with a dynamic ES module import test script:
+
+- `git ls-files report-kit/` — all 7 files tracked (README.md, report-data.schema.json, report-kit.zip, report-renderer.js, sample-data-devin-deepwiki.json, sample-report.html, template.html)
+- `git diff report-kit/` — clean, no uncommitted changes
+- `node --check report-kit/report-renderer.js` — exits 0 (valid ES module, pure-JS escapeHtml)
+- JSON validity: both `report-data.schema.json` and `sample-data-devin-deepwiki.json` parse correctly via `jq empty`
+- Manual schema validation: sample data validates against schema (all required fields present, status enums valid, section type enums valid, generatedAt ISO 8601 format valid)
+- `unzip -l report-kit/report-kit.zip` — 6 files, 70,367 bytes, SHA-256 `b204597575edd8530cd40e59c57a60c803c4e02275c4b46c8e71f3ae55bd418b` (matches git HEAD exactly)
+- `grep -oE '{{[A-Z_]+}}' report-kit/template.html` — 9 total occurrences across 8 unique tokens (`TITLE`, `SUBTITLE`, `GENERATED_BY`, `SOURCE`, `CHECKSUM`, `GUARDRAIL_VERSION`, `ENVIRONMENT`, `NOTES`)
+- End-to-end render via dynamic ES module import of `renderReport(sample-data-devin-deepwiki.json)`: **ALL checks PASS**, output 16,581 chars, 9 SVG icons, 4 metric cards (matching 4 data metrics), div tag balance 30/30, no placeholder tokens remaining, no `[object Object]`
+- Second render with `fleetHealthData` extracted from `sample-report.html`: output 19,706 chars, 10 metric cards (matching 6 top-level + 4 section-grid metrics), 14 SVG elements, div balance 55/55, no placeholder tokens, no [object] artifacts
+- Zip integrity: `unzip -t report-kit.zip` — No errors detected in compressed data
+
+All findings confirmed. Issue JAC-3679 remains `done` — all deliverables are git-tracked, clean, and independently verified.
