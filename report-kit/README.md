@@ -672,6 +672,9 @@ rows: [["Agent A", { status: "healthy" }]]
 
 ## Changelog
 
+### v1.2.3 (2026-08-04)
+- **Fix**: Rebuilt `report-kit.zip` to include the updated README.md (v1.2.2 content). The previous zip contained the stale v1.2.1 README despite the v1.2.2 documentation changes being committed to the repo.
+
 ### v1.2.2 (2026-08-04)
 - **Docs**: Added "Running Tests" section with `node --test` command and full test catalog (11 tests covering syntax, XSS, schema, render, zip, README).
 - **Docs**: Corrected test runner identification — the suite uses Node.js native `node:test` (not Vitest), despite both being supported in the repo. Updated Files table and changelog entries accordingly.
