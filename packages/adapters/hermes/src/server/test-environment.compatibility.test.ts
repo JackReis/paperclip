@@ -165,4 +165,34 @@ describe.sequential("Hermes environment compatibility", () => {
       await rm(runtime.root, { recursive: true, force: true });
     }
   });
+
+  it("reports hermes_configured_default_model and ollama-launch fallback when model is unset (JAC-4575 empty adapterConfig)", async () => {
+    // JAC-4575: Agents with empty adapterConfig={} (no model field) should
+    // report that DEFAULT_MODEL (ollama-launch/qwen3-coder:30b) will be used.
+    // The checkModel function maps undefined model to hermes_configured_default_model.
+    const runtime = await createFakeHermesRuntime();
+    try {
+      await writeHermesProfile(runtime.hermesHome);
+
+      const result = await testEnvironment({
+        companyId: "company-test",
+        adapterType: "hermes_local",
+        config: {
+          hermesCommand: runtime.hermesCommand,
+          env: { HERMES_HOME: runtime.hermesHome },
+        },
+      } as any);
+
+      const codes = result.checks.map((check) => check.code);
+      expect(codes).toContain("hermes_configured_default_model");
+
+      const modelCheck = result.checks.find(
+        (check) => check.code === "hermes_configured_default_model",
+      );
+      expect(modelCheck?.message).toMatch(/DEFAULT_MODEL/);
+      expect(modelCheck?.message).toMatch(/ollama-launch\/qwen3-coder:30b/);
+    } finally {
+      await rm(runtime.root, { recursive: true, force: true });
+    }
+  });
 });
