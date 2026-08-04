@@ -235,4 +235,44 @@ describeEmbeddedPostgres("agent service clearError", () => {
       message: "Pending approval agents cannot have errors cleared",
     });
   });
+
+  it("allows updateAgent to clear errorReason on running/idle agents via PATCH", async () => {
+    const companyId = randomUUID();
+    const agentId = randomUUID();
+    const issuePrefix = `T${companyId.replace(/-/g, "").slice(0, 6).toUpperCase()}`;
+
+    await db.insert(companies).values({
+      id: companyId,
+      name: "Paperclip",
+      issuePrefix,
+      requireBoardApprovalForNewAgents: false,
+    });
+
+    await db.insert(agents).values({
+      id: agentId,
+      companyId,
+      name: "StaleAgent",
+      role: "engineer",
+      status: "running",
+      errorReason: "Process lost -- child pid 68465 is no longer running",
+      adapterType: "hermes_local",
+      adapterConfig: {},
+      runtimeConfig: {},
+      permissions: {},
+    });
+
+    // The PATCH endpoint now accepts errorReason (via updateAgentSchema).
+    // This allows board operators to clear stale error breadcrumbs on
+    // agents whose process has recovered (status=running/idle) without
+    // using the dedicated clear-error endpoint (which requires status=error).
+    const updated = await agentService(db).update(agentId, {
+      errorReason: null,
+    });
+
+    expect(updated).toMatchObject({
+      id: agentId,
+      status: "running",
+      errorReason: null,
+    });
+  });
 });
