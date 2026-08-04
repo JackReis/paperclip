@@ -14,8 +14,14 @@ import {
   prepareRemoteManagedRuntime,
   remoteExecutionSessionMatches,
 } from "./remote-managed-runtime.js";
-import type { SandboxAdditionalSource } from "./sandbox-managed-runtime.js";
-export type { SandboxAdditionalSource } from "./sandbox-managed-runtime.js";
+import type {
+  AdditionalSourceStagingFailure,
+  SandboxAdditionalSource,
+} from "./sandbox-managed-runtime.js";
+export type {
+  AdditionalSourceStagingFailure,
+  SandboxAdditionalSource,
+} from "./sandbox-managed-runtime.js";
 import {
   createCommandManagedSandboxCallbackBridgeQueueClient,
   createSandboxCallbackBridgeAsset,
@@ -40,6 +46,7 @@ import {
 } from "./server-utils.js";
 import { sanitizeRemoteExecutionEnv } from "./remote-execution-env.js";
 import { preferredShellForSandbox, shellCommandArgs } from "./sandbox-shell.js";
+import { runWithoutActiveStep } from "./acpx-engine/startup-timing.js";
 import type { RuntimeProgressSink, RuntimeStatusSink } from "./runtime-progress.js";
 import type { LocalProcessSandboxOptions } from "./local-process-sandbox.js";
 
@@ -122,6 +129,12 @@ export interface PreparedAdapterExecutionTargetRuntime {
    * additional sources were requested.
    */
   additionalSourceDirs: Record<string, string>;
+  /**
+   * Each additional (referenced) project whose staging failed, paired with the
+   * failure message. Empty for a local target, for a transport that does not
+   * stage referenced projects, or when every requested project staged.
+   */
+  additionalSourceFailures: AdditionalSourceStagingFailure[];
   restoreWorkspace(onProgress?: RuntimeProgressSink): Promise<void>;
 }
 
@@ -1135,6 +1148,7 @@ export async function prepareAdapterExecutionTargetRuntime(input: {
       runtimeRootDir: null,
       assetDirs: {},
       additionalSourceDirs: {},
+      additionalSourceFailures: [],
       restoreWorkspace: async () => {},
     };
   }
@@ -1157,6 +1171,9 @@ export async function prepareAdapterExecutionTargetRuntime(input: {
       runtimeRootDir: prepared.runtimeRootDir,
       assetDirs: prepared.assetDirs,
       additionalSourceDirs: prepared.additionalSourceDirs,
+      // The SSH transport does not stage referenced projects (it is out of scope), so it never
+      // reports a per-project staging failure.
+      additionalSourceFailures: [],
       restoreWorkspace: prepared.restoreWorkspace,
     };
   }
@@ -1192,6 +1209,7 @@ export async function prepareAdapterExecutionTargetRuntime(input: {
     runtimeRootDir: prepared.runtimeRootDir,
     assetDirs: prepared.assetDirs,
     additionalSourceDirs: prepared.additionalSourceDirs,
+    additionalSourceFailures: prepared.additionalSourceFailures,
     restoreWorkspace: prepared.restoreWorkspace,
   };
 }
@@ -1471,7 +1489,10 @@ export async function startAdapterExecutionTargetProcessSessionBridge(input: {
   };
 
   const liveSockets = new Set<net.Socket>();
-  const server = net.createServer((nextSocket) => {
+  // Register the per-connection socket handlers outside the measured bridge step
+  // store. A stdin write from a socket handler is a run-time exec, not startup
+  // work, so its `sandbox.exec` span must not parent to the ended bridge step.
+  const server = net.createServer((nextSocket) => runWithoutActiveStep(() => {
     liveSockets.add(nextSocket);
     nextSocket.setEncoding("utf8");
     nextSocket.on("error", () => undefined);
@@ -1530,7 +1551,7 @@ export async function startAdapterExecutionTargetProcessSessionBridge(input: {
         });
       }
     });
-  });
+  }));
 
   const poll = async () => {
     if (stopping) return;
@@ -1555,16 +1576,24 @@ export async function startAdapterExecutionTargetProcessSessionBridge(input: {
       return;
     } finally {
       if (!stopping) {
-        pollTimer = setTimeout(() => void poll(), 100);
-        pollTimer.unref?.();
+        schedulePoll();
       }
     }
   };
 
+  // Schedule the long-lived poll timer outside the measured bridge step store.
+  // The poll loop reads remote event files with run-time execs, not startup
+  // work, so a poll `sandbox.exec` span must not parent to the ended bridge step.
+  // `runWithoutActiveStep` also empties the store for the re-arm timer that the
+  // poll body schedules, so every later tick stays unparented too.
+  const schedulePoll = () => {
+    pollTimer = setTimeout(() => runWithoutActiveStep(() => void poll()), 100);
+    pollTimer.unref?.();
+  };
+
   const port = await waitForLocalServerListen(server);
   const agentCommand = await writeProcessSessionProxyScript(proxyDir, port, token);
-  pollTimer = setTimeout(() => void poll(), 100);
-  pollTimer.unref?.();
+  schedulePoll();
 
   return {
     agentCommand,
@@ -1770,6 +1799,11 @@ export async function startAdapterExecutionTargetPaperclipBridge(input: {
     // this flag is enabled. Only intended for active debugging in trusted
     // environments.
     const bridgeDebugEnabled = isBridgeDebugEnabled(process.env);
+    // `startSandboxCallbackBridgeWorker` keeps its awaited queue-directory
+    // setup on the active `bridge.paperclip` step, and resets the store only
+    // for its long-lived poll loop (see `runWithoutActiveStep` inside that
+    // function). So the startup `mkdir` execs stay parented and every later
+    // loop `sandbox.exec` span stays unparented with no stale `criticalPath`.
     worker = await startSandboxCallbackBridgeWorker({
       client,
       queueDir,

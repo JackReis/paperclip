@@ -9,8 +9,10 @@ import type {
   Resources,
   Sandbox,
 } from "@daytonaio/sdk";
-import { definePlugin } from "@paperclipai/plugin-sdk";
+import { definePlugin, NOOP_PLUGIN_TRACER } from "@paperclipai/plugin-sdk";
 import type {
+  PluginContext,
+  PluginTracer,
   PluginEnvironmentAcquireLeaseParams,
   PluginEnvironmentCancelInteractiveSetupParams,
   PluginEnvironmentCancelInteractiveSetupResult,
@@ -36,6 +38,7 @@ import type {
   PluginEnvironmentSyncResult,
   PluginEnvironmentValidateConfigParams,
   PluginEnvironmentValidationResult,
+  PluginSyncOperation,
 } from "@paperclipai/plugin-sdk";
 import { performSyncIn, performSyncOut } from "./file-sync.js";
 
@@ -44,6 +47,33 @@ import { performSyncIn, performSyncOut } from "./file-sync.js";
 // `setDaytonaTimingClockForTest` so the measured `durationMs`/`getDurationMs`
 // are deterministic. The timing path never calls `Date.now()` directly.
 let timingNow: () => number = () => Date.now();
+
+// The plugin context, hoisted to a module variable in `setup(ctx)`. The
+// lifecycle hooks and the file-sync helpers have no closure over `ctx`, so they
+// read the tracer through `getPluginTracer()`. Before `setup` runs (or in a
+// test) the tracer is a no-op, so a span never throws.
+let pluginContext: PluginContext | null = null;
+
+/**
+ * Return the plugin tracer. It is the injected `ctx.tracer` after `setup`, or a
+ * no-op before it. A provider span opened through it records only when tracing
+ * is on and an active host trace context is present.
+ */
+export function getPluginTracer(): PluginTracer {
+  return pluginContext?.tracer ?? NOOP_PLUGIN_TRACER;
+}
+
+/**
+ * Test seam: set the module-level plugin context, and return a restore function.
+ * `plugin.test.ts` uses it to inject a recording tracer without running `setup`.
+ */
+export function __setDaytonaPluginContextForTest(ctx: PluginContext | null): () => void {
+  const previous = pluginContext;
+  pluginContext = ctx;
+  return () => {
+    pluginContext = previous;
+  };
+}
 
 /**
  * Test seam: override the provider-timing clock and return a restore function.
@@ -144,6 +174,14 @@ const ARCHIVE_ON_RELEASE_AUTO_DELETE_MINUTES = 60;
 // so a stalled remote or missing credential never consumes the full 900 s adapter
 // RPC ceiling; callers always see an actionable error within this window.
 const GIT_NETWORK_TIMEOUT_MS = 120_000;
+
+// Fail-fast cap for the advisory bwrap capability probe. The probe is
+// best-effort, so it must return fallback metadata inside the lease hook. It
+// must never consume the full hook deadline. A stalled probe command would
+// otherwise expire the outer lease RPC before the probe records its unavailable
+// result. This short cap keeps the probe well under the hook deadline, so the
+// probe fails fast, records `bwrapAvailable: false`, and the hook still returns.
+const BWRAP_PROBE_TIMEOUT_MS = 10_000;
 
 // Noninteractive git credential defaults injected into every Daytona one-shot
 // command so that git operations never stall waiting for a terminal prompt.
@@ -292,6 +330,14 @@ function toTimeoutSeconds(timeoutMs: number): number {
   return Math.max(1, Math.ceil(timeoutMs / 1000));
 }
 
+// Bounded timeout for the advisory bwrap capability probe. The probe never uses
+// the full hook deadline. It uses the smaller of the short probe cap and the
+// hook timeout, so a stalled probe command returns fallback metadata inside the
+// hook instead of expiring the outer lease RPC.
+function toBwrapProbeTimeoutSeconds(config: DaytonaDriverConfig): number {
+  return toTimeoutSeconds(Math.min(BWRAP_PROBE_TIMEOUT_MS, config.timeoutMs));
+}
+
 function resolveTimeoutMs(paramsTimeoutMs: number | undefined, config: DaytonaDriverConfig): number {
   return paramsTimeoutMs != null && Number.isFinite(paramsTimeoutMs) && paramsTimeoutMs > 0
     ? Math.trunc(paramsTimeoutMs)
@@ -358,6 +404,84 @@ async function detectSandboxShellCommand(sandbox: Sandbox, timeoutSeconds: numbe
   } catch {
     return "sh";
   }
+}
+
+function parseProbeInteger(value: string | undefined | null): number | null {
+  const trimmed = value?.trim() ?? "";
+  if (!/^\d+$/.test(trimmed)) {
+    return null;
+  }
+  const parsed = Number.parseInt(trimmed, 10);
+  return Number.isInteger(parsed) ? parsed : null;
+}
+
+// Best-effort probe for the sandbox user's username. It runs `id -un` as the
+// normal sandbox user (no `sudo`). The username is an image fact, not a code
+// fact, so the probe is the only source of truth; the wrapper never assumes a
+// hardcoded username. A non-zero exit code, an empty output, or a thrown error
+// records no username. The probe never throws.
+async function detectSandboxUsername(
+  sandbox: Sandbox,
+  timeoutSeconds: number,
+): Promise<string | null> {
+  try {
+    const result = await sandbox.process.executeCommand("id -un", undefined, undefined, timeoutSeconds);
+    if (result.exitCode !== 0) return null;
+    const username = result.result?.trim() ?? "";
+    return username.length > 0 ? username : null;
+  } catch {
+    return null;
+  }
+}
+
+// Best-effort probe for the advisory bwrap capability. The probe tests the real
+// end-to-end capability using the su-based approach, not the old user-namespace
+// approach. One command exercises the binary, the passwordless `sudo -n` rule,
+// and the su user-switch together. The probe optionally binds the workspace
+// directory (`--bind-try` suppresses ENOENT but not EACCES; on some Daytona
+// images the home dir is `drwx------`, so including the workspace bind here
+// catches that). A zero exit code means the capability is present. A non-zero
+// exit code or a thrown error means the capability is absent. The probe never
+// throws. It records the result, and the caller runs the command unwrapped when
+// the capability is absent.
+async function detectBwrapAvailable(
+  sandbox: Sandbox,
+  timeoutSeconds: number,
+  username: string,
+  remoteCwd?: string,
+): Promise<boolean> {
+  try {
+    const workspaceBind = remoteCwd
+      ? ` --bind-try ${shellQuote(remoteCwd)} ${shellQuote(remoteCwd)}`
+      : "";
+    const result = await sandbox.process.executeCommand(
+      `sudo -n bwrap --ro-bind / /${workspaceBind} -- su -s /bin/sh ${shellQuote(username)} -c true`,
+      undefined,
+      undefined,
+      timeoutSeconds,
+    );
+    return result.exitCode === 0;
+  } catch {
+    return false;
+  }
+}
+
+// Run advisory bwrap probes sequentially (username first, then the bwrap probe
+// which needs the username to construct the su command). The username is the
+// ground-truth read; the wrapper relies on the probed name and never a
+// hardcoded default. A missing username short-circuits and returns unavailable,
+// so the caller runs the command unwrapped. Neither probe fails the lease.
+async function detectBwrapCapability(
+  sandbox: Sandbox,
+  timeoutSeconds: number,
+  remoteCwd?: string,
+): Promise<{ bwrapAvailable: boolean; sandboxUsername: string | null }> {
+  const username = await detectSandboxUsername(sandbox, timeoutSeconds);
+  if (username === null) {
+    return { bwrapAvailable: false, sandboxUsername: null };
+  }
+  const bwrapAvailable = await detectBwrapAvailable(sandbox, timeoutSeconds, username, remoteCwd);
+  return { bwrapAvailable, sandboxUsername: username };
 }
 
 function workspaceSentinelToken(input: {
@@ -467,6 +591,8 @@ function leaseMetadata(input: {
   config: DaytonaDriverConfig;
   sandbox: Sandbox;
   shellCommand: "bash" | "sh";
+  bwrapAvailable: boolean;
+  sandboxUsername: string | null;
   remoteCwd: string;
   resumedLease: boolean;
   workspaceSentinel?: WorkspaceSentinelResult;
@@ -474,6 +600,10 @@ function leaseMetadata(input: {
   return {
     provider: "daytona",
     shellCommand: input.shellCommand,
+    // Advisory bwrap capability probed at lease time. `bwrapAvailable` false
+    // runs the command unwrapped; it never fails the lease.
+    bwrapAvailable: input.bwrapAvailable,
+    sandboxUsername: input.sandboxUsername,
     sandboxId: input.sandbox.id,
     sandboxName: input.sandbox.name,
     sandboxState: input.sandbox.state ?? null,
@@ -499,6 +629,64 @@ function leaseMetadata(input: {
 
 function shellQuote(value: string): string {
   return `'${value.replace(/'/g, `'"'"'`)}'`;
+}
+
+// Advisory bubblewrap (`bwrap`) wrapper.
+//
+// The wrapper gives an agent real-time feedback when the agent tries to change a
+// file that the ephemeral sandbox will not keep. It adds NO security. The
+// ephemeral sandbox stays the only security posture. The read-only root
+// (`--ro-bind / /`) is a feedback signal, not a control: a write to a path
+// outside the writable set fails at once, so the agent learns the change is not
+// durable.
+//
+// `buildBwrapCommand` is pure. It builds one command string and runs no process.
+// It needs no live sandbox. The flag order is load-bearing, because a later
+// filesystem operation over the same path wins. So the writable `--bind` flags
+// and the stdin re-bind must come after the read-only root and the fresh
+// pseudo-filesystems. The function emits the flags in this fixed order:
+//   1. `--ro-bind / /` (read-only root — the static system allowance base).
+//   2. `--dev /dev --proc /proc --tmpfs /tmp` (fresh pseudo-filesystems).
+//   3. one `--bind-try <dir> <dir>` per writable directory, in the caller's order.
+//   4. `--ro-bind <stdinPath> <stdinPath>` when a stdin path is supplied.
+//   5. `--new-session`.
+//   6. `-- su -s /bin/sh '<username>' -c '<escaped inner script>'` when a
+//      username is supplied, or `-- sh -c '<escaped inner script>'` otherwise.
+//
+// `sudo -n bwrap` runs as real root (for bind-mount capability). `su` then
+// drops into the sandbox user, so inside uid=<user> maps to outside uid=<user>
+// and workspace files owned by that uid are writable. The old `--unshare-user
+// --uid`/`--gid` approach created a uid_map that made workspace files appear as
+// overflow uid 65534 (nobody) from inside the namespace, causing EACCES.
+//
+// The writable binds use `--bind-try`, not `--bind`. The writable set is an
+// advisory in-memory collection of sandbox paths. The host cannot check whether
+// a sandbox path still exists. A path can be deleted or replaced after the store
+// records it. `--bind` aborts bwrap when the source is absent, so one stale path
+// would fail every later command for the scope. `--bind-try` skips a missing
+// source and runs the command, which keeps the wrapper advisory and best-effort.
+export function buildBwrapCommand(
+  innerScript: string,
+  writableDirs: string[],
+  stdinPath: string | null,
+  username: string | null,
+): string {
+  const rootBinds = ["--ro-bind", "/", "/", "--dev", "/dev", "--proc", "/proc", "--tmpfs", "/tmp"];
+  const writableBinds = writableDirs.flatMap((dir) => ["--bind-try", shellQuote(dir), shellQuote(dir)]);
+  // Re-bind the stdin file after `--tmpfs /tmp`, so the tmpfs does not hide it.
+  const stdinReBind = stdinPath ? ["--ro-bind", shellQuote(stdinPath), shellQuote(stdinPath)] : [];
+  const tail = username
+    ? ["--new-session", "--", "su", "-s", "/bin/sh", shellQuote(username), "-c", shellQuote(innerScript)]
+    : ["--new-session", "--", "sh", "-c", shellQuote(innerScript)];
+  return [
+    "sudo",
+    "-n",
+    "bwrap",
+    ...rootBinds,
+    ...writableBinds,
+    ...stdinReBind,
+    ...tail,
+  ].join(" ");
 }
 
 function resolveConnectionExpiresInMinutes(value: number | null | undefined): number {
@@ -839,6 +1027,11 @@ type SandboxHandleCacheEntry = {
 
 type SandboxLookupOptions = {
   bypassTeardownGate?: boolean;
+  // Report the cache decision at the handle lookup. `true` means the warm
+  // handle cache served the handle; `false` means the lookup called
+  // `client.get`. The caller uses this to set the explicit exec `cache_hit`
+  // flag, instead of the old `providerGetMs == 0` proxy.
+  onCacheDecision?: (cacheHit: boolean) => void;
 };
 
 type SandboxHandleTeardownGate = {
@@ -1023,6 +1216,9 @@ const sandboxHandleCache = (() => {
 
     const entry = entries.get(key);
     if (entry) {
+      // The warm handle cache holds an entry, so this lookup serves the handle
+      // without a `client.get` round trip. Report the cache decision now.
+      options.onCacheDecision?.(true);
       const sandbox = await entry.sandbox;
       // Re-assert on every hit; evict + fail closed on any mismatch (C2).
       try {
@@ -1046,6 +1242,9 @@ const sandboxHandleCache = (() => {
       }
       return sandbox;
     }
+    // The warm handle cache holds no entry, so this lookup calls `client.get`.
+    // Report the cache decision now, before the single-flight populate.
+    options.onCacheDecision?.(false);
     // Single-flight: the first miss stores the in-flight promise under the
     // composite key so concurrent misses on the same lease share one `client.get`
     // instead of double-fetching. The promise lives only under this key (C5).
@@ -1096,6 +1295,60 @@ const sandboxHandleCache = (() => {
   return { get, seed, clear, reset, markFresh };
 })();
 
+// Advisory writable-set store. It holds, per lease scope, the sandbox
+// directories that a sync operation declared read-write (`access: "rw"`). An
+// optional sandbox feedback wrapper reads this set later to bind those
+// directories read-write, so an agent gets real-time feedback when a write to a
+// non-persistent path fails. The store is advisory and best-effort in-memory
+// state: it adds no security (the ephemeral sandbox stays the only boundary),
+// and a cold store (for example after a worker restart) degrades to the
+// workspace baseline, never to a crash. The store is keyed the same way as
+// `sandboxHandleCache`, by `sandboxHandleCacheKey(scope)`.
+//
+// The store keeps a path after a sync records it, so a path that a later
+// operation deletes or replaces can stay in the set. The wrapper binds each
+// path with `bwrap --bind-try`, which skips a missing source, so a stale path
+// never fails a later command. See `buildBwrapCommand`.
+const sandboxHandleWritableDirs = (() => {
+  const dirsByKey = new Map<string, Set<string>>();
+
+  // Record the read-write destination directory of every `access: "rw"`
+  // mapping. Skip read-only mappings (`access` absent or `"ro"`). Read-only is
+  // the safe default for an advisory signal.
+  //
+  // A workspace, git-history, or asset mapping uploads a tar archive, so its
+  // `targetPath` is the staging archive under the runtime root, not the directory
+  // that the post-upload extract command fills. For those mappings the author
+  // sets `writablePath` to the final destination directory, so this records the
+  // real read-write destination, not the staging parent. When `writablePath` is
+  // absent the mapping writes `targetPath` in place, so the parent directory of
+  // `targetPath` is the destination.
+  function recordWritableTargets(scope: SandboxScope, operations: PluginSyncOperation[]): void {
+    const key = sandboxHandleCacheKey(scope);
+    for (const operation of operations) {
+      for (const mapping of operation.files) {
+        if (mapping.access !== "rw") continue;
+        let dirs = dirsByKey.get(key);
+        if (!dirs) {
+          dirs = new Set<string>();
+          dirsByKey.set(key, dirs);
+        }
+        dirs.add(mapping.writablePath ?? path.posix.dirname(mapping.targetPath));
+      }
+    }
+  }
+
+  function get(scope: SandboxScope): ReadonlySet<string> {
+    return dirsByKey.get(sandboxHandleCacheKey(scope)) ?? new Set<string>();
+  }
+
+  function reset(): void {
+    dirsByKey.clear();
+  }
+
+  return { recordWritableTargets, get, reset };
+})();
+
 /**
  * Test seam: clear the process-scoped handle cache between tests so a handle
  * memoized under a reused composite key in one test never leaks into the next.
@@ -1106,6 +1359,29 @@ export function __resetDaytonaSandboxHandleCacheForTest(): void {
   sandboxHandleTeardownGates.reset();
   sandboxHandleActivityGates.reset();
   sandboxHandleLeaseAdmissionStates.reset();
+  sandboxHandleWritableDirs.reset();
+}
+
+/**
+ * Test seam: read the advisory writable directories recorded for a sync scope.
+ * The caller passes the same `onEnvironmentSyncIn` inputs, so this rebuilds the
+ * exact scope key the hook used. Not used in production.
+ */
+export function __getDaytonaWritableDirsForTest(input: {
+  driverKey: string;
+  companyId: string;
+  environmentId: string;
+  lease: { providerLeaseId?: string | null };
+  config: Record<string, unknown>;
+}): string[] {
+  const scope: SandboxScope = {
+    driverKey: input.driverKey,
+    companyId: input.companyId,
+    environmentId: input.environmentId,
+    providerLeaseId: input.lease.providerLeaseId ?? "",
+    config: parseDriverConfig(input.config),
+  };
+  return [...sandboxHandleWritableDirs.get(scope)];
 }
 
 async function getSandbox(scope: SandboxScope, options: SandboxLookupOptions = {}): Promise<Sandbox> {
@@ -1127,6 +1403,40 @@ function evictSandboxHandle(scope: SandboxScope): void {
   sandboxHandleCache.clear(scope);
 }
 
+// Advisory bwrap execution plan. When present, `executeOneShot` wraps the
+// login-shell string with `buildBwrapCommand`. When null, it runs the plain
+// string, which keeps today's behavior. `writableDirs` holds the workspace
+// directory (baseline, always read-write) plus the collected read-write sync
+// destinations. `username` is the sandbox user to su into inside bwrap.
+type BwrapExecPlan = {
+  writableDirs: string[];
+  username: string;
+};
+
+// Decide whether the advisory bwrap wrapper runs for one exec. The wrapper runs
+// only when the lease reports bwrap available, a username is known, and the
+// workspace directory is known. A wrap without a username would run as root
+// inside bwrap and give the agent's files root ownership, so this returns null
+// (run the plain command) in that case. The writable set is the workspace
+// directory (baseline, always read-write) plus the per-scope read-write sync
+// destinations. The baseline guarantees a safe result even when the collected
+// store is cold.
+function resolveBwrapExecPlan(
+  metadata: Record<string, unknown> | null | undefined,
+  scope: SandboxScope,
+): BwrapExecPlan | null {
+  if (metadata?.bwrapAvailable !== true) return null;
+  const username = typeof metadata.sandboxUsername === "string" ? metadata.sandboxUsername.trim() : "";
+  if (username.length === 0) return null;
+  const remoteCwd = typeof metadata.remoteCwd === "string" ? metadata.remoteCwd.trim() : "";
+  if (remoteCwd.length === 0) return null;
+  const writableDirs = new Set<string>([remoteCwd]);
+  for (const dir of sandboxHandleWritableDirs.get(scope)) {
+    writableDirs.add(dir);
+  }
+  return { writableDirs: [...writableDirs], username };
+}
+
 // One-shot command execution via Daytona's `process.executeCommand`. The
 // session-based API (`createSession` + `executeSessionCommand` with
 // `runAsync: false`) hangs indefinitely when the supplied command ends with
@@ -1142,6 +1452,7 @@ async function executeOneShot(
   sandbox: Sandbox,
   params: PluginEnvironmentExecuteParams,
   config: DaytonaDriverConfig,
+  bwrap: BwrapExecPlan | null,
 ): Promise<PluginEnvironmentExecuteResult> {
   const gitNet = isGitNetworkCommand(params.command, params.args ?? []);
   const timeoutMs = resolveTimeoutMs(params.timeoutMs, config);
@@ -1161,13 +1472,23 @@ async function executeOneShot(
       await sandbox.fs.uploadFile(Buffer.from(params.stdin ?? "", "utf8"), stdinPath, timeoutSeconds);
     }
 
-    const command = buildLoginShellScript({
+    const loginScript = buildLoginShellScript({
       command: params.command,
       args: params.args ?? [],
       cwd: params.cwd,
       env: params.env,
       stdinPath: stdinPath ?? undefined,
     });
+
+    // Advisory bwrap wrapper (best-effort, automatic, no security boundary). When
+    // the lease reports bwrap available and a username is known, wrap the
+    // login-shell string so a write to a non-persistent path fails and the agent
+    // gets real-time feedback. The writable set binds the workspace and the
+    // read-write sync destinations; the stdin re-bind survives the `--tmpfs /tmp`.
+    // When the plan is null, run the plain string, which keeps today's behavior.
+    const command = bwrap
+      ? buildBwrapCommand(loginScript, bwrap.writableDirs, stdinPath, bwrap.username)
+      : loginScript;
 
     // Pass cwd undefined: `buildLoginShellScript` already injects the `cd` after
     // it sources the login profiles, when params.cwd is set. The Daytona
@@ -1215,6 +1536,9 @@ async function executeOneShot(
 
 const plugin = definePlugin({
   async setup(ctx) {
+    // Hoist the context to a module variable so the lifecycle hooks and the
+    // file-sync helpers can read `ctx.tracer` — they have no closure over `ctx`.
+    pluginContext = ctx;
     ctx.logger.info("Daytona sandbox provider plugin ready");
   },
 
@@ -1289,12 +1613,15 @@ const plugin = definePlugin({
       try {
         const remoteCwd = await resolveSandboxWorkingDirectory(sandbox);
         const shellCommand = await detectSandboxShellCommand(sandbox, toTimeoutSeconds(config.timeoutMs));
+        const bwrapCapability = await detectBwrapCapability(sandbox, toBwrapProbeTimeoutSeconds(config), remoteCwd);
         return {
           ok: true,
           summary: `Connected to Daytona sandbox ${sandbox.name}.`,
           metadata: {
             provider: "daytona",
             shellCommand,
+            bwrapAvailable: bwrapCapability.bwrapAvailable,
+            sandboxUsername: bwrapCapability.sandboxUsername,
             sandboxId: sandbox.id,
             sandboxName: sandbox.name,
             target: sandbox.target,
@@ -1332,6 +1659,7 @@ const plugin = definePlugin({
     try {
       const remoteCwd = await resolveSandboxWorkingDirectory(sandbox);
       const shellCommand = await detectSandboxShellCommand(sandbox, toTimeoutSeconds(config.timeoutMs));
+      const bwrapCapability = await detectBwrapCapability(sandbox, toBwrapProbeTimeoutSeconds(config), remoteCwd);
       const workspaceSentinel = await writeWorkspaceSentinel({
         sandbox,
         remoteCwd,
@@ -1365,6 +1693,8 @@ const plugin = definePlugin({
           config,
           sandbox,
           shellCommand,
+          bwrapAvailable: bwrapCapability.bwrapAvailable,
+          sandboxUsername: bwrapCapability.sandboxUsername,
           remoteCwd,
           resumedLease: false,
           workspaceSentinel,
@@ -1411,6 +1741,7 @@ const plugin = definePlugin({
         return { providerLeaseId: null, metadata: { expired: true, workspaceSentinel } };
       }
       const shellCommand = await detectSandboxShellCommand(sandbox, toTimeoutSeconds(config.timeoutMs));
+      const bwrapCapability = await detectBwrapCapability(sandbox, toBwrapProbeTimeoutSeconds(config), remoteCwd);
       sandboxHandleCache.markFresh(scope);
       sandboxHandleLeaseAdmissionStates.open(scope);
       return {
@@ -1419,6 +1750,8 @@ const plugin = definePlugin({
           config,
           sandbox,
           shellCommand,
+          bwrapAvailable: bwrapCapability.bwrapAvailable,
+          sandboxUsername: bwrapCapability.sandboxUsername,
           remoteCwd,
           resumedLease: true,
           workspaceSentinel,
@@ -1826,16 +2159,36 @@ const plugin = definePlugin({
       // is a no-op for an already-started sandbox, so it is excluded from the get
       // measurement.
       const getStart = timingNow();
+      // Decide the explicit `cache_hit` flag at the true cache decision: the
+      // handle lookup reports whether the warm cache served the handle or the
+      // lookup called `client.get`. This replaces the old `providerGetMs == 0`
+      // proxy. The default `false` covers the theoretical case where the lookup
+      // reports nothing.
+      let cacheHit = false;
       const sandbox = await getSandbox({
         driverKey: params.driverKey,
         companyId: params.companyId,
         environmentId: params.environmentId,
         providerLeaseId,
         config,
-      }, { bypassTeardownGate: true });
+      }, {
+        bypassTeardownGate: true,
+        onCacheDecision: (hit) => {
+          cacheHit = hit;
+        },
+      });
       const getDurationMs = timingNow() - getStart;
       await ensureSandboxStarted(sandbox, toTimeoutSeconds(resolveTimeoutMs(params.timeoutMs, config)));
-      const result = await executeOneShot(sandbox, params, config);
+      // Read the advisory bwrap flags from the lease metadata and read the
+      // collected writable directories from the same scope the sync-in hook uses.
+      const bwrapPlan = resolveBwrapExecPlan(params.lease.metadata, {
+        driverKey: params.driverKey,
+        companyId: params.companyId,
+        environmentId: params.environmentId,
+        providerLeaseId,
+        config,
+      });
+      const result = await executeOneShot(sandbox, params, config, bwrapPlan);
       if (!result.timedOut) {
         sandboxHandleCache.markFresh({
           driverKey: params.driverKey,
@@ -1847,7 +2200,7 @@ const plugin = definePlugin({
       }
       return {
         ...result,
-        metadata: { ...(result.metadata ?? {}), getDurationMs },
+        metadata: { ...(result.metadata ?? {}), getDurationMs, cacheHit },
       };
     });
   },
@@ -1874,6 +2227,9 @@ const plugin = definePlugin({
       providerLeaseId: params.lease.providerLeaseId,
       config,
     };
+    // Collect the advisory read-write destinations for this scope. This records
+    // intent only; it does not change the transfer below.
+    sandboxHandleWritableDirs.recordWritableTargets(scope, params.operations);
     return await withSandboxActivityGate(scope, async () => {
       const sandbox = await getSandbox(scope, { bypassTeardownGate: true });
       await ensureSandboxStarted(sandbox, timeoutSeconds);

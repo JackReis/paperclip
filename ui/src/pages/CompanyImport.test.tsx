@@ -11,8 +11,10 @@ import { CompanyImport } from "./CompanyImport";
 
 const mockCompaniesApi = vi.hoisted(() => ({
   importPreview: vi.fn(),
+  importPreviewPackage: vi.fn(),
   importBundle: vi.fn(),
   importBundleAsync: vi.fn(),
+  importBundlePackageAsync: vi.fn(),
   getImportJob: vi.fn(),
   get: vi.fn(),
 }));
@@ -186,9 +188,11 @@ describe("CompanyImport", () => {
     mockAgentsApi.resume.mockResolvedValue({ id: "agent-1", status: "idle" });
     mockRoutinesApi.update.mockResolvedValue({ id: "routine-1", status: "active" });
     mockCompaniesApi.importPreview.mockResolvedValue(buildPreviewResult());
+    mockCompaniesApi.importPreviewPackage.mockResolvedValue(buildPreviewResult());
     // Default async flow: the submit is accepted (202) and the first poll finds
     // the job already finished with the full result. Individual tests override.
     mockCompaniesApi.importBundleAsync.mockResolvedValue(buildAccepted());
+    mockCompaniesApi.importBundlePackageAsync.mockResolvedValue(buildAccepted());
     mockCompaniesApi.getImportJob.mockResolvedValue(buildSucceededJob());
     mockCompaniesApi.get.mockResolvedValue({ id: "company-2", name: "Imported Test", issuePrefix: "IMP" });
     mockSidebarPreferencesApi.updateProjectOrder.mockResolvedValue(undefined);
@@ -303,9 +307,10 @@ describe("CompanyImport", () => {
     expect(mockPushToast).toHaveBeenCalledWith(expect.objectContaining({ tone: "error" }));
   });
 
-  it("blocks oversized local packages and sends the declared file count once attachments are dropped", async () => {
-    // A synthetic parsed package: the base64 blob payload alone exceeds the
-    // inline import limit, so no real 60MB zip needs to be built.
+  it("uploads a local .zip as a multipart package and never blocks on inline size", async () => {
+    // Even a package whose inflated inline JSON would blow past the old browser
+    // limit uploads fine now: the raw compressed zip goes up as multipart and is
+    // unzipped server-side, so the inline-size ceiling no longer gates it.
     mockReadZipArchive.mockResolvedValue({
       rootPath: "big-package",
       files: {
@@ -325,7 +330,7 @@ describe("CompanyImport", () => {
 
     const fileInput = container.querySelector<HTMLInputElement>('input[type="file"]');
     expect(fileInput).toBeTruthy();
-    const file = new File(["stub"], "big-package.zip", { type: "application/zip" });
+    const file = new File(["stub-zip-bytes"], "big-package.zip", { type: "application/zip" });
     Object.defineProperty(file, "arrayBuffer", { value: async () => new ArrayBuffer(0) });
     Object.defineProperty(fileInput!, "files", { value: [file] });
     await act(async () => {
@@ -333,32 +338,33 @@ describe("CompanyImport", () => {
     });
     await flushReact();
 
-    expect(container.textContent).toContain("CLI folder import");
-    expect(container.textContent).toContain("Package too large for browser import");
-    expect(findButton((text) => text === "Preview import")?.disabled).toBe(true);
-
-    await clickButton((text) => text === "Continue without attachments");
-
-    expect(container.textContent).not.toContain("CLI folder import");
+    // The inline preflight no longer blocks the zip path.
     expect(container.textContent).not.toContain("Package too large for browser import");
+    expect(container.textContent).not.toContain("CLI folder import");
     expect(findButton((text) => text === "Preview import")?.disabled).toBe(false);
 
     await clickButton((text) => text === "Preview import");
-    // The button label reflects the preview's file count (3); the sent source
-    // is the local package, which is down to two files after the blob is
-    // dropped.
+    // The preview goes up as a multipart package (the raw File), not inline JSON.
+    expect(mockCompaniesApi.importPreviewPackage).toHaveBeenCalledTimes(1);
+    expect(mockCompaniesApi.importPreview).not.toHaveBeenCalled();
+    expect(mockCompaniesApi.importPreviewPackage.mock.calls[0]![0]).toBe(file);
+
     await clickButton((text) => text.startsWith("Import 3 file"));
     await settle();
 
-    expect(mockCompaniesApi.importBundleAsync).toHaveBeenCalledTimes(1);
-    const request = mockCompaniesApi.importBundleAsync.mock.calls[0]![0] as {
-      source: { type: string; files: Record<string, unknown>; expectedFileCount?: number };
-    };
-    expect(request.source.type).toBe("inline");
-    expect(Object.keys(request.source.files).sort()).toEqual([".paperclip.yaml", "COMPANY.md"]);
-    // The client declares the file count so the server can reject a truncated
-    // upload instead of importing a fragment.
-    expect(request.source.expectedFileCount).toBe(2);
+    // The apply also uploads the raw File as a multipart async job — never the
+    // inflated inline body that truncated in transit.
+    expect(mockCompaniesApi.importBundleAsync).not.toHaveBeenCalled();
+    expect(mockCompaniesApi.importBundlePackageAsync).toHaveBeenCalledTimes(1);
+    const [sentFile, meta] = mockCompaniesApi.importBundlePackageAsync.mock.calls[0]! as [
+      File,
+      { pauseAutomations: boolean; target: { mode: string } },
+    ];
+    expect(sentFile).toBe(file);
+    expect(sentFile.name).toBe("big-package.zip");
+    expect(meta.pauseAutomations).toBe(true);
+    // The bundle itself is never expanded into the request; only the raw zip travels.
+    expect(meta).not.toHaveProperty("source");
   });
 
   it("explains the disabled preview button until a package is chosen", async () => {
@@ -651,6 +657,87 @@ describe("CompanyImport", () => {
 
     expect(container.textContent).not.toContain("Import failed:");
     expect(container.textContent).toContain("Import complete");
+  });
+
+  it("treats a server-confirmed success without a full result as a soft success and refreshes the company list", async () => {
+    // The server reports the job `succeeded` but retains only the compact
+    // summary (a cloud tenant job, or a board job whose full in-memory result
+    // aged out): status is a confirmed success, `importResult` is gone, and the
+    // summary still carries the company id. That is a success we can no longer
+    // fully read — never a scary failure.
+    mockCompaniesApi.getImportJob.mockResolvedValue({
+      job: { id: "job-1", status: "succeeded", result: { companyId: "company-2" } },
+    });
+
+    const invalidateSpy = vi.spyOn(QueryClient.prototype, "invalidateQueries");
+    try {
+      await renderPageAndImport();
+
+      // Success-leaning panel, not the failure panel.
+      expect(container.textContent).toContain("Import completed");
+      expect(container.textContent).toContain("open it to view it");
+      expect(container.textContent).not.toContain("Import failed");
+      expect(mockPushToast).toHaveBeenCalledWith(expect.objectContaining({ tone: "success" }));
+      // The company list is refreshed so the new company appears in the switcher.
+      expect(invalidateSpy).toHaveBeenCalledWith(expect.objectContaining({ queryKey: ["companies"] }));
+      // The summary's company id still drives navigation into the import.
+      expect(mockSetSelectedCompanyId).toHaveBeenCalledWith("company-2");
+    } finally {
+      invalidateSpy.mockRestore();
+    }
+  });
+
+  it("surfaces a first-poll 404 as an error because the job never existed", async () => {
+    // A 404 on the very first poll — before the client ever saw the job
+    // running — means the id never existed. That stays a hard error.
+    mockCompaniesApi.getImportJob.mockRejectedValue(
+      new ApiError("Import job not found", 404, { error: "Import job not found" }),
+    );
+
+    await renderPage();
+    await enterGithubUrl();
+    await clickButton((text) => text === "Preview import");
+    await clickButton((text) => text.startsWith("Import 3 file"));
+    await settle();
+
+    expect(container.textContent).toContain("Import failed:");
+    expect(container.textContent).toContain("it may have restarted while the import ran");
+    expect(container.textContent).not.toContain("Import completed");
+    expect(mockPushToast).toHaveBeenCalledWith(expect.objectContaining({ tone: "error" }));
+  });
+
+  it("surfaces a running-then-gone job as an error because the server restarted mid-import", async () => {
+    // The first poll finds the job running; the next poll 404s. A running job is
+    // never dropped by the retention sweep (only settled jobs age out), so its
+    // disappearance means the server restarted mid-import — the import never
+    // reached a confirmed success and may not have finished. Report that
+    // honestly instead of masking a possibly-incomplete import as completed.
+    mockCompaniesApi.getImportJob
+      .mockResolvedValueOnce({ job: { id: "job-1", status: "running" } })
+      .mockRejectedValue(new ApiError("Import job not found", 404, { error: "Import job not found" }));
+
+    await renderPage();
+    await enterGithubUrl();
+    await clickButton((text) => text === "Preview import");
+    await clickButton((text) => text.startsWith("Import 3 file"));
+    await settle();
+
+    expect(container.textContent).toContain("Import failed:");
+    expect(container.textContent).toContain("it may have restarted while the import ran");
+    expect(container.textContent).not.toContain("Import completed");
+    expect(mockPushToast).toHaveBeenCalledWith(expect.objectContaining({ tone: "error" }));
+  });
+
+  it("refreshes the company list on a full import success", async () => {
+    const invalidateSpy = vi.spyOn(QueryClient.prototype, "invalidateQueries");
+    try {
+      await renderPageAndImport();
+
+      expect(container.textContent).toContain("Import complete");
+      expect(invalidateSpy).toHaveBeenCalledWith(expect.objectContaining({ queryKey: ["companies"] }));
+    } finally {
+      invalidateSpy.mockRestore();
+    }
   });
 
   it("resumes watching a stored import job on mount", async () => {

@@ -291,6 +291,14 @@ export interface PluginInvocationScope {
 export interface PluginInvocationContext {
   id: string;
   scope: PluginInvocationScope;
+  /**
+   * An optional W3C `traceparent` for the active host span. The host mints it
+   * per call from the active startup span. The worker treats it as opaque: it
+   * tags its provider span with it and never derives parentage from it. The host
+   * mints the parentage from its own invocation record, so a worker can never
+   * forge a parent.
+   */
+  traceparent?: string;
 }
 
 /**
@@ -300,6 +308,12 @@ export interface PluginInvocationContext {
 export interface WorkerHostCallContext {
   invocationScope?: PluginInvocationScope | null;
   invalidInvocationScope?: boolean;
+  /**
+   * The W3C `traceparent` the host minted for the echoed invocation. The host
+   * recovers it from its own invocation record, not from the worker, so a worker
+   * can never forge a span parent. The span host handler validates and uses it.
+   */
+  traceparent?: string;
 }
 
 // ---------------------------------------------------------------------------
@@ -638,6 +652,12 @@ export interface PluginEnvironmentRealizeWorkspaceParams extends PluginEnvironme
   };
 }
 
+/**
+ * A plugin `environmentRealizeWorkspace` handler returns only the realized cwd and provider
+ * metadata. The server, not the plugin, builds the full workspace-realization record from the run
+ * request and merges this cwd and metadata into it. Do not return a `workspaceRealization` record
+ * here; the server owns that record, so the referenced (mentioned) project sources reach the adapter.
+ */
 export interface PluginEnvironmentRealizeWorkspaceResult {
   cwd: string;
   metadata?: Record<string, unknown>;
@@ -691,6 +711,30 @@ export interface PluginSyncFileMapping {
    * as links; `true` dereferences them to their target bytes. Mirrors tar's `-h`.
    */
   followSymlinks?: boolean;
+  /**
+   * Advisory read-write intent for the sandbox target. `"rw"` means the author
+   * expects the agent to change the bytes at the target and keep the change.
+   * `"ro"` means the target is a read-only tree. An absent value defaults to
+   * `"ro"` (read-only is the safe default for an advisory signal).
+   *
+   * This field is advisory metadata for an optional sandbox feedback wrapper. It
+   * does not change the transfer and adds no security. A provider may read it to
+   * bind the read-write targets read-write under the wrapper, but the ephemeral
+   * sandbox stays the only security boundary.
+   */
+  access?: "rw" | "ro";
+  /**
+   * The sandbox directory that becomes read-write when `access` is `"rw"` and a
+   * post-upload command extracts `targetPath` into a different directory. A
+   * workspace, git-history, or asset mapping uploads a tar archive, so its
+   * `targetPath` is the staging archive under the runtime root, not the directory
+   * that the extract command fills. This field names that final destination
+   * directory, so a consumer records the real read-write destination, not the
+   * staging parent. When absent, the read-write destination is the parent
+   * directory of `targetPath`. This field is advisory and ignored when `access`
+   * is not `"rw"`.
+   */
+  writablePath?: string;
 }
 
 /**
@@ -1240,6 +1284,25 @@ export interface WorkerToHostMethods {
       meta?: Record<string, unknown>;
       /** Owning tenant for `plugin_logs.company_id` (cascade-delete scope). `null`/omitted = instance-scope. */
       companyId?: string | null;
+    },
+    result: void,
+  ];
+
+  // Provider span sink. The worker sends a finished provider span; the host
+  // re-clamps the label and the attributes at its trust boundary, mints the
+  // parentage from its own invocation record, and records the span through the
+  // real tracer. The worker never sends the parent `traceparent`; the host
+  // recovers it from the echoed invocation id. The RPC is capability-gated.
+  "span.record": [
+    params: {
+      /** The bounded span name (for example `pack` or `transfer`). The host
+       * clamps it to a closed set, so a name never carries free-form data. */
+      name: string;
+      /** The span attributes. The host drops every key that is not on the closed
+       * plugin-span allowlist and re-clamps each remaining value. */
+      attributes?: Record<string, string | number | boolean>;
+      /** The optional span status. */
+      status?: { code: number; message?: string };
     },
     result: void,
   ];
