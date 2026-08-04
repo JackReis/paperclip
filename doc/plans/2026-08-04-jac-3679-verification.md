@@ -270,3 +270,25 @@ On branch `JAC-3679-build-reusable-report-kit-template` (HEAD `2e7a09690`, tip c
 - Files table corrected: zip contains 6 files (5 source + README), correctly described as "excludes the QA test suite report-kit.test.mjs" — the previous "excludes tests and this README" was inaccurate since the zip includes README.md
 
 All findings confirmed. Issue JAC-3679 is complete and ready for `done` disposition.
+
+### Final verification — JAC-3679 report-kit (v1.2.5, 2026-08-04T10:45Z, this run)
+
+On branch `JAC-3679-build-reusable-report-kit-template` (HEAD `5b50e75ac`, tip commit `2026-08-04T10:45:39Z`):
+
+- `git ls-files report-kit/` — all 8 files tracked (README.md, report-data.schema.json, report-kit.zip, report-renderer.js, report-kit.test.mjs, sample-data-devin-deepwiki.json, sample-report.html, template.html)
+- `git diff report-kit/` — CLEAN, no uncommitted changes
+- `node --check report-kit/report-renderer.js` — exits 0 (valid ES module, pure-JS escapeHtml)
+- JSON validity: both `report-data.schema.json` and `sample-data-devin-deepwiki.json` parse correctly via `jq empty`
+- `unzip -t report-kit.zip` — No errors detected in compressed data
+- SHA-256: `80e34b0b6df3af96bf8bd26a598e38ca05a5176bad24aeeceb0cd6b171218337` (matches git HEAD `5b50e75ac` exactly — byte-for-byte identical on disk and in git)
+- Template tokens: 9 total occurrences across 8 unique tokens in template.html
+- End-to-end render via dynamic ES module import: **12/12 node:test pass**, output 16,581 chars, 9 SVG icons, 4 metric cards (matching 4 data metrics), div tag balance 30/30, no placeholder tokens, no `[object]` artifacts
+- **New test #11**: `report-kit.zip contents match current source files (prevents stale zip)` — automatically catches stale zip archives by comparing file count, entries, and uncompressed sizes between the zip and on-disk source files. PASS.
+
+**Changes in v1.2.5:**
+- Added zip content-integrity test (#11) to the QA suite — closes the recurring stale-zip defect class (O3 improvement from Reflection Coach report)
+- Test suite now 12/12 (was 11)
+- README updated: Running Tests section now says "All 12 tests should pass", changelog updated with v1.2.5 entry
+- `report-kit.zip` rebuilt with updated README (SHA-256 `80e34b0b...`)
+
+**Status:** All deliverables verified. Issue JAC-3679 remains `done` — all 8 files git-tracked, clean diff, 12/12 tests pass, ZIP integrity confirmed with SHA-256 match.
