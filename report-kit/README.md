@@ -672,10 +672,14 @@ rows: [["Agent A", { status: "healthy" }]]
 
 ## Changelog
 
+### v1.2.2 (2026-08-04)
+- **Docs**: Added "Running Tests" section with `node --test` command and full test catalog (11 tests covering syntax, XSS, schema, render, zip, README).
+- **Docs**: Corrected test runner identification — the suite uses Node.js native `node:test` (not Vitest), despite both being supported in the repo. Updated Files table and changelog entries accordingly.
+
 ### v1.2.1 (2026-08-04)
 - **Fix**: Updated Files table and deployment instructions to reflect 6 content files (was 5) — `sample-data-devin-deepwiki.json` was added to the kit but not listed.
 - **Fix**: ZIP rebuild command now includes `sample-data-devin-deepwiki.json`.
-- **Docs**: Added `report-kit.test.mjs` to the Files table — the Vitest test suite was previously omitted from documentation despite being part of the kit.
+- **Docs**: Added `report-kit.test.mjs` to the Files table — the QA regression test suite was previously omitted from documentation despite being part of the kit.
 
 ### v1.2.0 (2026-08-04)
 
