@@ -1334,6 +1334,9 @@ export type {
   MemoryPlaneFanoutResult,
   Ob1InstanceConfig,
   DeadLetterEntry,
+  ProductivityReviewOverride,
+  ProductivityReviewTrigger,
+  ProductivityReviewTriggerSnooze,
 } from "./types/index.js";
 export {
   ISSUE_REFERENCE_IDENTIFIER_RE,

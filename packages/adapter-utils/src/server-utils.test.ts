@@ -2216,7 +2216,6 @@ describe("stderr head preservation in runChildProcess", () => {
     expect(result.stdout).toContain("session_id: test-session-123");
     expect(result.exitCode).toBe(0);
   });
-});
 
   it("does not duplicate stderr content when total is under the capture cap", async () => {
     // When stderr is small (under MAX_CAPTURE_BYTES / 4MB), the head and tail
@@ -2285,3 +2284,4 @@ describe("stderr head preservation in runChildProcess", () => {
     expect(result.stderr).toContain("X");
     expect(result.exitCode).toBe(0);
   });
+});

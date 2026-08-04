@@ -145,6 +145,8 @@ export function costService(db: Db, budgetHooks: BudgetServiceHooks = {}) {
         sourceSystem?: "paperclip" | "adapter" | "provider" | "external";
         usageReportedState?: string;
         payloadHash?: string | null;
+        /** Optional pricing-version reference for cost provenance (JAC-4530). */
+        pricingVersionRef?: string | null;
       },
     ) => {
       const agent = await db
@@ -195,6 +197,14 @@ export function costService(db: Db, budgetHooks: BudgetServiceHooks = {}) {
           sourceStatus: data.coverage.sourceStatus,
           safeStatus: data.coverage.safeStatus,
           confidence: data.coverage.confidence,
+          // JAC-4530: persist cost-provenance metadata resolved via fail-closed
+          // semantics in resolveLedgerCoverageForRun / resolveRunCoverageForError.
+          priceBasis: data.coverage.priceBasis,
+          costConfidence: data.coverage.costConfidence,
+          pricingVersionRef: data.pricingVersionRef ?? null,
+          nativeTotalTokens: data.coverage.nativeTotalTokens ?? null,
+          recomputedTotalTokens: data.coverage.recomputedTotalTokens ?? null,
+          isSubscriptionIncluded: data.coverage.isSubscriptionIncluded,
           visibilityClass: "internal",
           retentionClass: "standard",
           redactionState: "unredacted",

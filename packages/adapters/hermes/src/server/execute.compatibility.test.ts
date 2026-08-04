@@ -198,4 +198,38 @@ describe("adapter init traceback extraction", () => {
     expect(result.exitCode).toBe(0);
     expect(result.errorMessage).toBeUndefined();
   });
+
+  it("preserves full traceback when stderr head was truncated by runChildProcess", async () => {
+    // Simulate the runChildProcess head/tail merge format: the traceback
+    // lives in the preserved stderr head, while the tail (recent output) is
+    // appended after a separator. extractErrorSummary must still find and
+    // return the complete traceback block from the head portion.
+    const mergedStderr = [
+      INIT_TRACEBACK,
+      "",
+      "[--- stderr tail (truncated head preserved) ---]",
+      "MCP initialization noise line 1",
+      "MCP initialization noise line 2",
+      "...thousands of noise lines...",
+    ].join("\n");
+
+    vi.mocked(runChildProcess).mockResolvedValue({
+      exitCode: 1,
+      signal: null,
+      timedOut: false,
+      pid: 123,
+      startedAt: "2026-07-15T00:00:00.000Z",
+      stdout: "",
+      stderr: mergedStderr,
+    });
+
+    const result = await execute(makeCtx());
+
+    expect(result.exitCode).toBe(1);
+    expect(result.errorMessage).toBeTruthy();
+    expect(result.errorMessage).toContain("Traceback (most recent call last):");
+    expect(result.errorMessage).toContain('File "/usr/local/bin/hermes", line 42');
+    expect(result.errorMessage).toContain("raise RuntimeError('adapter init failed')");
+    expect(result.errorMessage).toContain("RuntimeError: adapter init failed");
+  });
 });

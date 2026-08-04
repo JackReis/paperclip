@@ -194,6 +194,14 @@ export function costRoutes(
         reasoningTokens: req.body.reasoningTokens ?? null,
         toolCallTokens: req.body.toolCallTokens ?? null,
         costCents: req.body.costCents ?? null,
+        // JAC-4530: forward cost-provenance metadata. priceBasis/costConfidence
+        // are resolved fail-closed by the schema transform above; native/recomputed
+        // totals and isSubscriptionIncluded come from the same transform.
+        priceBasis: req.body.priceBasis,
+        costConfidence: req.body.costConfidence,
+        nativeTotalTokens: req.body.nativeTotalTokens ?? null,
+        recomputedTotalTokens: req.body.recomputedTotalTokens ?? null,
+        isSubscriptionIncluded: req.body.isSubscriptionIncluded,
         coverageState: req.body.coverageState,
         sourceStatus: req.body.sourceStatus,
         safeStatus: req.body.safeStatus,
@@ -210,6 +218,7 @@ export function costRoutes(
         status: req.body.status,
         occurredAt: new Date(req.body.occurredAt),
         coverage: coverage,
+        pricingVersionRef: req.body.pricingVersionRef ?? null,
       });
 
       const actor = getActorInfo(req);
