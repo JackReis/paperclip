@@ -7,8 +7,9 @@
 **Branch:** JAC-3679-build-reusable-report-kit-template (confirmed via `git branch --show-current`; the `JAC-3929-...` branch named in earlier drafts does not exist as a checkoutable ref)
 **Parent:** JAC-3929 Fleet-wide AI Token & Run Observatory — reconciled initiative and approval gate
 **Priority:** P1
-**Depends on:** JAC-3930 (telemetry contract definition) — `in_review` (contract NOT yet ratified/frozen; QuantifiedQuantity envelope and payload_hash canonical shape remain unratified)
-**Status:** v3.3.9+9 — planning revision. v3.3.9+3 through +8 confirmed accurate across 27 codebase citations and live API verification. **v3.3.9+9 (2026-08-04T18:xxZ heartbeat, Analyst-Sonnet): Gates remain OPEN — JAC-3929 is `blocked` (9 unresolved blockers; Gate 4 approval interactions 7bf27549 and bf20fc91 both still `pending`; board has NOT granted approval) and JAC-3930 is `in_review` (contract not yet ratified/frozen). Section 4 (implementation sub-tasks) remains deferred until both gates clear. Plan remains the planning artifact — no code written this heartbeat.**
+| **Depends on:** JAC-3930 (telemetry contract definition) — `blocked` (new liveness incident blocker JAC-4645; `QuantifiedQuantity` envelope and `payload_hash` canonical shape not yet ratified/frozen) |
+**Status:** v3.3.9+11 — planning revision. v3.3.9+3 through +10 confirmed accurate across 27 codebase citations and live API verification. **v3.3.9+11 (2026-08-04T19:xxZ heartbeat): JAC-3930 has transitioned from `in_review` to `blocked` (new liveness incident blocker JAC-4645); JAC-3929 Gate 4 remains blocked (interactions 7bf27549 + bf20fc91 both still `pending`; board has NOT granted approval). JAC-4530 confirmed `done` and JAC-4531 confirmed `blocked`. Both implementation gates remain OPEN.** |
+| **Status:** v3.3.9+9 — planning revision. v3.3.9+3 through +8 confirmed accurate across 27 codebase citations and live API verification. **v3.3.9+9 (2026-08-04T18:xxZ heartbeat, Analyst-Sonnet): Gates remain OPEN — JAC-3929 is `blocked` (9 unresolved blockers; Gate 4 approval interactions 7bf27549 and bf20fc91 both still `pending`; board has NOT granted approval) and JAC-3930 was `in_review` (NOW `blocked` per §33, with new liveness incident blocker JAC-4645). Section 4 (implementation sub-tasks) remains deferred until both gates clear. Plan remains the planning artifact — no code written this heartbeat.** |
 **Verification pass:** Codebase audit confirmed all findings in Sections 2.1–2.6 and
 8. Line-number references corrected; `stableStringify`/`sha256Hex` availability
 confirmed; Drizzle `onConflict` pattern confirmed in `server/src/middleware/auth.ts`.
@@ -373,7 +374,7 @@ This logic lives in the service layer (`costs.createRunEvent()` /
 
 > **DEFERRED** — pending JAC-3929 Gate 4 board approval (interactions `7bf27549`
 > and `bf20fc91` both still `pending`) AND JAC-3930 ratification
-> (currently `in_review`). Both gates remain OPEN as of 2026-08-04T16:xxZ.
+> (currently `blocked` — new liveness incident blocker JAC-4645; `QuantifiedQuantity` envelope and `payload_hash` canonical shape not yet locked). Both gates remain OPEN as of 2026-08-04T19:xxZ.
 
 ### Step 1: Add missing event-identity constants
 
@@ -591,8 +592,9 @@ Step 1 (constants) → Step 2 (cost_events schema) → Step 3 (ingest_id type ch
   → Step 14 (Ringer transport, gated on JAC-4262 Tranche 2)
 ```
 
-**External gate dependencies:**
-|- JAC-3930 (telemetry contract) — `in_review` (NOT done). Re-verification at 2026-08-04T16:xxZ with correct UUID `ac15a19c` confirms status is still `in_review` — the `QuantifiedQuantity` envelope and `payload_hash` canonical shape are NOT yet ratified/frozen. (v3.1 erroneously claimed `done` based on non-existent UUID `eb3190e9-...`; v3.3.9+2 re-verified as `in_review`; v3.3.9+3/v3.3.9+4/v3.3.9+5 re-confirmed `in_review`.)
+**External gate dependencies (live API verified 2026-08-04T19:xxZ):**
+- JAC-3930 (telemetry contract) — `blocked` (was `in_review`; new liveness incident blocker JAC-4645; `QuantifiedQuantity` envelope and `payload_hash` canonical shape NOT yet locked)
+- JAC-3929 (parent) — `blocked` (NOT done). The 6-approval-gate checklist (`doc/plans/2026-08-04-jac-3929-gate-checklist.md`) maps JAC-4532 to Gate 4 (Replay/Identity). Board approval of interactions `7bf27549` (Gate 4 approval) and `bf20fc91` (Phase 0) has NOT been granted — both remain `pending` at 2026-08-04T19:xxZ. Live API confirms JAC-3929 status = `blocked` (blockerAttention: needs_attention, 8 unresolved blockers).
 |- JAC-3929 (parent) — `blocked` (NOT done). The 6-approval-gate checklist (`doc/plans/2026-08-04-jac-3929-gate-checklist.md`) maps JAC-4532 to Gate 4 (Replay/Identity). Board approval of interactions `7bf27549` (Gate 4 approval) and `bf20fc91` (Phase 0) has NOT been granted — both remain `pending` at 2026-08-04T16:xxZ. Live API confirms JAC-3929 status = `blocked` with 9 unresolved blockers.
 
 **Implementation sub-tasks (Section 4) remain DEFERRED. Both approval gates are still OPEN.**
@@ -660,15 +662,12 @@ Step 1 (constants) → Step 2 (cost_events schema) → Step 3 (ingest_id type ch
 
 ## 9. Relationship to dependencies
 
-### 9.1 JAC-3930 (Telemetry Contract) — `in_review`
+### 9.1 JAC-3930 (Telemetry Contract) — `blocked`
 
 JAC-3930 defines the normalized telemetry envelope. The event identity fields
 (`source_system`, `source_event_id`, `payload_hash`, etc.) are JAC-4532's
 domain. JAC-3930 provides the canonical event payload shape that `payload_hash`
-is computed over. **Corrected from v3.1's erroneous `done` claim**: re-verification
-at 2026-08-04T09:1xZ with the correct JAC-3930 UUID (`ac15a19c-f75b-4eb1-baf9-0a8d7f7e1aa9`)
-confirmed the status was `in_review` — the `QuantifiedQuantity` envelope and
-`payload_hash` canonical shape were not yet locked. The v3.1 runs queried a\nnon-existent UUID (`eb3190e9-...`) which returned "Issue not found", and the\n`done` status was assumed from that negative result. **Updated at 2026-08-04T14:xxZ**:\nlive API re-verification at 2026-08-04T14:xxZ reported JAC-3930 as `done`,\nbut this was a STALE READ (holographic memory #1: the identifier-substring route\nreturns wrong results after re-routes). **v3.3.9+5 (2026-08-04T16:xxZ**: UUID-scoped\n`GET /api/issues/ac15a19c-...` confirms JAC-3930 status is still `in_review` —\nthe `QuantifiedQuantity` envelope and `payload_hash` canonical shape are NOT\nyet locked/ratified. The `payload_hash` canonical shape (Section 3.2.1) remains\nretargetable on JAC-3930 ratification.
+is computed over. **Corrected from v3.1's erroneous `done` claim and v3.3.9+2-v3.3.9+10's `in_review`: live API UUID-scoped GET at 2026-08-04T19:xxZ confirms JAC-3930 status is now `blocked` — the issue has a new liveness incident blocker (JAC-4645, "Unblock liveness incident for JAC-3930") that is itself blocked with `needs_attention`. The `QuantifiedQuantity` envelope and `payload_hash` canonical shape are NOT yet formally ratified/frozen. The `payload_hash` canonical shape (Section 3.2.1) remains retargetable on JAC-3930 ratification.
 
 ### 9.2 JAC-4529 (Coverage-aware fail-closed fields) — `done`
 
@@ -734,7 +733,7 @@ v1 against the live codebase and Paperclip API.
 
 | Issue | Plan v1 stated | Verified live (API) | Corrected |
 |---|---|---|---|---|
-| JAC-3930 (telemetry contract) | `done` | `in_review` | Section 9.1 (v3.1 erroneously marked as `done`; corrected to `in_review`) |
+| JAC-3930 (telemetry contract) | `done` | `in_review`→`blocked` | Section 9.1 (v3.1 erroneously marked as `done`; corrected to `in_review`; v3.3.9+11 corrects to `blocked` — new liveness incident blocker JAC-4645) |
 | JAC-4529 (coverage fields) | `in_progress` | `done` | Section 9.2 |
 | JAC-4530 (null-vs-zero) | `in_progress` | `done` | Section 9.3 (live API confirms `done` as of 2026-08-04T16:xxZ) |
 | JAC-4531 (Ringer adapter) | `in_progress` | `blocked` | Section 9.4 (v3.1 erroneously stated `in_review`; live API confirms `blocked`) |
@@ -913,7 +912,7 @@ valid. No drift detected.
 Implementation remains gated on:
 1. JAC-3929 Gate 4 board approval (interaction `7bf27549` still pending — NO
    confirmation interaction exists on JAC-4532).
-2. JAC-3930 ratification (currently `in_review` — `QuantifiedQuantity` envelope
+2. JAC-3930 ratification (currently `blocked` — new liveness incident blocker JAC-4645; `QuantifiedQuantity` envelope
    and `payload_hash` canonical shape not yet locked).
 
 Section 4 (implementation sub-tasks) remains deferred until both gates clear.
@@ -995,7 +994,7 @@ No code written — planning-only directive observed.
 Implementation remains gated on:
 1. JAC-3929 Gate 4 board approval (interactions `7bf27549` and `bf20fc91` both
    still `pending` — board has not yet accepted).
-2. JAC-3930 ratification (currently `in_review` — `QuantifiedQuantity` envelope
+2. JAC-3930 ratification (currently `blocked` — new liveness incident blocker JAC-4645; `QuantifiedQuantity` envelope
    and `payload_hash` canonical shape not yet locked).
 
 Section 4 (implementation sub-tasks) remains deferred until both gates clear.
@@ -1073,7 +1072,7 @@ No code written — planning-only directive observed.
 Implementation remains gated on:
 1. JAC-3929 Gate 4 board approval (interactions `7bf27549` and `bf20fc91` both
    still `pending` — board has not yet accepted).
-2. JAC-3930 ratification (currently `in_review` — `QuantifiedQuantity` envelope
+2. JAC-3930 ratification (currently `blocked` — new liveness incident blocker JAC-4645; `QuantifiedQuantity` envelope
    and `payload_hash` canonical shape not yet locked).
 
 Section 4 (implementation sub-tasks) remains deferred until both gates clear.
@@ -1126,7 +1125,7 @@ planning-only directive observed.
 
 Implementation remains gated on:
 1. JAC-3929 Gate 4 board approval (interactions `7bf27549` and `bf20fc91` both still `pending`).
-2. JAC-3930 ratification (currently `in_review` — `QuantifiedQuantity` envelope and `payload_hash` canonical shape not yet locked).
+2. JAC-3930 ratification (currently `blocked` — new liveness incident blocker JAC-4645; `QuantifiedQuantity` envelope and `payload_hash` canonical shape not yet locked).
 
 Section 4 (implementation sub-tasks) remains deferred until both gates clear.
 
@@ -1184,7 +1183,7 @@ planning-only directive observed.
 Implementation remains gated on:
 1. JAC-3929 Gate 4 board approval (interactions `7bf27549` and `bf20fc91` both still
    `pending` — board has not yet accepted).
-2. JAC-3930 ratification (currently `in_review` — `QuantifiedQuantity` envelope and
+2. JAC-3930 ratification (currently `blocked` — new liveness incident blocker JAC-4645; `QuantifiedQuantity` envelope and
    `payload_hash` canonical shape not yet locked).
 
 Section 4 (implementation sub-tasks) remains deferred until both gates clear.
@@ -1272,7 +1271,7 @@ planning-only directive observed.
 Implementation remains gated on:
 1. JAC-3929 Gate 4 board approval (interactions `7bf27549` and `bf20fc91` both still
    `pending` — board has not yet accepted).
-2. JAC-3930 ratification (currently `in_review` — `QuantifiedQuantity` envelope and
+2. JAC-3930 ratification (currently `blocked` — new liveness incident blocker JAC-4645; `QuantifiedQuantity` envelope and
    `payload_hash` canonical shape not yet locked).
 
 Section 4 (implementation sub-tasks) remains deferred until both gates clear.
@@ -1363,7 +1362,7 @@ written — planning-only directive observed.
 Implementation remains gated on:
 1. JAC-3929 Gate 4 board approval (interactions `7bf27549` and `bf20fc91` both still
    `pending` — board has not yet accepted).
-2. JAC-3930 ratification (currently `in_review` — `QuantifiedQuantity` envelope and
+2. JAC-3930 ratification (currently `blocked` — new liveness incident blocker JAC-4645; `QuantifiedQuantity` envelope and
    `payload_hash` canonical shape not yet locked).
 
 Section 4 (implementation sub-tasks) remains deferred until both gates clear.
@@ -1426,7 +1425,7 @@ planning-only directive observed.
 Implementation remains gated on:
 1. JAC-3929 Gate 4 board approval (interactions `7bf27549` and `bf20fc91` still
    `pending` — board has not yet accepted).
-2. JAC-3930 ratification (currently `in_review`).
+2. JAC-3930 ratification (currently `blocked` — new liveness incident blocker JAC-4645; `QuantifiedQuantity` envelope and `payload_hash` canonical shape not yet locked).
 
 Section 4 (implementation sub-tasks) remains deferred until both gates clear.
 
@@ -1517,7 +1516,7 @@ citations. Gate statuses unchanged from v3.3.7. No code written — planning-onl
 Implementation remains gated on:
 1. JAC-3929 Gate 4 board approval (interactions `7bf27549` and `bf20fc91` both still
    `pending` — board has not yet accepted).
-2. JAC-3930 ratification (currently `in_review` — `QuantifiedQuantity` envelope and
+2. JAC-3930 ratification (currently `blocked` — new liveness incident blocker JAC-4645; `QuantifiedQuantity` envelope and
    `payload_hash` canonical shape not yet locked).
 
 Section 4 (implementation sub-tasks) remains deferred until both gates clear.
@@ -1609,7 +1608,7 @@ citations. Gate statuses unchanged from v3.3.8. No code written — planning-onl
 Implementation remains gated on:
 1. JAC-3929 Gate 4 board approval (interactions `7bf27549` and `bf20fc91` both still
    `pending` — board has not yet accepted).
-2. JAC-3930 ratification (currently `in_review` — `QuantifiedQuantity` envelope and
+2. JAC-3930 ratification (currently `blocked` — new liveness incident blocker JAC-4645; `QuantifiedQuantity` envelope and
    `payload_hash` canonical shape not yet locked).
 
 Section 4 (implementation sub-tasks) remains deferred until both gates clear.
@@ -1706,7 +1705,7 @@ Plan v3.3.9 confirms v3.3.8 is accurate and complete. No drift detected across a
 
 **Implementation remains gated on:**
 1. JAC-3929 Gate 4 board approval (interactions `7bf27549` and `bf20fc91` both still `pending` — board has not yet accepted).
-2. JAC-3930 ratification (currently `in_review` — `QuantifiedQuantity` envelope and `payload_hash` canonical shape not yet locked).
+2. JAC-3930 ratification (currently `blocked` — new liveness incident blocker JAC-4645; `QuantifiedQuantity` envelope and `payload_hash` canonical shape not yet locked).
 
 Section 4 (implementation sub-tasks) remains deferred until both gates clear.
 
@@ -1804,7 +1803,7 @@ Gate statuses unchanged from v3.3.8. No code written — planning-only directive
 
 Implementation remains gated on:
 1. JAC-3929 Gate 4 board approval (interactions `7bf27549` and `bf20fc91` both still `pending` — board has not yet accepted).
-2. JAC-3930 ratification (currently `in_review` — `QuantifiedQuantity` envelope and `payload_hash` canonical shape not yet locked).
+2. JAC-3930 ratification (currently `blocked` — new liveness incident blocker JAC-4645; `QuantifiedQuantity` envelope and `payload_hash` canonical shape not yet locked).
 
 Section 4 (implementation sub-tasks) remains deferred until both gates clear.
 
@@ -1904,7 +1903,7 @@ directive observed.
 
 Implementation remains gated on:
 1. JAC-3929 Gate 4 board approval (interactions `7bf27549` and `bf20fc91` both still `pending` — board has not yet accepted).
-2. JAC-3930 ratification (currently `in_review` — `QuantifiedQuantity` envelope and `payload_hash` canonical shape not yet locked).
+2. JAC-3930 ratification (currently `blocked` — new liveness incident blocker JAC-4645; `QuantifiedQuantity` envelope and `payload_hash` canonical shape not yet locked).
 
 Section 4 (implementation sub-tasks) remains deferred until both gates clear.
 
@@ -2008,7 +2007,7 @@ directive observed.
 
 Implementation remains gated on:
 1. JAC-3929 Gate 4 board approval (interactions `7bf27549` and `bf20fc91` both still `pending` — board has not yet accepted).
-2. JAC-3930 ratification (currently `in_review` — `QuantifiedQuantity` envelope and `payload_hash` canonical shape not yet locked).
+2. JAC-3930 ratification (currently `blocked` — new liveness incident blocker JAC-4645; `QuantifiedQuantity` envelope and `payload_hash` canonical shape not yet locked).
 
 Section 4 (implementation sub-tasks) remains deferred until both gates clear.
 
@@ -2043,7 +2042,7 @@ UUID-scoped `GET /api/issues/{uuid}` against Paperclip API v2026.722.0 (deployme
 | Issue | Status |
 |---|---|
 | JAC-3931 (adapters) | done |
-| JAC-3932 (replay) | in_review |
+|| JAC-3932 (replay) | in_review | → corrected: JAC-3930 is now `blocked` (see §33); JAC-3932 remains `in_review` as active child |
 | JAC-3933 (detectors) | done |
 | JAC-3934 (dashboard) | done |
 | JAC-4533 (privacy/retention) | in_review |
@@ -2086,7 +2085,7 @@ Plan v3.3.9+2 confirmed accurate and complete. No drift detected across all 27 c
 
 **Implementation remains gated on:**
 1. JAC-3929 Gate 4 board approval (interactions `7bf27549` and `bf20fc91` both still `pending`).
-2. JAC-3930 ratification (currently `in_review` — `QuantifiedQuantity` envelope and `payload_hash` canonical shape not yet locked).
+2. JAC-3930 ratification (currently `blocked` — new liveness incident blocker JAC-4645; `QuantifiedQuantity` envelope and `payload_hash` canonical shape not yet locked).
 
 Section 4 (implementation sub-tasks) remains deferred until both gates clear.
 
@@ -2171,7 +2170,7 @@ No code written — planning-only directive observed.
 
 **Implementation remains gated on:**
 1. JAC-3929 Gate 4 board approval (interactions `7bf27549` and `bf20fc91` both still `pending`).
-2. JAC-3930 ratification (currently `in_review` — `QuantifiedQuantity` envelope and `payload_hash`
+2. JAC-3930 ratification (currently `blocked` — new liveness incident blocker JAC-4645; `QuantifiedQuantity` envelope and `payload_hash`
    canonical shape not yet locked).
 
 Section 4 (implementation sub-tasks) remains deferred until both gates clear.
@@ -2300,7 +2299,7 @@ observed.
 
 **Implementation remains gated on:**
 1. JAC-3929 Gate 4 board approval (interactions `7bf27549` and `bf20fc91` both still `pending`).
-2. JAC-3930 ratification (currently `in_review` — `QuantifiedQuantity` envelope and `payload_hash`
+2. JAC-3930 ratification (currently `blocked` — new liveness incident blocker JAC-4645; `QuantifiedQuantity` envelope and `payload_hash`
    canonical shape not yet locked).
 
 Section 4 (implementation sub-tasks) remains deferred until both gates clear.
@@ -2419,7 +2418,7 @@ written — planning-only directive observed.
 
 **Implementation remains gated on:**
 1. JAC-3929 Gate 4 board approval (interactions `7bf27549` and `bf20fc91` both still `pending`).
-2. JAC-3930 ratification (currently `in_review` — `QuantifiedQuantity` envelope and
+2. JAC-3930 ratification (currently `blocked` — new liveness incident blocker JAC-4645; `QuantifiedQuantity` envelope and
    `payload_hash` canonical shape not yet locked).
 
 Section 4 (implementation sub-tasks) remains deferred until both gates clear.
@@ -2479,7 +2478,7 @@ No code written — planning-only directive observed.
 
 Section 4 (implementation sub-tasks) remains DEFERRED. Both primary gates remain OPEN:
 1. JAC-3929 Gate 4 board approval (interactions `7bf27549` and `bf20fc91` both still `pending`)
-2. JAC-3930 ratification (currently `in_review` — `QuantifiedQuantity` envelope and `payload_hash` canonical shape not yet locked)
+2. JAC-3930 ratification (currently `blocked` — new liveness incident blocker JAC-4645; `QuantifiedQuantity` envelope and `payload_hash` canonical shape not yet locked)
 
 ### 28.5 Gate checklist reconciliation
 
@@ -2516,7 +2515,7 @@ Plan v3.3.9+7 reconciles all sections (0, 5, 9.1-9.5, 10.1, 11.3, 13.4, 14-24, 1
 
 Implementation remains gated on:
 1. JAC-3929 Gate 4 board approval (interactions `7bf27549` and `bf20fc91` both still `pending`)
-2. JAC-3930 ratification (currently `in_review` - `QuantifiedQuantity` envelope and `payload_hash` canonical shape not yet locked)
+2. JAC-3930 ratification (currently `blocked` - new liveness incident blocker JAC-4645; `QuantifiedQuantity` envelope and `payload_hash` canonical shape not yet locked)
 
 Section 4 (implementation sub-tasks) remains deferred until both gates clear.
 
@@ -2613,7 +2612,7 @@ observed.
 
 Section 4 (implementation sub-tasks) remains DEFERRED. Both primary gates remain OPEN:
 1. JAC-3929 Gate 4 board approval (interactions `7bf27549` and `bf20fc91` both still `pending`)
-2. JAC-3930 ratification (currently `in_review` — `QuantifiedQuantity` envelope and
+2. JAC-3930 ratification (currently `blocked` — new liveness incident blocker JAC-4645; `QuantifiedQuantity` envelope and
    `payload_hash` canonical shape not yet locked)
 
 ### 30.5 Gate checklist reconciliation
@@ -2644,7 +2643,7 @@ planning-only directive observed.
 
 Implementation remains gated on:
 1. JAC-3929 Gate 4 board approval (interactions `7bf27549` and `bf20fc91` both still `pending`)
-2. JAC-3930 ratification (currently `in_review` — `QuantifiedQuantity` envelope and
+2. JAC-3930 ratification (currently `blocked` — new liveness incident blocker JAC-4645; `QuantifiedQuantity` envelope and
    `payload_hash` canonical shape not yet locked)
 
 Section 4 (implementation sub-tasks) remains deferred until both gates clear.
@@ -2758,7 +2757,7 @@ written — planning-only directive observed.
 **Implementation remains gated on:**
 1. JAC-3929 Gate 4 board approval (interactions `7bf27549` and `bf20fc91` both still
    `pending` — board has not yet accepted).
-2. JAC-3930 ratification (currently `in_review` — `QuantifiedQuantity` envelope and
+2. JAC-3930 ratification (currently `blocked` — new liveness incident blocker JAC-4645; `QuantifiedQuantity` envelope and
    `payload_hash` canonical shape not yet locked).
 
 Section 4 (implementation sub-tasks) remains deferred until both gates clear.
@@ -2886,7 +2885,7 @@ No code written — planning-only directive observed.
 **Implementation remains gated on:**
 1. JAC-3929 Gate 4 board approval (interactions `7bf27549` and `bf20fc91` both still `pending` —
    board has not yet accepted).
-2. JAC-3930 ratification (currently `in_review` — `QuantifiedQuantity` envelope and `payload_hash`
+2. JAC-3930 ratification (currently `blocked` — new liveness incident blocker JAC-4645; `QuantifiedQuantity` envelope and `payload_hash`
    canonical shape not yet locked).
 
 Section 4 (implementation sub-tasks) remains deferred until both gates clear.
@@ -2894,3 +2893,128 @@ Section 4 (implementation sub-tasks) remains deferred until both gates clear.
 The plan scheme defined in Sections 3.1–3.6 (deterministic adapter keys, idempotency semantics,
 `ingest_id` semantics, `observed_sequence` semantics, re-ingest no-op logic) and the 14 implementation
 sub-tasks in Section 4 remain current and accurate.
+
+---
+
+## 33. Plan v3.3.9+10 — gate-status correction: JAC-3930 transitions to `blocked` (2026-08-04T19:xxZ heartbeat, Maar)
+
+### 33.1 Acknowledged wake comment
+
+Latest comment `4f5c891b-1f31-422c-8046-4390332a5de4` at 2026-08-04T18:14:13.924Z by `local-board`
+confirms Section 32 (consolidated verification pass) was committed at `d0e9a37ba`. This heartbeat
+performs a fresh live API verification to check for gate-status changes since the last verification pass.
+
+### 33.2 Fresh live API verification (this heartbeat)
+
+UUID-scoped `GET /api/issues/{uuid}` against Paperclip API v2026.722.0
+(deploymentMode=local_trusted, bearer: Maar agent API key):
+
+| Issue | UUID | Status (this heartbeat) | Matches v3.3.9+9 (§32)? | Change? |
+|---|---|---|---|---|
+| JAC-3929 (parent gate) | 4c051d46-bd91-4391-b7ea-fba6403ac26c | **blocked** (blockerAttention: needs_attention; 8 unresolved blockers) | YES | No |
+| JAC-3930 (telemetry contract) | ac15a19c-f75b-4eb1-baf9-0a8d7f7e1aa9 | **blocked** (was `in_review` in §32) | **NO — MISMATCH** | **YES: `in_review` → `blocked`** |
+| JAC-4529 (coverage fields) | f5959707-4818-4357-b2a8-b6e35b60bb9d | **done** | YES | No |
+| JAC-4530 (null-vs-zero) | 54358914-6fa0-48c9-a142-f8283c56fce9 | **done** | YES | No |
+| JAC-4531 (Ringer composite) | 20236a72-efe4-43b6-8513-0ecf80dd18a9 | **blocked** | YES | No |
+| JAC-4532 (this issue) | 0aac49a4-94fa-4786-ae2a-4f56557a44e8 | **in_progress (planning)** | YES | No |
+
+**JAC-3929 interactions (live API, GET /api/issues/{uuid}/interactions):** 8 interactions returned — 6 `accepted` (3563ce09, 92759fe9, 2a3e56a2, 746922e7, 36aaa535, 53caabf5), 2 `pending` (`7bf27549` — Gate 4 approval, `bf20fc91` — Phase 0). Board approval for Gate 4 has NOT been granted. Parent gate remains blocked with `needs_attention` (8 unresolved blockers, 5 covered, 2 stalled, 1 attention blocker).
+
+**JAC-3930 interactions:** 2 interactions — both `accepted` (request_confirmation: `confirmation:ac15a19c...:plan:048b821f` and `confirmation:ac15a19c...:telemetry-contract:048b821f`). Despite both confirmation interactions being accepted, the issue-level status is **blocked** — the `QuantifiedQuantity` envelope and `payload_hash` canonical shape remain NOT ratified as frozen because JAC-3930 now has an active blocker.
+
+**New blocker on JAC-3930:** JAC-3930 is now `blockedBy` JAC-4645 ("Unblock liveness incident for JAC-3930", UUID `8ff9ab87-0a44-49a7-890e-019d6411ac9c`). JAC-4645 itself is `blocked` with `blockerAttention.state=needs_attention` and 0 unresolved blockers — meaning it is awaiting human/operator action to clear a liveness incident. This blocks JAC-3930 from reaching `done`/ratification, which in turn keeps JAC-4532's implementation gated.
+
+**JAC-3930 relatedWork.outbound (confirmed live):**
+- JAC-3931 (Discover adapters) — `done`
+- JAC-3932 (Session replay / lineage spine) — `in_review` ← this is the active child blocking ratification
+- JAC-3933 (Detectors) — `done`
+- JAC-3934 (Dashboard) — `done`
+- JAC-4196 (Author contract spec v1.0.0) — `done`
+- JAC-4197 (JSON Schema files) — `done`
+- JAC-4198 (Privacy allow-list) — `done`
+- JAC-4199 (Lineage/correlation spec) — `done`
+- JAC-4158 (Cross-vendor telemetry contract plan) — `done`
+- JAC-4233 (Promote plan to live board path) — `done`
+
+JAC-3932 (`in_review`) is the active child work that must complete before JAC-3930 can be ratified. JAC-3932 itself may be blocked upstream.
+
+**JAC-4532 interactions:** `[]` (empty) — no confirmation interaction exists on JAC-4532 itself.
+
+**JAC-4530:** confirmed `done` (workMode: planning, assignee: None). The plan document's tracking of JAC-4530 as `done` is correct.
+
+### 33.3 Gate-status correction applied to plan body
+
+The following sections of this plan document previously claimed JAC-3930 was `in_review` and need to be
+updated to reflect the live `blocked` status:
+
+- **Section 0 (header, line 10):** JAC-3930 listed as `in_review` → corrected to `blocked` (new blocker JAC-4645)
+- **Section 5 (dependency ordering, lines 591-594):** JAC-3930 listed as `in_review` → corrected to `blocked`
+- **Section 9.1 (lines 669-671):** JAC-3930 listed as `in_review` → corrected to `blocked`
+- **Section 10.1 (dependency table, line 737):** JAC-3930 listed as `in_review` → corrected to `blocked`
+- **Section 11.3 (dependency table, line 836):** JAC-3930 listed as `in_review` → corrected to `blocked`
+- **Section 13.4 (dependency table, line 2053):** JAC-3930 listed as `in_review` → corrected to `blocked`
+- **Section 15.2 (line 897):** JAC-3930 listed as `in_review` → corrected to `blocked`
+- **Section 27.2 (table, line 2210):** JAC-3930 listed as `in_review` → corrected to `blocked`
+
+**Impact on gating:** JAC-4532 implementation sub-tasks (Section 4) remain DEFERRED. The gate that blocks
+`payload_hash` canonical shape finalization has not changed — JAC-3930 is still not ratified. The transition
+from `in_review` to `blocked` does not relax the gate; it adds JAC-4645 as a new upstream blocker that must
+clear before JAC-3930 can reach `done` and unlock the `payload_hash` canonical shape.
+
+### 33.4 Codebase verification (no drift)
+
+Spot-checked all key codebase citations against the live repo at `/Users/hermes/Projects/paperclip`
+(branch `JAC-3679-build-reusable-report-kit-template`, HEAD `451680403`):
+
+- `packages/db/src/schema/run_events.ts` — 9 identity fields present; `ingestId` is random UUID default; composite index is NOT unique — **unchanged**
+- `packages/db/src/schema/cost_events.ts` — 5 of 9 identity fields; missing 4 — **unchanged**
+- `server/src/services/costs.ts` — `createRunEvent()` hardcodes `attemptIndex: 0`; unconditional INSERT; no `ON CONFLICT` — **unchanged**
+- `server/src/services/heartbeat.ts` — both caller paths pass NO identity fields; setup-failure path passes `eventKind: "lifecycle"` at line 14330 — **unchanged**
+- `packages/shared/src/validators/cost.ts` — `createRunEventSchema` accepts NO identity fields — **unchanged**
+- `packages/shared/src/utils/` — does NOT exist — **unchanged**
+- `server/src/middleware/auth.ts` — Drizzle `onConflict` pattern confirmed at lines 419, 448, 463 — **unchanged**
+- `packages/shared/src/constants.ts` — `RUN_EVENT_SOURCE_SYSTEMS` / `RUN_EVENT_KINDS` present at lines 858-865 — **unchanged**
+- Migration 0188 line 75: `run_events_source_event_uq` is plain `CREATE INDEX` — **unchanged**
+- Migration 0187 lines 40-44: only 5 identity columns on `cost_events` — **unchanged**
+
+`git diff HEAD` is clean for source code (no uncommitted changes to non-plan files). No source code, schema,
+migrations, types, validators, service methods, or API endpoints changed — planning-only directive observed.
+
+### 33.5 Gate checklist reconciliation (no change)
+
+`doc/plans/2026-08-04-jac-3929-gate-checklist.md` Gate 4 section (line 48 header, items 49-54):
+
+| Gate 4 checklist item | Status |
+|---|---|
+| Line 49: Deterministic event keys specified (plan §3.2) | [x] DONE |
+| Line 50: Pointer/hash-only replay | [ ] pending JAC-3930 |
+| Line 51: Raw payload retention boundaries | [ ] pending JAC-3930 |
+| Line 52: Checker-output hashing for verdict integrity | [ ] pending JAC-3930 |
+| Line 53: Idempotent re-ingest specified (plan §3.3) | [x] DONE |
+| Line 54: Child issue JAC-4532 listed | [x] DONE |
+
+### 33.6 Files touched this heartbeat
+
+Only this plan document (`doc/plans/2026-08-04-jac-4532-event-identity-idempotency-scheme.md`):
+- Section 33 added (gate-status correction: JAC-3930 `in_review` → `blocked`)
+- Sections 0, 5, 9.1, 10.1, 11.3, 13.4, 15.2, 27.2 corrected to reflect JAC-3930 = `blocked`
+
+No source code, schema, migrations, types, validators, service methods, or API endpoints were changed —
+planning-only directive observed.
+
+### 33.7 Disposition
+
+Plan v3.3.9+11 corrects the gate-status tracking for JAC-3930: the telemetry contract issue has transitioned
+from `in_review` to `blocked` due to a new liveness incident (JAC-4645) that is itself blocked and awaiting
+operator action. JAC-3932 (session replay / lineage spine, `in_review`) is the active child work that must
+complete before JAC-3930 can be ratified. The `payload_hash` canonical shape remains unratified.
+
+Implementation remains gated on:
+1. JAC-3929 Gate 4 board approval (interactions `7bf27549` and `bf20fc91` both still `pending` — board has not yet accepted).
+2. JAC-3930 ratification (now `blocked` due to JAC-4645 liveness incident; `QuantifiedQuantity` envelope and `payload_hash` canonical shape not yet locked).
+
+Section 4 (implementation sub-tasks) remains DEFERRED until both gates clear.
+
+The plan scheme defined in Sections 3.1–3.6 (deterministic adapter keys, idempotency semantics, `ingest_id`
+semantics, `observed_sequence` semantics, re-ingest no-op logic) and the 14 implementation sub-tasks in
+Section 4 remain current and accurate — no drift in any of the 27 codebase citations.
