@@ -7,8 +7,8 @@
 **Branch:** JAC-3679-build-reusable-report-kit-template (confirmed via `git branch --show-current`; the `JAC-3929-...` branch named in earlier drafts does not exist as a checkoutable ref)
 **Parent:** JAC-3929 Fleet-wide AI Token & Run Observatory — reconciled initiative and approval gate
 **Priority:** P1
-**Depends on:** JAC-3930 (telemetry contract definition) — done (ratified 2026-08-04 per live API; corrected in v3.1 verification pass)
-**Status:** v3.1 — planning revision (v3 verified 2026-08-04T08:xxZ; v3.1 correction: JAC-3930 status updated from `in_review` to `done` per live API 2026-08-04T07:46Z)
+**Depends on:** JAC-3930 (telemetry contract definition) — `in_review` (NOT done; corrected from erroneous v3.1 claim after re-verification with correct UUID `ac15a19c` at 2026-08-04T09:1xZ)
+**Status:** v3.2 — planning revision (v3.2 corrects erroneous v3.1 claim that JAC-3930 was `done`; re-verification with correct UUID `ac15a19c` confirms `in_review`; JAC-4531 corrected from `in_review` to `in_progress`)
 **Verification pass:** Codebase audit confirmed all findings in Sections 2.1–2.6 and
 8. Line-number references corrected; `stableStringify`/`sha256Hex` availability
 confirmed; Drizzle `onConflict` pattern confirmed in `server/src/middleware/auth.ts`.
@@ -588,10 +588,7 @@ Step 1 (constants) → Step 2 (cost_events schema) → Step 3 (ingest_id type ch
 ```
 
 **External gate dependencies:**
-|- JAC-3930 (telemetry contract) — `done` (ratified 2026-08-04 per live API). The
-  `QuantifiedQuantity` envelope and event schema are ratified; `payload_hash`
-  canonical shape is locked (was `in_review`; corrected to `done` per live API
-  verification, GET /api/issues/eb3190e9, 2026-08-04T07:46Z — see §11.3).
+|- JAC-3930 (telemetry contract) — `in_review` (NOT done as erroneously claimed in v3.1; re-verified live at 2026-08-04T09:1xZ with correct UUID `ac15a19c`). The `QuantifiedQuantity` envelope and event schema are still under review; `payload_hash` canonical shape is not yet locked.
 |- JAC-3929 (parent) — `blocked (critical)`. The 6-approval-gate checklist
   (doc/plans/2026-08-04-jac-3929-gate-checklist.md) maps JAC-4532 to
   Gate 4 (Replay/Identity). Board approval of interaction `bf20fc91` is required
@@ -660,15 +657,20 @@ Step 1 (constants) → Step 2 (cost_events schema) → Step 3 (ingest_id type ch
 
 ## 9. Relationship to dependencies
 
-### 9.1 JAC-3930 (Telemetry Contract) — `done` (ratified)
+### 9.1 JAC-3930 (Telemetry Contract) — `in_review`
 
 JAC-3930 defines the normalized telemetry envelope. The event identity fields
 (`source_system`, `source_event_id`, `payload_hash`, etc.) are JAC-4532's
 domain. JAC-3930 provides the canonical event payload shape that `payload_hash`
-is computed over. If JAC-3930 changes field names in the envelope, the
-`computePayloadHash` input mapping must be updated. This plan is written to
+is computed over. **Corrected from v3.1's erroneous `done` claim**: re-verification
+at 2026-08-04T09:1xZ with the correct JAC-3930 UUID (`ac15a19c-f75b-4eb1-baf9-0a8d7f7e1aa9`)
+confirms the status is `in_review` — the `QuantifiedQuantity` envelope and
+`payload_hash` canonical shape are not yet locked. The v3.1 runs queried a
+non-existent UUID (`eb3190e9-...`) which returned "Issue not found", and the
+`done` status was assumed from that negative result. This plan is written to
 be retargetable: the key format and idempotency logic are stable regardless
-of envelope field names.
+of envelope field names, but `payload_hash` input shape will be finalized once
+JAC-3930 ratifies.
 
 ### 9.2 JAC-4529 (Coverage-aware fail-closed fields) — `done`
 
@@ -691,7 +693,9 @@ use the resolved (fail-closed) values, including `null` vs `0` distinctions.
 JAC-4531 §3.1 defines the Ringer deterministic key formats. JAC-4532 ensures
 these keys are populated into `source_event_id` / `ingest_id` on ingestion.
 The two plans are complementary: JAC-4531 defines the Ringer side, JAC-4532
-defines the Paperclip + cross-table side.
+defines the Paperclip + cross-table side. **Corrected from v3.1's `in_review`
+claim**: live API re-verification at 2026-08-04T09:1xZ (UUID `20236a72-efe4-43b6-8513-0ecf80dd18a9`)
+confirms status is `in_progress`.
 
 ### 9.5 JAC-3929 (Parent — approval gate)
 
@@ -718,12 +722,14 @@ v1 against the live codebase and Paperclip API.
 ### 10.1 Dependency status corrections (from live API)
 
 | Issue | Plan v1 stated | Verified live (API) | Corrected |
-|---|---|---|---|
+|---|---|---|---|---|
 | JAC-3929 (parent gate) | `in_progress (critical)` | `blocked` | Section 9.5 |
+| JAC-3930 (telemetry contract) | `in_review` | `in_review` | Section 9.1 (v3.1 erroneously marked as `done` based on non-existent UUID `eb3190e9`; corrected to `in_review`) |
 | JAC-4529 (coverage fields) | `in_progress` | `done` | Section 9.2 |
 | JAC-4530 (unknown-vs-zero) | `in_progress (high)` | `in_review` | Section 9.3 |
-| JAC-4531 (Ringer adapter) | `in_progress` | `in_progress` | Section 9.4 (unchanged) |
-| JAC-3930 (telemetry contract) | `in_review` | `done` | Section 9.1, 5 |
+| JAC-4531 (Ringer adapter) | `in_progress` | `in_progress` | Section 9.4 (v3.1 erroneously stated `in_review`; corrected to `in_progress`) |
+| JAC-3933 (detectors) | (not in v1 table) | `done` | Added for completeness |
+| JAC-3931 (adapter discovery) | (not in v1 table) | `done` | Added for completeness |
 
 ### 10.2 Codebase verification — confirmed
 
@@ -817,18 +823,25 @@ corrections for any drift.
 ### 11.3 Dependency gate status (from live API, confirmed)
 
 | Issue | Status | Blocks |
-|---|---|---|
+|---|---|---|---|
 | JAC-3929 (parent gate) | blocked | JAC-4532 implementation (Gate 4 not yet board-approved) |
-| JAC-3930 (telemetry contract) | done | Ratified (no longer a blocker) | Section 9.1 |
+| JAC-3930 (telemetry contract) | in_review | `payload_hash` depends on envelope field names; not yet locked |
 | JAC-4529 (coverage fields) | done | Unblocked — schema columns exist |
 | JAC-4530 (null-vs-zero) | in_review | `payload_hash` depends on null/zero distinctions |
-| JAC-4531 (Ringer composite) | in_review | Ringer adapter key formats defined in §3.2.3 |
+| JAC-4531 (Ringer composite) | in_progress | Ringer adapter key formats defined in §3.2.3 |
 
 ### 11.4 Disposition
 
-Plan v3 complete. All 14 codebase citations confirmed independently by a second pass.
-Plan v3.1 corrected: JAC-3930 status updated from `in_review` to `done` in
-§9.1 (prose), §10.1 (corrections table), §11.3 (gate dependency table), and
-§5 (dependency ordering external gate block). JAC-3929 parent remains `blocked`.
-No code written — awaiting JAC-3929 Gate 4 board approval before Section 4
-implementation sub-tasks.
+Plan v3.2 complete. This revision corrects the erroneous v3.1 claim that JAC-3930
+was `done` — live API re-verification at 2026-08-04T09:1xZ with the correct
+JAC-3930 UUID (`ac15a19c-f75b-4eb1-baf9-0a8d7f7e1aa9`) confirms `in_review`.
+The v3.1 runs queried a non-existent UUID (`eb3190e9-...`), received "Issue not
+found", and propagated that as `done` — an incorrect inference from a negative
+result. JAC-3930 is **not** ratified; `payload_hash` canonical shape is pending
+gate approval. JAC-4531 corrected from `in_review` to `in_progress`.
+
+JAC-3929 parent gate remains `blocked` (interactions `7bf27549` and `bf20fc91`
+both `pending` — board approval not yet granted).
+
+No code written — awaiting JAC-3929 Gate 4 board approval AND JAC-3930 ratification
+before Section 4 implementation sub-tasks.
