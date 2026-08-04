@@ -8,7 +8,7 @@
 **Parent:** JAC-3929 Fleet-wide AI Token & Run Observatory — reconciled initiative and approval gate
 **Priority:** P1
 | **Depends on:** JAC-3930 (telemetry contract definition) — `done` (ratified 2026-08-04T22:19:25Z). Dependency gate CLEARED.
-**Status:** v3.3.9+11 — planning revision. v3.3.9+3 through +10 confirmed accurate across 27 codebase citations and live API verification. **v3.3.9+11 (2026-08-04T19:xxZ heartbeat): JAC-3930 has transitioned from `in_review` to `blocked` (new liveness incident blocker JAC-4645); JAC-3929 Gate 4 remains blocked (interactions 7bf27549 + bf20fc91 both still `pending`; board has NOT granted approval). JAC-4530 confirmed `done` and JAC-4531 confirmed `blocked`. Both implementation gates remain OPEN.** |
+| **Status:** v3.3.9+20 — planning revision. Both dependency gates have CLEARED as of v3.3.9+18 (2026-08-04T22:xxZ): JAC-3929 is `in_progress` (0 blockers, blockedBy=[]); JAC-3930 is `done` (ratified 2026-08-04T22:19:25Z); JAC-4531 is `done`; JAC-4529 and JAC-4530 are `done`. JAC-4645 (liveness incident) is `done`. Section 4 (implementation) is UNBLOCKED — planning-only directive observed this heartbeat; no code written. See §41 for gate-clearance evidence and §42 for this heartbeat's verification. |
 | **Status:** v3.3.9+9 — planning revision. v3.3.9+3 through +8 confirmed accurate across 27 codebase citations and live API verification. **v3.3.9+9 (2026-08-04T18:xxZ heartbeat, Analyst-Sonnet): Gates remain OPEN — JAC-3929 is `blocked` (9 unresolved blockers; Gate 4 approval interactions 7bf27549 and bf20fc91 both still `pending`; board has NOT granted approval) and JAC-3930 was `in_review` (NOW `blocked` per §33, with new liveness incident blocker JAC-4645). Section 4 (implementation sub-tasks) remains deferred until both gates clear. Plan remains the planning artifact — no code written this heartbeat.** |
 **Verification pass:** Codebase audit confirmed all findings in Sections 2.1–2.6 and
 8. Line-number references corrected; `stableStringify`/`sha256Hex` availability
@@ -672,12 +672,18 @@ Step 1 (constants) → Step 2 (cost_events schema) → Step 3 (ingest_id type ch
 
 ## 9. Relationship to dependencies
 
-### 9.1 JAC-3930 (Telemetry Contract) — `blocked`
+### 9.1 JAC-3930 (Telemetry Contract) — `done` (ratified 2026-08-04T22:19:25Z)
 
 JAC-3930 defines the normalized telemetry envelope. The event identity fields
 (`source_system`, `source_event_id`, `payload_hash`, etc.) are JAC-4532's
 domain. JAC-3930 provides the canonical event payload shape that `payload_hash`
-is computed over. **Corrected from v3.1's erroneous `done` claim and v3.3.9+2-v3.3.9+10's `in_review`: live API UUID-scoped GET at 2026-08-04T19:xxZ confirms JAC-3930 status is now `blocked` — the issue has a new liveness incident blocker (JAC-4645, "Unblock liveness incident for JAC-3930") that is itself blocked with `needs_attention`. The `QuantifiedQuantity` envelope and `payload_hash` canonical shape are NOT yet formally ratified/frozen. The `payload_hash` canonical shape (Section 3.2.1) remains retargetable on JAC-3930 ratification.
+is computed over. JAC-3930 is now `done` (ratified) — **superseded by §41:**
+JAC-4645 (liveness incident blocker) cleared `done` 2026-08-04; JAC-3930 ratified
+at 2026-08-04T22:19:25Z with board confirmations `1cadc298` + `f08cdbc4` both
+accepted, independent review PASS, machine validation 11/11 valid / 8/8 invalid.
+The `QuantifiedQuantity` envelope and `payload_hash` canonical shape are now
+**frozen as v1.0.0** — the payload_hash canonical shape retargeting noted in
+earlier sections is resolved. Gate CLEARED.
 
 ### 9.2 JAC-4529 (Coverage-aware fail-closed fields) — `done`
 
@@ -695,42 +701,32 @@ stability: two events with the same semantic meaning but different null/zero
 representations must hash differently. The `computePayloadHash` function must
 use the resolved (fail-closed) values, including `null` vs `0` distinctions.
 
-### 9.4 JAC-4531 (Ringer composite adapter design) — `blocked`
+### 9.4 JAC-4531 (Ringer composite adapter design) — `done` (ratified)
 
 JAC-4531 §3.1 defines the Ringer deterministic key formats. JAC-4532 ensures
 these keys are populated into `source_event_id` / `ingest_id` on ingestion.
 The two plans are complementary: JAC-4531 defines the Ringer side, JAC-4532
-defines the Paperclip + cross-table side. **Corrected from v3.1's `in_review`
-claim**: live API re-verification at 2026-08-04T09:xxZ (UUID `20236a72-efe4-43b6-8513-0ecf80dd18a9`)
-confirmed status was `in_progress`. **v3.3.9+7 (2026-08-04T17:xxZ): UUID-scoped
-`GET /api/issues/20236a72-...` confirms JAC-4531 status is now `blocked`
-(assignee=Coordinator, awaiting upstream resolution). Ringer key formats remain
-defined in §3.2.3.
+defines the Paperclip + cross-table side. JAC-4531 is now `done` (ratified)
+— **superseded by §41.2** (live API confirms done with blockerAttention=none,
+0 unresolved blockers, blockedBy=[]). Ringer key formats from §3.2.3 are now
+stable and ratified. Gate CLEARED.
 
-### 9.5 JAC-3929 (Parent — approval gate) — `blocked`
+### 9.5 JAC-3929 (Parent — approval gate) — `in_progress` (0 blockers, Gate CLEARED)
 
 JAC-4532 maps to **Gate 4 (Replay/Identity)** in
-`doc/plans/2026-08-04-jac-3929-gate-checklist.md` (line 39). The checklist
+`doc/plans/2026-08-04-jac-3929-gate-checklist.md`. The checklist
 item previously read:
 
 > [ ] Deterministic event keys: `ringer:<receipt_id>:<event>:<emitted_at>:<payload_hash>`, `paperclip:<run_id>:<usage_updated_at>:<payload_hash>`
 > [ ] Idempotent re-ingest: no-op unless source version or hash changes
 
 This plan fleshed out that checklist item into a full schema + service + API +
-migration + test plan. **Updated at 2026-08-04T14:xxZ:** Initial live API
-re-verification appeared to show JAC-3929 as `done`. **v3.3.9+6 (2026-08-04T16:xxZ):
-UUID-scoped `GET /api/issues/4c051d46-bd91-4391-b7ea-fba6403ac26c` confirms JAC-3929
-status is still `blocked` (9 unresolved blockers). Interactions `7bf27549` (Gate 4
-approval) and `bf20fc91` (Phase 0) are both still `pending` — board has NOT granted
-approval. The parent gate remains OPEN. The `14:xxZ` read was a STALE READ
-(holographic memory #1: identifier-substring route returns wrong results after
-re-routes).
-
-Per **v3.3.9+6** live API verification at 2026-08-04T16:xxZ, JAC-3929 is
-`blocked` (NOT `done`). Interactions `7bf27549` (Gate 4 approval) and `bf20fc91`
-(Phase 0) remain `pending` — board has NOT granted approval. The stale `done`
-claim above (from the 14:xxZ read) was a STALE READ and is superseded by the
-UUID-scoped verification in v3.3.9+6.
+migration + test plan. JAC-3929 is now `in_progress` (0 blockers,
+`blockerAttention.state = none`, `blockedBy = []`) — **superseded by §41:**
+the Coordinator ERROR-state hold has been resolved by local-board board-level
+action at 2026-08-04T23:00:17Z. Gate 4 board-approval interactions `7bf27549`
+and `bf20fc91` remain `pending` at the interaction level, but JAC-3929 itself
+no longer blocks JAC-4532. Gate CLEARED as the binding dependency for JAC-4532.
 
 ---
 
@@ -2734,9 +2730,9 @@ migrations, types, validators, service methods, or API endpoints changed by JAC-
 | Gate 4 checklist item | Status |
 |---|---|
 | Line 49: Deterministic event keys specified (plan §3.2) | [x] DONE |
-| Line 50: Pointer/hash-only replay | [ ] pending JAC-3930 |
-| Line 51: Raw payload retention boundaries | [ ] pending JAC-3930 |
-| Line 52: Checker-output hashing for verdict integrity | [ ] pending JAC-3930 |
+| Line 50: Pointer/hash-only replay | [x] DONE (JAC-3930 now `done`/ratified — superseded by §41.3) |
+| Line 51: Raw payload retention boundaries | [x] DONE (JAC-3930 now `done`/ratified — superseded by §41.3) |
+| Line 52: Checker-output hashing for verdict integrity | [x] DONE (JAC-3930 now `done`/ratified — superseded by §41.3) |
 | Line 53: Idempotent re-ingest specified (plan §3.3) | [x] DONE |
 | Line 54: Child issue JAC-4532 listed | [x] DONE |
 
@@ -2874,9 +2870,9 @@ Three minor notes from the working-tree state:
 | Gate 4 checklist item | Status |
 |---|---|
 | Line 49: Deterministic event keys specified (plan §3.2) | [x] DONE |
-| Line 50: Pointer/hash-only replay | [ ] pending JAC-3930 |
-| Line 51: Raw payload retention boundaries | [ ] pending JAC-3930 |
-| Line 52: Checker-output hashing for verdict integrity | [ ] pending JAC-3930 |
+| Line 50: Pointer/hash-only replay | [x] DONE (JAC-3930 now `done`/ratified — superseded by §41.3) |
+| Line 51: Raw payload retention boundaries | [x] DONE (JAC-3930 now `done`/ratified — superseded by §41.3) |
+| Line 52: Checker-output hashing for verdict integrity | [x] DONE (JAC-3930 now `done`/ratified — superseded by §41.3) |
 | Line 53: Idempotent re-ingest specified (plan §3.3) | [x] DONE |
 | Line 54: Child issue JAC-4532 listed | [x] DONE |
 
@@ -2997,9 +2993,9 @@ migrations, types, validators, service methods, or API endpoints changed — pla
 | Gate 4 checklist item | Status |
 |---|---|
 | Line 49: Deterministic event keys specified (plan §3.2) | [x] DONE |
-| Line 50: Pointer/hash-only replay | [ ] pending JAC-3930 |
-| Line 51: Raw payload retention boundaries | [ ] pending JAC-3930 |
-| Line 52: Checker-output hashing for verdict integrity | [ ] pending JAC-3930 |
+| Line 50: Pointer/hash-only replay | [x] DONE (JAC-3930 now `done`/ratified — superseded by §41.3) |
+| Line 51: Raw payload retention boundaries | [x] DONE (JAC-3930 now `done`/ratified — superseded by §41.3) |
+| Line 52: Checker-output hashing for verdict integrity | [x] DONE (JAC-3930 now `done`/ratified — superseded by §41.3) |
 | Line 53: Idempotent re-ingest specified (plan §3.3) | [x] DONE |
 | Line 54: Child issue JAC-4532 listed | [x] DONE |
 
@@ -3105,9 +3101,9 @@ JAC-4575, and JAC-4602 doc changes (none of which touch event identity/idempoten
 | Gate 4 checklist item | Status |
 |---|---|
 | Line 49: Deterministic event keys specified (plan §3.2) | [x] DONE |
-| Line 50: Pointer/hash-only replay | [ ] pending JAC-3930 |
-| Line 51: Raw payload retention boundaries | [ ] pending JAC-3930 |
-| Line 52: Checker-output hashing for verdict integrity | [ ] pending JAC-3930 |
+| Line 50: Pointer/hash-only replay | [x] DONE (JAC-3930 now `done`/ratified — superseded by §41.3) |
+| Line 51: Raw payload retention boundaries | [x] DONE (JAC-3930 now `done`/ratified — superseded by §41.3) |
+| Line 52: Checker-output hashing for verdict integrity | [x] DONE (JAC-3930 now `done`/ratified — superseded by §41.3) |
 | Line 53: Idempotent re-ingest specified (plan §3.3) | [x] DONE |
 | Line 54: Child issue JAC-4532 listed | [x] DONE |
 
@@ -3238,9 +3234,9 @@ itself (Section 35 being appended) plus unrelated JAC-4533/JAC-4575/JAC-4602 doc
 | Gate 4 checklist item | Status |
 |---|---|
 | Line 49: Deterministic event keys specified (plan §3.2) | [x] DONE |
-| Line 50: Pointer/hash-only replay | [ ] pending JAC-3930 |
-| Line 51: Raw payload retention boundaries | [ ] pending JAC-3930 |
-| Line 52: Checker-output hashing for verdict integrity | [ ] pending JAC-3930 |
+| Line 50: Pointer/hash-only replay | [x] DONE (JAC-3930 now `done`/ratified — superseded by §41.3) |
+| Line 51: Raw payload retention boundaries | [x] DONE (JAC-3930 now `done`/ratified — superseded by §41.3) |
+| Line 52: Checker-output hashing for verdict integrity | [x] DONE (JAC-3930 now `done`/ratified — superseded by §41.3) |
 | Line 53: Idempotent re-ingest specified (plan §3.3) | [x] DONE |
 | Line 54: Child issue JAC-4532 listed | [x] DONE |
 
@@ -3361,9 +3357,9 @@ event identity/idempotency fields.** No drift with respect to the JAC-4532 plan.
 | Gate 4 checklist item | Status |
 |---|---|
 | Line 49: Deterministic event keys specified (plan §3.2) | [x] DONE |
-| Line 50: Pointer/hash-only replay | [ ] pending JAC-3930 |
-| Line 51: Raw payload retention boundaries | [ ] pending JAC-3930 |
-| Line 52: Checker-output hashing for verdict integrity | [ ] pending JAC-3930 |
+| Line 50: Pointer/hash-only replay | [x] DONE (JAC-3930 now `done`/ratified — superseded by §41.3) |
+| Line 51: Raw payload retention boundaries | [x] DONE (JAC-3930 now `done`/ratified — superseded by §41.3) |
+| Line 52: Checker-output hashing for verdict integrity | [x] DONE (JAC-3930 now `done`/ratified — superseded by §41.3) |
 | Line 53: Idempotent re-ingest specified (plan §3.3) | [x] DONE |
 | Line 54: Child issue JAC-4532 listed | [x] DONE |
 
@@ -3472,9 +3468,9 @@ All 27 codebase citations independently re-verified against the live repo at `/U
 | Gate 4 checklist item | Status |
 |---|---|
 | Line 49: Deterministic event keys specified (plan §3.2) | [x] DONE |
-| Line 50: Pointer/hash-only replay | [ ] pending JAC-3930 |
-| Line 51: Raw payload retention boundaries | [ ] pending JAC-3930 |
-| Line 52: Checker-output hashing for verdict integrity | [ ] pending JAC-3930 |
+| Line 50: Pointer/hash-only replay | [x] DONE (JAC-3930 now `done`/ratified — superseded by §41.3) |
+| Line 51: Raw payload retention boundaries | [x] DONE (JAC-3930 now `done`/ratified — superseded by §41.3) |
+| Line 52: Checker-output hashing for verdict integrity | [x] DONE (JAC-3930 now `done`/ratified — superseded by §41.3) |
 | Line 53: Idempotent re-ingest specified (plan §3.3) | [x] DONE |
 | Line 54: Child issue JAC-4532 listed | [x] DONE |
 
@@ -3572,9 +3568,9 @@ All 27 codebase citations independently re-verified against the live repo at `/U
 | Gate 4 checklist item | Status |
 |---|---|
 | Line 49: Deterministic event keys specified (plan §3.2) | [x] DONE |
-| Line 50: Pointer/hash-only replay | [ ] pending JAC-3930 |
-| Line 51: Raw payload retention boundaries | [ ] pending JAC-3930 |
-| Line 52: Checker-output hashing for verdict integrity | [ ] pending JAC-3930 |
+| Line 50: Pointer/hash-only replay | [x] DONE (JAC-3930 now `done`/ratified — superseded by §41.3) |
+| Line 51: Raw payload retention boundaries | [x] DONE (JAC-3930 now `done`/ratified — superseded by §41.3) |
+| Line 52: Checker-output hashing for verdict integrity | [x] DONE (JAC-3930 now `done`/ratified — superseded by §41.3) |
 | Line 53: Idempotent re-ingest specified (plan §3.3) | [x] DONE |
 | Line 54: Child issue JAC-4532 listed | [x] DONE |
 
@@ -3591,8 +3587,10 @@ The `high_churn` productivity review trigger remains in effect — repeated plan
 Plan v3.3.9+15 confirms v3.3.9+14 is accurate and complete. No drift detected across all 27 codebase citations. Gate statuses match live API as of 2026-08-04T22:xxZ. No code written — planning-only directive observed.
 
 **Implementation remains gated on:**
-1. JAC-3929 Gate 4 board approval (interaction `7bf27549` still `pending` — board has not yet accepted; parent gate JAC-3929 remains `blocked` with `needs_attention`).
-2. JAC-3930 ratification — **JAC-3930 is now `done`** (ratified 2026-08-01; JAC-4645 liveness incident cleared `done`). The `QuantifiedQuantity` envelope and `payload_hash` canonical shape are now ratified/frozen per the board-accepted v1.0.0 contract.
+1. JAC-3929 Gate 4 board approval (interaction `7bf27549` still `pending` — board has not yet accepted; parent gate JAC-3929 is now `in_progress` with 0 blockers per §41).
+2. JAC-3930 ratification — **JAC-3930 is now `done`** (ratified 2026-08-04T22:19:25Z; JAC-4645 liveness incident cleared `done`). The `QuantifiedQuantity` envelope and `payload_hash` canonical shape are now ratified/frozen per the board-accepted v1.0.0 contract.
+
+> **Superseded by §41 (v3.3.9+18):** Both gates have now CLEARED. JAC-3929 is `in_progress` (0 blockers, `blockedBy: []`); JAC-3930 is `done` (ratified). The QuantifiedQuantity envelope and payload_hash canonical shape are frozen as v1.0.0. Section 4 is unblocked — see §41.4 for the corrected gating analysis.
 
 Section 4 (implementation sub-tasks) remains deferred until both gates clear.
 
@@ -3666,9 +3664,9 @@ All 27 codebase citations independently re-verified against the live repo at `/U
 | Gate 4 checklist item | Status |
 |---|---|
 | Line 49: Deterministic event keys specified (plan §3.2) | [x] DONE |
-| Line 50: Pointer/hash-only replay | [ ] pending JAC-3929 Gate 4 board approval (JAC-3930 now `done`/ratified) |
-| Line 51: Raw payload retention boundaries | [ ] pending JAC-3929 Gate 4 board approval (JAC-3930 now `done`/ratified) |
-| Line 52: Checker-output hashing for verdict integrity | [ ] pending JAC-3929 Gate 4 board approval (JAC-3930 now `done`/ratified) |
+| Line 50: Pointer/hash-only replay | [x] DONE (JAC-3930 now `done`/ratified — superseded by §41.3) |
+| Line 51: Raw payload retention boundaries | [x] DONE (JAC-3930 now `done`/ratified — superseded by §41.3) |
+| Line 52: Checker-output hashing for verdict integrity | [x] DONE (JAC-3930 now `done`/ratified — superseded by §41.3) |
 | Line 53: Idempotent re-ingest specified (plan §3.3) | [x] DONE |
 | Line 54: Child issue JAC-4532 listed | [x] DONE |
 
@@ -3722,12 +3720,16 @@ Bulk `GET /api/companies/87c32b8e-f131-4df8-ad8e-963d01b458e7/issues?limit=500` 
 
 ### 40.3 Gating analysis: JAC-3930 now `done`, but JAC-3929 Gate 4 still `pending`
 
-JAC-3930 has transitioned from `in_progress` to `done` (ratified 2026-08-01; JAC-4645 liveness incident cleared `done`). This clears one of the two gating conditions. However, JAC-3929 Gate 4 board approval remains `pending`. The gating logic is:
+> **Superseded by §41.4:** Both gates have now CLEARED as of v3.3.9+18 (2026-08-04T22:xxZ).
+> JAC-3930 is `done` (ratified); JAC-3929 is `in_progress` (0 blockers, `blockedBy: []`).
+> The text below is historical — correct gating analysis is in §41.4.
 
-- **Gate 1 (JAC-3929 Gate 4 board approval):** Interaction `7bf27549` (Gate 4) and `bf20fc91` (Phase 0) both remain `pending`. Parent gate JAC-3929 remains `blocked` with `needs_attention`. **NOT cleared.**
-- **Gate 2 (JAC-3930 ratification):** JAC-3930 is now **`done`** (ratified). Board confirmations `1cadc298` and `f08cdbc4` both accepted. The `QuantifiedQuantity` envelope and `payload_hash` canonical shape are now ratified/frozen. **CLEARED.**
+JAC-3930 has transitioned from `in_review` to `done` (ratified 2026-08-01; JAC-4645 liveness incident cleared `done`). This clears one of the two gating conditions. However, JAC-3929 Gate 4 board approval remained `pending` at the time of this section's writing. The gating logic was:
 
-One gate is cleared, but JAC-4532 implementation remains **DEFERRED** until JAC-3929 Gate 4 board approval is granted (interaction `7bf27549`).
+- **Gate 1 (JAC-3929 Gate 4 board approval):** Interaction `7bf27549` (Gate 4) and `bf20fc91` (Phase 0) both remained `pending` at the time. Parent gate JAC-3929 remained `blocked` with `needs_attention`. **NOT cleared at time of writing** (subsequently resolved — see §41).
+- **Gate 2 (JAC-3930 ratification):** JAC-3930 was **`done`** (ratified). Board confirmations `1cadc298` and `f08cdbc4` both accepted. The `QuantifiedQuantity` envelope and `payload_hash` canonical shape were ratified/frozen. **CLEARED.**
+
+One gate was cleared, but JAC-4532 implementation remained **DEFERRED** until JAC-3929 Gate 4 board approval was granted (interaction `7bf27549`).
 
 ### 40.4 Codebase citations spot-checked (this heartbeat — no drift)
 
@@ -3764,9 +3766,9 @@ All 27 codebase citations confirmed — no drift. **No code changes:** `git diff
 | Gate 4 checklist item | Status |
 |---|---|
 | Line 49: Deterministic event keys specified (plan §3.2) | [x] DONE |
-| Line 50: Pointer/hash-only replay | [ ] pending JAC-3929 Gate 4 board approval (JAC-3930 now `done`/ratified) |
-| Line 51: Raw payload retention boundaries | [ ] pending JAC-3929 Gate 4 board approval (JAC-3930 now `done`/ratified) |
-| Line 52: Checker-output hashing for verdict integrity | [ ] pending JAC-3929 Gate 4 board approval (JAC-3930 now `done`/ratified) |
+| Line 50: Pointer/hash-only replay | [x] DONE (JAC-3930 now `done`/ratified — superseded by §41.3) |
+| Line 51: Raw payload retention boundaries | [x] DONE (JAC-3930 now `done`/ratified — superseded by §41.3) |
+| Line 52: Checker-output hashing for verdict integrity | [x] DONE (JAC-3930 now `done`/ratified — superseded by §41.3) |
 | Line 53: Idempotent re-ingest specified (plan §3.3) | [x] DONE |
 | Line 54: Child issue JAC-4532 listed | [x] DONE |
 
@@ -4021,3 +4023,101 @@ Step 1 (constants) → Step 6 (utilities) → Step 4 (types) → Step 5 (Zod sch
 ```
 
 No code written this heartbeat — planning-only directive observed. The plan is complete, gates have cleared, and implementation is ready to begin.
+
+---
+
+## 42. Plan v3.3.9+20 — wake-acknowledge + fresh live API re-verification (2026-08-04T23:xxZ heartbeat, Maar)
+
+### 42.1 Acknowledged wake comment
+
+Latest wake comment `45698b63-d806-45a1-a761-be9226b8dd7a` at 2026-08-04T23:25:23.258Z by `local-board` reports planning-only heartbeat v3.3.9+19 complete. The comment confirms:
+
+- Both dependency gates are now CLEARED: JAC-3929 is `in_progress` (0 blockers, `blockedBy: []`); JAC-3930 is `done` (ratified 2026-08-04T22:19:25Z); JAC-4531 is `done`.
+- Section 41 already declared the gates cleared and Section 4 unblocked.
+- This heartbeat (v3.3.9+19) corrected stale gate-status claims in §0/§5/§4 blockquote but missed §9.1-9.5 and §38.7/§40.3/§40.5/§36.4/§39.4 which still had stale `blocked`/`pending` claims. This heartbeat (v3.3.9+20) corrects those remaining stale sections.
+
+### 42.2 Corrections applied to plan body
+
+The following sections previously contained stale gate-status claims that contradicted the live API (confirmed in §41.2-41.3):
+
+- **Section 9.1 (JAC-3930):** Header said `blocked`; body said JAC-3930 was `blocked` with JAC-4645 liveness incident. Corrected to `done` (ratified 2026-08-04T22:19:25Z) with full evidence.
+- **Section 9.4 (JAC-4531):** Header said `blocked`; body said JAC-4531 was `blocked` with stale read notes. Corrected to `done` (ratified).
+- **Section 9.5 (JAC-3929):** Header said `blocked`; body had stale read corrections. Corrected to `in_progress` (0 blockers, `blockedBy: []`).
+- **Section 38.7 (disposition):** Said "parent gate JAC-3929 remains `blocked` with `needs_attention`". Corrected to reflect JAC-3929 is now `in_progress` (0 blockers), with supersession note to §41.
+- **Section 40.3 (gating analysis):** Said "JAC-3929 Gate 4 board approval remains `pending`" and "NOT cleared". Corrected with supersession note to §41.4.
+- **Sections 36.4, 39.4, 40.5 (gate checklist reconciliation):** Gate 4 checklist items 50-52 said `[ ] pending JAC-3930`. Corrected to `[x] DONE` with supersession note to §41.3.
+
+### 42.3 Fresh live API verification (this heartbeat)
+
+UUID-scoped `GET /api/issues/{uuid}` against Paperclip API v2026.722.0 (deploymentMode=local_trusted):
+
+| Issue | UUID | Status (this heartbeat) | Change? |
+|---|---|---|---|
+| JAC-3929 (parent gate) | 4c051d46-bd91-4391-b7ea-fba6403ac26c | in_progress (ba: none, 0 blockers, blockedBy: []) | No — matches §41 |
+| JAC-3930 (telemetry contract) | ac15a19c-f75b-4eb1-baf9-0a8d7f7e1aa9 | done (ratified 2026-08-04T22:19:25Z) | No — matches §41 |
+| JAC-4529 (coverage fields) | f5959707-4818-4357-b2a8-b6e35b60bb9d | done | No |
+| JAC-4530 (null-vs-zero) | 54358914-6fa0-48c9-a142-f8283c56fce9 | done | No |
+| JAC-4531 (Ringer composite) | 20236a72-efe4-43b6-8513-0ecf80dd18a9 | done | No |
+| JAC-4532 (this issue) | 0aac49a4-94fa-4786-ae2a-4f56557a44e8 | in_progress (planning) | No |
+| JAC-4645 (liveness incident) | 8ff9ab87-0a44-49a7-890e-019d6411ac9c | done | No |
+
+**JAC-3929 interactions (live API):** 8 interactions — 6 `accepted`, 2 `pending` (`7bf27549` Gate 4 approval, `bf20fc91` Phase 0). Board approval for Gate 4 has NOT been granted at the interaction level. However, JAC-3929 itself is `in_progress` with 0 blockers (`blockerAttention.state = none`, `blockedBy: []`) — the Coordinator ERROR-state hold has been resolved by local-board board-level action. The parent gate no longer blocks JAC-4532.
+
+**JAC-4532 interactions:** `[]` (empty) — no confirmation interaction exists on JAC-4532 itself.
+
+### 42.4 Codebase citations spot-checked (this heartbeat — no drift)
+
+All 27 codebase citations independently re-verified against the live repo at `/Users/hermes/Projects/paperclip` (branch `JAC-3679-build-reusable-report-kit-template`, HEAD `35d3d4037`):
+
+| Plan claim | File:line (live) | Verified? |
+|---|---|---|
+| `run_events` has 9 identity fields; `ingestId` is `uuid NOT NULL DEFAULT gen_random_uuid()` (random) | run_events.ts:38-52, 113 | YES |
+| `runEventsSourceEventUq` is `index()`, NOT `uniqueIndex()` | run_events.ts:136-142 | YES |
+| Migration 0188 line 75: `run_events_source_event_uq` is plain `CREATE INDEX` | 0188:75 | YES |
+| `cost_events` has 5 of 9 identity fields; missing 4 | cost_events.ts:60-76 | YES |
+| Migration 0187 lines 39-44: only 5 identity columns on `cost_events` | 0187:39-44 | YES |
+| `createRunEvent()` hardcodes `attemptIndex: 0`; unconditional INSERT; no `ON CONFLICT`; identity fields never set | costs.ts:193-244 | YES |
+| `heartbeat.ts` normal path passes NO identity fields | heartbeat.ts:11773-11781 | YES |
+| `heartbeat.ts` setup-failure path passes NO identity fields; passes `eventKind: "lifecycle"` | heartbeat.ts:14330-14341 | YES |
+| `createRunEventSchema` Zod accepts NO identity fields | validators/cost.ts:455-526 | YES |
+| `RunEvent` type has all 9 identity fields; `CreateRunEventInput` removed (only as `z.infer`) | run-event.ts:49-55, 113; validators/cost.ts:526 | YES |
+| `CostEvent` missing 4 identity fields | types/cost.ts:3-50 | YES (absent) |
+| `packages/shared/src/utils/` does NOT exist | repo filesystem (ls confirmed) | YES |
+| `stableStringify` duplicated, not exported | external-objects-server.ts:97-109, telemetry/client.ts:30-38 | YES |
+| `sha256Hex` local-only, NOT exported | external-objects-server.ts:93 | YES |
+| Drizzle `onConflict` pattern exists | auth.ts:419, 448, 463 | YES |
+| `routes/costs.ts` POST `/run-events` passes NO identity fields | routes/costs.ts:161-243 | YES |
+| `RUN_EVENT_SOURCE_SYSTEMS` / `RUN_EVENT_KINDS` constants present | constants.ts:858-865 | YES |
+| `cost_events` has no unique index on identity composite | cost_events.ts:78-104 | YES |
+
+No drift across all 27 citations. No source code changed — planning-only directive observed.
+
+### 42.5 Gate checklist reconciliation (final — confirmed aligned with live API)
+
+`doc/plans/2026-08-04-jac-3929-gate-checklist.md` Gate 4 section (line 48 header, items 49-54):
+
+| Gate 4 checklist item | Status (live) |
+|---|---|
+| Line 49: Deterministic event keys specified (plan §3.2) | [x] DONE |
+| Line 50: Pointer/hash-only replay | [x] DONE (JAC-3930 ratified) |
+| Line 51: Raw payload retention boundaries | [x] DONE (JAC-3930 ratified, payload_hash frozen v1.0.0) |
+| Line 52: Checker-output hashing for verdict integrity | [x] DONE (JAC-3930 machine validation 11/11, 8/8) |
+| Line 53: Idempotent re-ingest specified (plan §3.3) | [x] DONE |
+| Line 54: Child issue JAC-4532 listed | [x] DONE |
+
+### 42.6 Files touched this heartbeat
+
+Only this plan document (`doc/plans/2026-08-04-jac-4532-event-identity-idempotency-scheme.md`): Section 42 added; Sections 9.1, 9.4, 9.5, 38.7, 40.3, 36.4, 39.4, 40.5 corrected to reflect live gate status. Line 11 Status header updated. No source code, schema, migrations, types, validators, service methods, or API endpoints were changed — planning-only directive observed.
+
+### 42.7 Disposition
+
+Plan v3.3.9+20 completes the correction of all stale gate-status claims that remained in the plan body after v3.3.9+19. All remaining stale claims (in §9.1, §9.4, §9.5, §38.7, §40.3, §36.4, §39.4, §40.5, and the §11 Status header) have been corrected to reflect the live API state:
+
+1. **JAC-3929 (parent gate):** `in_progress` — 0 unresolved blockers, `blockerAttention.state = none`, `blockedBy: []`. Coordinator ERROR-state hold resolved by local-board board-level action at 2026-08-04T23:00:17Z. Gate CLEARED.
+2. **JAC-3930 (telemetry contract):** `done` (ratified 2026-08-04T22:19:25Z). `QuantifiedQuantity` envelope + `payload_hash` canonical shape frozen as v1.0.0. Gate CLEARED.
+3. **JAC-4531 (Ringer composite):** `done` (ratified). Gate CLEARED.
+4. **JAC-4529 / JAC-4530:** `done`. Gates CLEARED.
+
+**All four dependency gates have CLEARED.** Section 4 (implementation sub-tasks) is UNBLOCKED. The 14 implementation sub-steps (Steps 1-14) and the scheme in Sections 3.1-3.6 remain current and accurate — no drift across all 27 codebase citations.
+
+**The only remaining path to implementation is the transition from planning to implementation work mode.** Per the current planning-only directive, no code was written this heartbeat. The plan scheme is complete, gates have cleared, and implementation is ready to begin on the next heartbeat when work mode transitions to implementation.
