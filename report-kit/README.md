@@ -100,8 +100,9 @@ Open `sample-report.html` in a browser to see a complete fleet health report wit
 | `report-data.schema.json` | JSON Schema (draft-07) for the data contract |
 | `template.html` | Standalone HTML template with placeholder data — copy and fill in |
 | `sample-report.html` | Working sample (fleet health report with real fleet data) |
+| `sample-data-devin-deepwiki.json` | Machine-readable sample data contract (Devin/DeepWiki research report) |
 | `README.md` | This file |
-| `report-kit.zip` | Archive of all 5 content files for distribution |
+| `report-kit.zip` | Archive of all 6 content files for distribution |
 
 ## API Reference
 
@@ -467,10 +468,10 @@ skills/paperclip/scripts/paperclip-upload-artifact.sh dist/fleet-health.html \
   --summary "Render for board review"
 ```
 
-The uploaded attachment is served inline-safe (HTML is in the default upload allowlist). For archive distribution, zip the 5 content files:
+The uploaded attachment is served inline-safe (HTML is in the default upload allowlist). For archive distribution, zip all 6 content files:
 
 ```sh
-cd report-kit && zip -r report-kit.zip report-renderer.js report-data.schema.json template.html sample-report.html README.md
+cd report-kit && zip -r report-kit.zip report-renderer.js report-data.schema.json template.html sample-report.html sample-data-devin-deepwiki.json README.md
 ```
 
 ### Headless / CI-CD
@@ -647,6 +648,10 @@ rows: [["Agent A", { status: "healthy" }]]
 ```
 
 ## Changelog
+
+### v1.2.1 (2026-08-04)
+- **Fix**: Updated Files table and deployment instructions to reflect 6 content files (was 5) — `sample-data-devin-deepwiki.json` was added to the kit but not listed.
+- **Fix**: ZIP rebuild command now includes `sample-data-devin-deepwiki.json`.
 
 ### v1.2.0 (2026-08-04)
 
