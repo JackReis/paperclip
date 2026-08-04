@@ -1,8 +1,9 @@
 # Paperclip Agent-Lifecycle Autonomy Loop: Governed Auto-Hire + Auto-Retrain
 
 > Design document (prove-on-paper). Bead: `hermes-fqu0`. Agent: Tal'darim (3287a8a9).
+> Adversarial review synthesis: Quill Med S (d839443a). Updated: 2026-08-04.
 > Date: 2026-08-04
-> Status: draft — design phase, no implementation yet.
+> Status: draft — design phase, no implementation yet. ADR-0022 proposed, pending board grant.
 
 ## 1. Goal
 
@@ -391,9 +392,10 @@ The Operator's OpenRouter 404 (distinct error pattern) would be flagged separate
 1. Should auto-hire require a Ringer judge approval, or is a Coordinator-class agent
    sufficient? The SPEC §12.1 says "Board approves or rejects" for hires — auto-hire
    is a delegation of *detection+proposal*, not of *approval*.
-2. What is the default for `autoHireEnabled` / `autoRetrainEnabled`? Paperclip V1 is
-   conservative by default (board approval for hires is true by default). These should
-   default to `false` and require explicit opt-in.
+2. What is the default for `autoHireEnabled` / `autoRetrainEnabled`? These should
+   default to `false` and require explicit opt-in. (Note: `requireBoardApprovalForNewAgents`
+   defaults to `false` per SPEC §7.1, migration `0071_default_hire_approval_off.sql` —
+   auto-hire opt-in is via company policy, not the existing board-approval flag.)
 3. Should auto-retrain be able to modify `runtimeConfig` (e.g., add a `cheap` model
    profile) in addition to `adapterConfig`? This expands the attack surface — recommend
    `adapterConfig` only for V1.
@@ -405,6 +407,45 @@ The Operator's OpenRouter 404 (distinct error pattern) would be flagged separate
    (§9.3: "Hire/create agent — yes (direct) | request via approval").
 
 ---
+
+
+## 11. Adversarial Review & Synthesis (2026-07-29)
+
+A Ringer judge panel (Kimi K3, 3 lenses: safety/blast-radius, resilience/rollback, governance/abuse)
+reviewed the four design artifacts and returned 3/3 VERIFIED PASS after two P0s and multiple P1s
+were fixed in-place. 34 findings were synthesized (2 P0, 10 P1, 13 P2, 9 P3).
+
+Full reports archived at ~/.ringer/artifacts/paperclip-autonomy-loop-adversarial-review-20260729T182616Z-p7757-report.html.
+
+### Fixes applied in-place (P0 + critical P1)
+
+| # | Finding | Priority | Lens | Fix |
+|---|---------|----------|------|-----|
+| 1 | Revert-by-full-preimage-PATCH cannot remove keys the change ADDED | P0 | Resilience | Revert computes key-level diff; explicitly deletes keys added by the change |
+| 2 | GET-verify equality against full GET body is unsatisfiable | P0 | Resilience | Snapshot pre-image, revert PATCH, sha256, GET-verify scoped to mutable config subset |
+| 3 | Bounds are an unpinned input parameter | P0 | Governance | Bounds stored as versioned, board-signed artifact loaded read-only at loop start |
+| 4 | hard_escalate keys on signal.kind, not agent state | P1 | Safety | Hard-escalate predicate changed to agent-state-based |
+| 5 | Revert PATCHes redacted pre-image back, overwriting live secret | P1 | Resilience/Safety | Revert excludes redacted fields from PATCH or escalates if unsafe |
+| 6 | Self-graded probation smoke — candidate authors the tests | P1 | Resilience/Safety | Grader-owned hidden test suite; candidate-authored tests as additional signal only |
+| 7 | Smoke does not run on the candidate model | P1 | Resilience/Safety | Added CANDIDATE_ENGINE/CANDIDATE_MODEL placeholders filled from planned_change |
+| 8 | Fable judge SPOF, quota-dead, no fail-closed | P1 | Governance | Judge liveness fail-closed: AUTO lane freezes if judge unreachable; pages human |
+| 9 | Separation of duties — loop enforces its own auto-approve | P1 | Governance | Policy enforced server-side: actuation API validates action class against signed Bounds |
+| 10 | Poisoned CAP_GAP drives AUTO hires; signal provenance unspecified | P1 | Safety/Governance | Signal provenance per detector: trusted principals only for issue-authored signals |
+| 11 | Cross-host control path is a full interactive SSH shell | P1 | Governance | Kill-switch/revert as single-purpose authenticated command, not general login |
+| 12 | No concurrency control on pre-image | P1 | Resilience | Per-agent lease acquired before CAPTURE, held through PROMOTE/REVERT, with version/etag |
+| 13 | No crash recovery — runner death between APPLY and VERIFY | P1 | Resilience | Snapshot record has explicit state field; startup reconciler auto-reverts or escalates |
+
+### Remaining findings (P2/P3, design-level, not actuated)
+- model_allow dynamically seeded (P2): Scoreboard data may only generate ESCALATE-lane proposals
+- Scope check undefined for hires (P2): Fixed NEW_HIRE_BASE_SCOPE for all AUTO hires
+- Kill-switch no off-Aegis path (P2): Dead-mans lease from off-Aegis check required
+- 30-day snapshot GC (P2): Snapshots backing live promoted changes retained for agent tenure
+- Check-provenance hash never stored (P2): Smoke manifest hash recorded in snapshot record
+- Budget enforcement is decision-time projection (P2): Verification spend counts against budget
+- GOVERNANCE_CRITICAL must be enumerated (P2): Board-ratified and versioned set
+- Kill-switch two sources of truth (P3): Defined conflict resolution
+- Roster invariant overstated (P3): Probation agents do live real work while unproven
+- secret_ref pointer restore (P3): Restoring env secret_ref does not restore the secret
 
 ## Appendix E — Goblin Verification Against Codebase (2026-08-04)
 

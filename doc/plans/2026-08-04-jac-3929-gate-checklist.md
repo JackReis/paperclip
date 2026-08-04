@@ -32,7 +32,41 @@
 |- [~] `source_deleted_at`, `tombstone_ref` — columns exist (schema DONE) but not populated by any ingestion path (Steps 4–5, 7)
 |- [~] `source_permission_ref`, `policy_version` — columns exist (schema DONE) but not derived/populated (Steps 7)
 |
-|**Remaining gap to close for Gate 2 approval:** Implementation nearly complete — 8/9 child issues done (JAC-4633–JAC-4640). JAC-4632 (S1: cost_events privacy index) remains `todo`, not started — the last open implementation task. JAC-4533 is `in_review` awaiting final sign-off. See full 9-step plan in `doc/plans/2026-08-04-jac-4533-privacy-retention-schema-fields.md` and verification evidence in `doc/plans/2026-08-04-jac-4533-implementation-verification.md`.
+|**Gate 2 status: IMPLEMENTATION COMPLETE — verified 2026-08-04 (Maar heartbeat `05a38562`):**
+
+All 9 implementation child issues (JAC-4632–JAC-4640) are complete in the working tree and committed (commit `ed1b1c276`) plus an uncommitted working-tree enhancement to `server/src/routes/costs.ts` that adds `visibility_escalation.rejected` activity-log entries (Gap S8a addressed).
+
+| Aspect | Status | Verified at |
+|---|---|---|
+| Schema columns (run_events) | DONE | `run_events.ts:85-95` |
+| Schema columns (cost_events) | DONE | `cost_events.ts:47-64` |
+| Privacy index (run_events) | DONE | `run_events.ts:154-159` |
+| Privacy index (cost_events) | DONE — IMPLEMENTED | `cost_events.ts:104-109` (`companyPrivacyIdx`); migration `0192_cost_events_privacy_index.sql` in journal (idx=192) |
+| Constants | DONE | `constants.ts:870,877,884`; exported `index.ts:515-519,537-539` |
+| Types (RunEvent) | DONE | `types/run-event.ts:93-101` |
+| Types (CostEvent) | DONE | `types/cost.ts:34-42` |
+| Validators (createCostEventSchema) | DONE | `validators/cost.ts:104-118` (fail-closed defaults + SHA-256 regex) |
+| Validators (createRunEventSchema) | DONE | `validators/cost.ts:477-491` |
+| Service (createRunEvent) | DONE | `costs.ts:138-165` (param), `:224-232` (insert with `?? DEFAULT_*` / `?? null`) |
+| Service (createEvent) | DONE | `costs.ts:94-98` (fail-closed defaults; 6 nullable via `...data` spread) |
+| API routes (fail-closed clamp) | DONE | `routes/costs.ts:128-132` (cost-events), `:189-193` (run-events) — non-board `public` clamped to `internal` |
+| API routes (activity log on clamp) | DONE — working tree | Uncommitted change adds `logActivity({ action: "visibility_escalation.rejected", ... })` at both clamp sites |
+| Heartbeat callers | DONE | `heartbeat.ts:11784-11791` (exec run), `:14342-14349` (setup failure) |
+| Stale types (CreateRunEventInput) | DONE | Removed from `types/run-event.ts`; Zod-inferred type at `validators/cost.ts:526` is canonical |
+| Tests (validator) | DONE | `cost.test.ts` — 23/23 pass (verified live) |
+| Tests (service DB-backed) | DONE | `costs-service.test.ts` — 12 pass, 14 skip (embedded Postgres unavailable) |
+| Tests (route-level clamp) | GAP — S9a | No route-level test for `visibility_class = "public"` → `internal` clamp. Recommended follow-up. |
+| Approvals table | DONE | `approvals.ts:22-25` (`artifact_kind`, `artifact_pointer`, `artifact_sha256`, `redaction_state`) |
+| Executive/internal field separation | DONE | No raw prompt/response bodies, provider request bodies, credentials, or private attachments in `run_events`/`cost_events` |
+
+**Remaining gap:** Gap S9a — route-level test for the `visibility_class = "public"` fail-closed clamp at `routes/costs.ts:128-132` / `:189-193`. The clamp and activity-log enforcement are implemented (working tree); only the HTTP-layer test is missing. This is a minor testability gap, not a security gap — the enforcement is verified by source inspection and the schema-level tests.
+
+**Verification command results (re-run by Maar):**
+- `npx vitest run packages/shared/src/validators/cost.test.ts` → 23/23 pass
+- `npx vitest run server/src/__tests__/costs-service.test.ts` → 12 passed, 14 skipped
+- `pnpm --filter @paperclipai/shared typecheck` → exit 0 (clean)
+
+All 9 child implementation issues (JAC-4632–JAC-4640) are marked `done` in Paperclip. Gate 2 (Privacy) is ready for final sign-off.
 
 ## Gate 3 — Adapter Gate [P0/P1]
 | - [ ] Read-only Paperclip shadow adapter (Phase 1A)

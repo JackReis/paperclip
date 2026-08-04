@@ -67,6 +67,7 @@ const mockLogActivity = vi.hoisted(() => vi.fn());
 const mockFetchAllQuotaWindows = vi.hoisted(() => vi.fn());
 const mockCostService = vi.hoisted(() => ({
   createEvent: vi.fn(),
+  createRunEvent: vi.fn(),
   summary: vi.fn().mockResolvedValue({ spendCents: 0 }),
   byAgent: vi.fn().mockResolvedValue([]),
   byAgentModel: vi.fn().mockResolvedValue([]),
@@ -398,6 +399,178 @@ describe("cost routes", () => {
         entityType: "agent",
         entityId: "agent-1",
         details: { budgetMonthlyCents: 2500 },
+      }),
+    );
+  });
+
+  it("clamps visibilityClass from public to internal for non-board actors on cost-events", async () => {
+    const agentId = "11111111-1111-4111-8111-111111111111";
+    const agentActor = {
+      type: "agent",
+      agentId,
+      companyId: "company-1",
+      runId: "run-1",
+      source: "agent_key",
+    };
+    const app = await createAppWithActor(agentActor);
+    mockCostService.createEvent.mockResolvedValueOnce({
+      id: "cost-event-1",
+      costCents: 15,
+      model: "gpt-5",
+    });
+
+    const res = await request(app)
+      .post("/api/companies/company-1/cost-events")
+      .send({
+        agentId,
+        provider: "openai",
+        model: "gpt-5",
+        inputTokens: 100,
+        outputTokens: 50,
+        costCents: 15,
+        occurredAt: "2026-08-04T12:00:00.000Z",
+        visibilityClass: "public",
+      });
+
+    expect(res.status).toBe(201);
+    // The service should receive the clamped value, not "public".
+    expect(mockCostService.createEvent).toHaveBeenCalledWith(
+      "company-1",
+      expect.objectContaining({ visibilityClass: "internal" }),
+    );
+    // An activity-log entry must record the rejected escalation.
+    expect(mockLogActivity).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({
+        companyId: "company-1",
+        actorType: "agent",
+        actorId: agentId,
+        action: "visibility_escalation.rejected",
+        entityType: "cost_event",
+        details: expect.objectContaining({
+          submittedVisibilityClass: "public",
+          clampedTo: "internal",
+        }),
+      }),
+    );
+  });
+
+  it("does not clamp or log visibility escalation for board actors on cost-events", async () => {
+    const app = await createApp();
+    const agentId = "11111111-1111-4111-8111-111111111111";
+    mockCostService.createEvent.mockResolvedValueOnce({
+      id: "cost-event-2",
+      costCents: 15,
+      model: "gpt-5",
+    });
+
+    const res = await request(app)
+      .post("/api/companies/company-1/cost-events")
+      .send({
+        agentId,
+        provider: "openai",
+        model: "gpt-5",
+        inputTokens: 100,
+        outputTokens: 50,
+        costCents: 15,
+        occurredAt: "2026-08-04T12:00:00.000Z",
+        visibilityClass: "public",
+      });
+
+    expect(res.status).toBe(201);
+    expect(mockCostService.createEvent).toHaveBeenCalledWith(
+      "company-1",
+      expect.objectContaining({ visibilityClass: "public" }),
+    );
+    // No visibility_escalation.rejected activity log.
+    expect(mockLogActivity).not.toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({ action: "visibility_escalation.rejected" }),
+    );
+  });
+
+  it("clamps visibilityClass from public to internal for non-board actors on run-events", async () => {
+    const agentId = "11111111-1111-4111-8111-111111111111";
+    const runId = "aaaaaaaa-1111-4111-8111-111111111111";
+    const agentActor = {
+      type: "agent",
+      agentId,
+      companyId: "company-1",
+      runId,
+      source: "agent_key",
+    };
+    mockCostService.createRunEvent.mockResolvedValueOnce({
+      id: "run-event-1",
+      model: "gpt-5",
+      status: "success",
+    });
+    // Override the mock DB so the run lookup succeeds and returns agentId.
+    const selectChainWithRun = {
+      from: vi.fn().mockReturnThis(),
+      where: vi.fn().mockResolvedValue([
+        { agentId, contextSnapshot: { issueId: "issue-1" } },
+      ]),
+    };
+    const dbWithRun = makeDb({
+      select: vi.fn().mockReturnValue(selectChainWithRun),
+    });
+    const [{ costRoutes: routes2 }, { errorHandler: eh2 }] = await Promise.all([
+      import("../routes/costs.js"),
+      import("../middleware/index.js"),
+    ]);
+    const app = express();
+    app.use(express.json());
+    app.use((req, _res, next) => {
+      req.actor = agentActor;
+      next();
+    });
+    app.use("/api", routes2(dbWithRun as any));
+    app.use(eh2);
+
+    const res = await request(app)
+      .post("/api/companies/company-1/run-events")
+      .send({
+        runId,
+        adapterType: "hermes_local",
+        model: "gpt-5",
+        provider: "nous",
+        status: "success",
+        occurredAt: "2026-08-04T12:00:00.000Z",
+        coverage: {
+          usageReportedState: "complete",
+          inputTokens: 100,
+          outputTokens: 50,
+          cachedInputTokens: 0,
+          reasoningTokens: 0,
+          toolCallTokens: 0,
+          costCents: 15,
+          priceBasis: "reported",
+          costConfidence: "high",
+          coverageState: "covered",
+          sourceStatus: "available",
+          safeStatus: "available",
+          confidence: "high",
+        },
+        visibilityClass: "public",
+      });
+
+    expect(res.status).toBe(201);
+    expect(mockCostService.createRunEvent).toHaveBeenCalledWith(
+      "company-1",
+      expect.objectContaining({ visibilityClass: "internal" }),
+    );
+    expect(mockLogActivity).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({
+        companyId: "company-1",
+        actorType: "agent",
+        actorId: agentId,
+        action: "visibility_escalation.rejected",
+        entityType: "run_event",
+        details: expect.objectContaining({
+          submittedVisibilityClass: "public",
+          clampedTo: "internal",
+        }),
       }),
     );
   });

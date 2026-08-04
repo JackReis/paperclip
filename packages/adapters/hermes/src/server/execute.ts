@@ -232,7 +232,7 @@ export const SESSION_ID_REGEX_LEGACY = /session[_ ](?:id|saved)[:\\s]+([a-zA-Z0-
 
 /** Regex to extract token usage from Hermes output. */
 export const TOKEN_USAGE_REGEX =
-  /tokens?[:\\s]+(\d+)\s*(?:input|in)\\b.*?(\d+)\s*(?:output|out)\\b/i;
+  /tokens?[:\s]+(\d+)\s*(?:input|in)\b.*?(\d+)\s*(?:output|out)\b/i;
 
 /** Regex to extract cost from Hermes output. */
 export const COST_REGEX = /(?:cost|spent)[:\\s]*\$?([\d.]+)/i;

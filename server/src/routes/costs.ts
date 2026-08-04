@@ -126,8 +126,25 @@ export function costRoutes(
     }
 
     // JAC-4533: fail-closed enforcement — external (non-board) actors cannot
-    // escalate visibility_class to "public". Clamp to the internal default.
+    // escalate visibility_class to "public". Clamp to the internal default
+    // and record an activity-log entry for the rejected escalation.
     if (req.actor.type !== "board" && req.body.visibilityClass === "public") {
+      const actor = getActorInfo(req);
+      await logActivity(db, {
+        companyId,
+        actorType: actor.actorType,
+        actorId: actor.actorId,
+        agentId: actor.agentId,
+        runId: actor.runId,
+        agentApiKeyId: actor.agentApiKeyId,
+        action: "visibility_escalation.rejected",
+        entityType: "cost_event",
+        entityId: req.body.runId ?? "pending",
+        details: {
+          submittedVisibilityClass: "public",
+          clampedTo: DEFAULT_VISIBILITY_CLASS,
+        },
+      });
       req.body.visibilityClass = DEFAULT_VISIBILITY_CLASS;
     }
 
@@ -187,8 +204,25 @@ export function costRoutes(
       }
 
       // JAC-4533: fail-closed enforcement — external (non-board) actors cannot
-      // escalate visibility_class to "public". Clamp to the internal default.
+      // escalate visibility_class to "public". Clamp to the internal default
+      // and record an activity-log entry for the rejected escalation.
       if (req.actor.type !== "board" && req.body.visibilityClass === "public") {
+        const actor = getActorInfo(req);
+        await logActivity(db, {
+          companyId,
+          actorType: actor.actorType,
+          actorId: actor.actorId,
+          agentId: actor.agentId,
+          runId: actor.runId,
+          agentApiKeyId: actor.agentApiKeyId,
+          action: "visibility_escalation.rejected",
+          entityType: "run_event",
+          entityId: req.body.runId,
+          details: {
+            submittedVisibilityClass: "public",
+            clampedTo: DEFAULT_VISIBILITY_CLASS,
+          },
+        });
         req.body.visibilityClass = DEFAULT_VISIBILITY_CLASS;
       }
 

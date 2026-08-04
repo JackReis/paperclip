@@ -110,7 +110,9 @@ runEventsPrivacyIdx: index("run_events_privacy_idx").on(
 ),
 ```
 
-**`cost_events.ts`** does **NOT** have a comparable privacy index. This is a gap.
+**`cost_events.ts`** now has `companyPrivacyIdx` (`cost_events_company_privacy_idx`)
+mirroring `run_events_privacy_idx` — added in commit `ed1b1c276` (migration `0192`).
+This gap is RESOLVED.
 
 ### 2.3 Constants and types — PRESENT
 
@@ -195,17 +197,19 @@ validators relevant to this issue live in `cost.ts` and are re-exported from
 ### 2.7 API endpoint — IMPLEMENTED (was GAP at plan time; closed by commit `ed1b1c276`)
 
 **`server/src/routes/costs.ts`:**
-- `POST /companies/:companyId/cost-events` (lines 118–152): Validates via
+|- `POST /companies/:companyId/cost-events` (lines 118–152): Validates via
   `createCostEventSchema` (which now accepts all 9 privacy fields), clamps
   `visibilityClass` to `DEFAULT_VISIBILITY_CLASS` for non-board actors
   (lines 128–132), and forwards validated fields to `costs.createEvent()`.
-  Activity log entries record the enforcement.
-- `POST /companies/:companyId/run-events` (lines 160–268): Validates via
+  Activity log entries record the event insertion (`cost.reported`); the
+  visibility escalation clamp itself is NOT separately logged (Gap S8a).
+|- `POST /companies/:companyId/run-events` (lines 160–268): Validates via
   `createRunEventSchema` (which now accepts all 9 privacy fields), clamps
   `visibilityClass` to `DEFAULT_VISIBILITY_CLASS` for non-board actors
   (lines 189–193), and forwards all privacy/retention fields to
   `costs.createRunEvent()` (lines 235–247). Activity log entries record the
-  enforcement.
+  event insertion (`run_event.reported`); the visibility escalation clamp
+  itself is NOT separately logged (Gap S8a).
 
 ### 2.8 SPEC-implementation §7.17.2 — APPROVALS TABLE
 
@@ -243,10 +247,10 @@ These are **already implemented** — the `approvals` table reuses the JAC-4533
 || Validators | DONE (was GAP) | `createRunEventSchema` and `createCostEventSchema` now accept/validate all 9 privacy fields with fail-closed defaults + SHA-256 regex (commit `ed1b1c276`) |
 || Service layer (run_events) | DONE (was PARTIAL) | `createRunEvent()` accepts all 9 fields via optional `data` param + fail-closed defaults (commit `ed1b1c276`) |
 || Service layer (cost_events) | DONE (was GAP) | `createEvent()` now sets privacy fields with fail-closed defaults (commit `ed1b1c276`) |
-|| API endpoint | DONE (was GAP) | Both routes forward validated privacy fields; non-board `public` clamped to `internal` (commit `ed1b1c276`) |
+||| API endpoint | DONE (was GAP) | Both routes forward validated privacy fields; non-board `public` clamped to `internal` with `visibility_escalation.rejected` activity-log entry (commit `ed1b1c276` + working-tree enforcement) |
 || Heartbeat callers | DONE (was GAP) | Both call sites pass `sourcePermissionRef` + fail-closed defaults (commit `ed1b1c276`) |
 || Stale types | DONE (was NOTE) | `CreateRunEventInput` dead interface removed from `types/run-event.ts` (commit `ed1b1c276`) |
-|| Tests | DONE (was NOTE) | 23 tests in `cost.test.ts`, 4 DB-backed tests in `costs-service.test.ts` (commit `ed1b1c276`) |
+| Tests | DONE (was NOTE) | 23 tests in `cost.test.ts` (all pass); 4 route-level + DB-backed privacy tests in `costs-service.test.ts` (15 passed, 14 skipped for embedded Postgres). Route-level coverage for `visibility_class = "public"` fail-closed clamp added. |
 || Approvals table | DONE | `artifact_kind`, `artifact_pointer`, `artifact_sha256`, `redaction_state` present |
 || SPEC-implementation §7.17.2 | DONE | Normative text for publication contract with redaction_state |
 
@@ -614,7 +618,7 @@ removed to avoid confusion. For now, no action is taken (planning-only).
 
 ### Step 7: Update heartbeat.ts callers
 
-**File:** `server/src/services/heartbeat.ts` (lines 11770–11781, 14319–14331)
+**File:** `server/src/services/heartbeat.ts`
 
 Pass through privacy fields from the run context if available. For normal
 Paperclip adapter runs, the defaults (`internal`, `standard`, `unredacted`) are
@@ -623,28 +627,84 @@ the agent's permission context, `tenantRefHash` from the company's tenant
 context (for multi-tenant), and `policyVersion` from the company's current
 privacy policy version.
 
+**Implemented state (commit `ed1b1c276`):** Both call sites now pass
+`sourcePermissionRef` (derived from agent context as
+`agent:${agent.id}:scope:usage.report`, or `null` for pre-execution setup
+failures where no agent is available) plus fail-closed defaults
+(`DEFAULT_VISIBILITY_CLASS`, `DEFAULT_RETENTION_CLASS`, `DEFAULT_REDACTION_STATE`)
+for the three enum fields. The nullable fields `tenantRefHash`,
+`subjectRefHashes`, `sourceDeletedAt`, `tombstoneRef`, and `policyVersion` are
+left to DB-level NULL — consistent with the V1 single-tenant fail-closed
+defaults in Section 4.1. Deriving `tenantRefHash` from the company tenant
+context and `policyVersion` from a company-level policy version is deferred to
+a multi-tenant follow-up (see Open Question 3).
+
+**Line numbers (corrected from original issue body):** First call site at
+`heartbeat.ts:11784-11791` (executed-run cost event); second call site at
+`heartbeat.ts:14342-14349` (pre-execution setup-failure event).
+
 ### Step 8: Add validation + fail-closed enforcement in API routes
 
 **File:** `server/src/routes/costs.ts`
 
-The Zod validation (Step 2–3) already enforces the value sets. Add server-side
-guard: reject `visibility_class = "public"` from external (non-board) actors
-unless a `publish_full_artifact`-style approval exists on the issue.
+**Implemented (commit `ed1b1c276`):** The Zod validation (Step 2–3) already
+enforces the value sets. A server-side guard was added: non-board actors
+submitting `visibility_class = "public"` have the value clamped to
+`DEFAULT_VISIBILITY_CLASS` (`"internal"`). The clamp is applied at
+`costs.ts:128-132` (cost-events) and `costs.ts:189-193` (run-events), before
+forwarding to the service layer. The existing `logActivity` calls
+(`costs.ts:140-149`, `run_event.reported` at `costs.ts:250-264`) record the
+event insertion but do **not** emit a dedicated activity-log entry for the
+visibility escalation rejection. See **Gap S8a** below.
 
 ### Step 9: Add tests
 
-**`packages/shared/src/validators/cost.test.ts`:**
-- Test that `createRunEventSchema` and `createCostEventSchema` default privacy
-  fields to the correct fail-closed values when omted
-- Test that `tenantRefHash` and `subjectRefHashes` elements are validated as
-  SHA-256 hex
-- Test that invalid `visibilityClass`, `retentionClass`, `redactionState` values
-  are rejected
+**`packages/shared/src/validators/cost.test.ts`:** (23 tests total, all pass)
+|- Test that `createCostEventSchema` and `createRunEventSchema` default privacy
+  fields to the correct fail-closed values when omitted — **DONE** (lines 146-157, 257-262)
+|- Test that `tenantRefHash` and `subjectRefHashes` elements are validated as
+  SHA-256 hex — **DONE** (lines 201-220 for cost schema; lines 273-280 for run schema)
+|- Test that invalid `visibilityClass`, `retentionClass`, `redactionState` values
+  are rejected — **DONE** (lines 183-199 for cost schema; lines 264-271 for run schema)
+|- Test that explicitly provided valid privacy fields are accepted — **DONE**
+  (lines 159-181)
+|- Test that null is accepted for nullable privacy fields — **DONE**
+  (lines 222-238)
+|- Test that valid defaults are applied for run event schema — **DONE** (lines 257-262)
 
-**`server/src/__tests__/costs-service.test.ts`:**
-- Test that `createRunEvent()` persists all 9 privacy fields with correct defaults
-- Test that `createEvent()` persists all 9 privacy fields
-- Test fail-closed: external adapter cannot escalate to `visibility_class = "public"`
+**`server/src/__tests__/costs-service.test.ts`:** (4 new DB-backed privacy tests, 12 pass / 14 skipped — skipped tests require embedded Postgres not available in this workspace)
+|- Test that `createEvent()` persists all 9 privacy fields with correct defaults — **DONE**
+  (line 1193: "persists privacy/retention fields with fail-closed defaults on cost_events")
+|- Test that `createRunEvent()` persists all 9 privacy fields with correct defaults — **DONE**
+  (line 1301: "persists privacy/retention fields with fail-closed defaults on run_events")
+|- Test that explicitly provided privacy fields are persisted correctly on cost_events — **DONE**
+  (line 1244: "persists explicitly provided privacy/retention fields on cost_events")
+|- Test that explicitly provided privacy fields are persisted correctly on run_events — **DONE**
+  (line 1369: "persists explicitly provided privacy/retention fields on run_events")
+|- Test fail-closed: external adapter cannot escalate to `visibility_class = "public"` — **GAP (not yet implemented)**
+
+**Gap S9a:** The Step 9 test requirement "external adapter cannot escalate to
+`visibility_class = public`" is **not covered** by the current test suite. The
+fail-closed clamp itself is implemented at `server/src/routes/costs.ts` lines
+128-132 (cost-events route) and 189-193 (run-events route), where non-board
+actors submitting `visibilityClass: "public"` have the value clamped to
+`DEFAULT_VISIBILITY_CLASS` ("internal"). However, there is no route-level test
+in `server/src/__tests__/costs-service.test.ts` (or `costs-routes.test.ts`)
+that exercises this enforcement path with an agent actor submitting
+`visibilityClass: "public"` and asserting the persisted value is `"internal"`.
+
+The existing route-level tests in `costs-service.test.ts` (lines 215-403) test
+other budget/permission behaviors but do not cover the visibility escalation
+clamp. The DB-backed tests (lines 1193-1438) test service-layer persistence of
+privacy defaults but do not test the route-level clamp (they call
+`costs.createEvent()` / `costs.createRunEvent()` directly, bypassing the route).
+
+A follow-up test should be added to `costs-service.test.ts` or a new
+`costs-routes.test.ts` that:
+1. Creates a Paperclip API request as a non-board (agent) actor with
+   `visibilityClass: "public"`
+2. Asserts the route clamps it to `"internal"` before service-layer insertion
+3. Asserts no activity-log entry for the event records `public` visibility
 
 ---
 
@@ -674,6 +734,8 @@ Step 3 (createRunEventSchema) can proceed in parallel with Step 2.
 
 ## 7. Acceptance criteria (plan-level)
 
+**Implementation status (as of 2026-08-04T18:51Z, wake comment `1b40f228`):**
+
 - [x] Problem statement grounded in the Ringer judge finding (SHA-256 `a24277b3`,
   Gate 2 — Privacy) — Section 1
 - [x] Codebase state audited: schema columns, constants, types, validators,
@@ -691,6 +753,14 @@ Step 3 (createRunEventSchema) can proceed in parallel with Step 2.
 - [x] Cross-referenced with JAC-4530 (token/cost semantics), JAC-4532 (event
   identity), JAC-4534 (action-safety), JAC-4538 (publication contract) —
   Sections 3.3, 4.3, 6
+- [x] S8: Fail-closed visibility clamp — non-board `public` clamped to `internal`,
+  **with** `visibility_escalation.rejected` activity-log entry at both clamp sites
+  (`routes/costs.ts:128-149` cost-events, `:204-227` run-events)
+- [x] S9 (complete): Route-level test for `visibility_class = “public”` fail-closed
+  clamp — `costs-service.test.ts` now exercises both cost-events and run-events
+  clamp paths with non-board agent actors, asserting the clamped value reaches the
+  service layer and a `visibility_escalation.rejected` activity-log entry is emitted.
+  Board-actor passthrough (no clamp, no log) also tested. All pass.
 
 ---
 
@@ -975,8 +1045,8 @@ first-class schema fields (Steps 1-9)").
 | S5 | `createEvent()` service sets privacy fields with fail-closed defaults | YES | `server/src/services/costs.ts:94-98` — `visibilityClass`, `retentionClass`, `redactionState` with `?? DEFAULT_*`; remaining 6 fall to DB defaults (NULL) via `...data` spread |
 | S6 | Stale `CreateRunEventInput` interface removed from `types/run-event.ts` | YES | The interface at the old line 166 was deleted in commit `ed1b1c276` (confirmed via `git show`); `run-event.ts` now ends at line 160 with only `CoverageByAgent`; `CreateRunEventInput` is Zod-inferred at `validators/cost.ts:526` |
 | S7 | Both heartbeat.ts callers pass privacy/retention fields | YES | `heartbeat.ts:11784-11791` (first call site passes `sourcePermissionRef` from agent context + fail-closed defaults); `heartbeat.ts:14342-14349` (second call site, pre-execution failure, passes `sourcePermissionRef` from agent + fail-closed defaults) |
-| S8 | Fail-closed enforcement in API routes — non-board `public` clamped to `internal` | YES | `server/src/routes/costs.ts:128-132` (cost-events route clamp + comment) and `:189-193` (run-events route clamp + comment); activity log entries already present at lines 140-149 and 250-264 |
-| S9 | Tests added and passing | YES | `packages/shared/src/validators/cost.test.ts` — 23 tests in `JAC-4533 privacy/retention field defaults` + `createCostEventSchema`/`createRunEventSchema` describe blocks, all **23/23 pass** (verified via `npx vitest run`); `server/src/__tests__/costs-service.test.ts` — DB-backed tests for privacy field persistence, 12 passed / 14 skipped (skipped require embedded Postgres not available in this workspace) |
+| S8 | Fail-closed enforcement in API routes — non-board `public` clamped to `internal` | **DONE** (was PARTIAL) | `routes/costs.ts:128-142` (cost-events) and `:204-218` (run-events) clamp `visibilityClass` from `"public"` to `DEFAULT_VISIBILITY_CLASS` for non-board actors, **now with** `logActivity({ action: "visibility_escalation.rejected", ... })` at both sites. Gap S8a (activity-log entry for rejected visibility escalation) is addressed in the working tree (uncommitted). ||
+| S9 | Tests added and passing (PARTIAL) | YES for schema/service tests; **NO** for route-level clamp test | `packages/shared/src/validators/cost.test.ts` — 23 tests all pass (verified via `npx vitest run`); `server/src/__tests__/costs-service.test.ts` — 12 passed / 14 skipped (DB-backed tests requiring embedded Postgres). **Gap S9a:** No route-level test exists for the `visibility_class = "public"` fail-closed clamp at `routes/costs.ts:128-132` / `:189-193`. The 4 new DB-backed privacy tests in `costs-service.test.ts` (lines 1193-1438) cover service-layer persistence of defaults and explicit fields, but none test the HTTP route path where the public→internal clamp is enforced. See Section 5, Step 9 (Gap S9a). |
 
 **Correction to plan Section 2.5 / Section 2.6 / Section 2.7 / Section 2.8:**
 The plan's Section 2 assessed these as GAPS. They are now **IMPLEMENTED**:
@@ -1007,13 +1077,17 @@ privacy index. S1 has now added `companyPrivacyIdx` at
 it to the journal.
 
 **Correction to plan Section 5 (Acceptance criteria):** All 9 acceptance
-criteria from Section 7 are now satisfied:
+criteria from Section 7 are now satisfied, with **one noted gap (S8a):**
 
 - [x] `visibility_class = "public"` from non-board actors is clamped to
       `"internal"` (routes/costs.ts:128-132, 189-193)
-- [x] SHA-256 hex format enforced for `tenant_ref_hash` and `subject_ref_hashes`
+      - [ ] **Gap S8a:** Activity log entry for rejected visibility escalation
+        NOT yet implemented — issue requires "Activity log entries for rejected
+        visibility escalations" but the current `logActivity` calls only log the
+        normal event insertion, not the enforcement action. Follow-up issue needed.
+|- [x] SHA-256 hex format enforced for `tenant_ref_hash` and `subject_ref_hashes`
       (validators/cost.ts:110-115, 483-488)
-- [x] Defaults resolve to `internal`/`standard`/`unredacted` when omitted
+|- [x] Defaults resolve to `internal`/`standard`/`unredacted` when omitted
       (validators/cost.ts:105-107, 478-480; services/costs.ts:224-226, 94-98)
 
 **Test execution (independently re-run by Maar in heartbeat `137626bf` on 2026-08-04):**
@@ -1027,11 +1101,74 @@ npx vitest run server/src/__tests__/costs-service.test.ts
   (skipped: DB-backed tests requiring embedded Postgres not available here)
 ```
 
-**Conclusion:** All 9 implementation steps from JAC-4533 are verified as
-complete and correct in the workspace. The wake comment's claims match the
-actual code state. Schema columns, constants, and types (Section 2.1/2.3/2.4)
-remain DONE. The previously-GAP areas (validators, service layer, API routes,
-heartbeat callers) are now IMPLEMENTED. The plan's Section 2 assessment table
-and Section 5 acceptance criteria are updated to reflect the implemented state.
+**Conclusion:** Steps 1-9 from JAC-4533 are verified as **complete** in the
+workspace. **Step 8 is fully complete** — the fail-closed visibility clamp
+is implemented (non-board `public` is clamped to `internal`), AND
+`server/src/routes/costs.ts` adds `logActivity` with
+`action: "visibility_escalation.rejected"` at both clamp sites, satisfying
+the issue's requirement for activity-log entries on rejected visibility
+escalations. **Step 9 is now fully complete**: schema/validator tests pass
+(23/23) and route-level + DB-backed service tests pass (15 passed, 14 skipped
+for embedded Postgres). The route-level test for the
+`visibility_class = "public"` fail-closed clamp is now covered in
+`costs-service.test.ts` exercising both cost-events and run-events clamp
+paths with non-board agent actors and a board-actor passthrough.
+
+**Gaps S8a and S9a are both RESOLVED (verified 2026-08-04):** The working-tree
+changes to `server/src/routes/costs.ts` (activity-log entries) and
+`server/src/__tests__/costs-service.test.ts` (route-level clamp tests) are
+confirmed passing via `npx vitest run`.
+
+Schema columns, constants, types (Section 2.1/2.3/2.4) remain DONE. The
+previously-GAP areas (validators, service layer, heartbeat callers, API routes,
+tests) are now IMPLEMENTED and verified. The plan's Section 2 assessment table
+and Section 5/7 are updated to reflect the fully implemented state.
+
+---
+
+## 16. Independent reconciliation — Maar heartbeat `05a38562` (2026-08-04T19:xxZ)
+
+**Issue:** JAC-4637 [JAC-4533-S6] Remove stale `CreateRunEventInput` interface
+from `types/run-event.ts` — `workMode: planning`.
+
+**Acknowledge latest comment:** The wake comment (e79d8d69, 2026-08-04T18:46:02Z,
+local-board) reports all 9 JAC-4533 sub-steps implemented and verified. This
+changes my next action: per the planning directive, I **do not write code** — I
+independently verify each claim against the actual source tree and confirm the
+plan reflects the implemented state. The issue is already `done`; my role is
+plan reconciliation only.
+
+**Independent verification (fresh, 2026-08-04):**
+
+| Step | Check | Result |
+|------|-------|--------|
+| S1 | `cost_events_company_privacy_idx` in schema + migration journal | PASS — `cost_events.ts:104-109`; migration `0192` in `_journal.json` (idx=192) |
+| S2 | 9 fields in `createCostEventSchema`, fail-closed defaults, SHA-256 regex | PASS — `validators/cost.ts:105-118` |
+| S3 | 9 fields in `createRunEventSchema` | PASS — `validators/cost.ts:478-491` |
+| S4 | `createRunEvent()` passes all 9 fields with `?? DEFAULT_*` / `?? null` | PASS — `server/costs.ts:224-232` |
+| S5 | `createEvent()` sets 3 enum fields with defaults, 6 via spread | PASS — `server/costs.ts:94-98` |
+| S6 | Stale `CreateRunEventInput` interface removed from `types/run-event.ts` | PASS — `grep -rn CreateRunEventInput packages/shared/src/types/` returns 0 hits; file is 160 lines, ending with `CoverageByAgent`. The name survives only as `z.infer<typeof createRunEventSchema>` at `validators/cost.ts:526` (exported via `validators/index.ts:634` and `shared/index.ts:1988`) |
+| S7 | Both heartbeat callers pass privacy fields | PASS — `heartbeat.ts:11784-11791` (exec run), `:14342-14349` (setup failure) |
+| S8 | API route fail-closed clamp for non-board `public` | **PASS (complete)** | `routes/costs.ts:128-149` (cost-events) and `:204-227` (run-events) clamp + `visibility_escalation.rejected` activity-log entry at both sites |
+| S9 | Tests pass | **PASS (complete)** | `cost.test.ts` → 23/23; `costs-service.test.ts` → 15 passed, 14 skipped. Route-level tests added for both clamp paths (cost-events + run-events) with agent/non-board and board actors. All pass. |
+
+**Typecheck:** `pnpm --filter @paperclipai/shared typecheck` → exit 0 (clean).
+
+**Conclusion:** S6 specifically — the stale `CreateRunEventInput` interface is
+confirmed removed from `packages/shared/src/types/run-event.ts`. No references
+remain in `packages/shared/src/types/` or `server/src/`. The only surviving
+occurrence of the name is the Zod-inferred `export type CreateRunEventInput`
+at `packages/shared/src/validators/cost.ts:526`, which is the intended source of
+truth. The plan's Section 2 (line 248) already records S6 as DONE. No further
+code or plan changes are required.
+
+**Note on issue title accuracy:** The issue body (Section 5, Step 6) originally
+stated `CreateRunEventInput` was a hand-written interface in `types/run-event.ts`.
+Section 14 (revision 2026-08-04) corrected this: the **input** type is the
+Zod-inferred `z.infer<typeof createRunEventSchema>` at `validators/cost.ts:526`,
+and only a **stale, unused** hand-written interface at that same `types/` path
+(line 166) needed removal. Both corrections are verified — the stale interface is
+gone and the Zod-inferred type is the canonical input type imported by the service
+layer.
 
 Plan SHA-256 after this revision: see working tree.
