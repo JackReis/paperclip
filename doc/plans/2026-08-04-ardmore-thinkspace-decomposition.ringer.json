@@ -1,0 +1,119 @@
+{
+    "run_name": "ardmore-thinkspace-decomposition-20260804",
+    "workdir": "{{WORKDIR}}",
+    "max_parallel": 2,
+    "tasks": [
+        {
+            "key": "ardmore-context-research",
+            "task_type": "research",
+            "engine": "mock",
+            "timeout_s": 300,
+            "bead_id": "",
+            "paperclip_issue": "JAC-4582",
+            "expect_files": [
+                "ada-context-research.md"
+            ],
+            "spec": "You are a research assistant working on the Ardmore ThinkSpace initiative. Gather and document the key context needed by all downstream tasks: the ADA $1M entrepreneurship pivot (CORI strategy, approved 2026-07, pending OK Commerce amendment), the three ADA three-phase model, the relevant budget lines ($120k outreach & storytelling, $180k programming/founder sprint), and known stakeholders (Bill Murphy at ADA, Chamber President, CORI, OK Dept. of Commerce, REI Oklahoma, SBDCs). Write ./ada-context-research.md with clearly labeled sections: ADA Pivot Overview, Three-Phase Model, Budget Lines, Stakeholder List, Pending Constraints.",
+            "check": "test -s ada-context-research.md && grep -qi 'ADA' ada-context-research.md && grep -qi '120k\\|180k' ada-context-research.md && echo 'EXECUTED_CHECK=PASS ada-context-research.md contains ADA pivot context and budget lines'",
+            "verified": "ada-context-research.md exists, is non-empty, and contains ADA pivot context, three-phase model, budget lines, and stakeholder list."
+        },
+        {
+            "key": "hq2-research-bill-murphy",
+            "task_type": "copywriting",
+            "engine": "mock",
+            "timeout_s": 300,
+            "bead_id": "notes-jclol.1.1",
+            "paperclip_issue": "JAC-4582",
+            "expect_files": [
+                "hq2-bill-murphy-draft.md"
+            ],
+            "spec": "You are drafting the outreach email to Bill Murphy, ADA President & CEO. The email must: briefly introduce Jack Reis and the AI services business context, reference the $1M ADA entrepreneurship pivot (CORI strategy, approved 2026-07, pending OK Commerce amendment), position the AI-powered ThinkSpace as a complementary, evidence-gated pilot (not a replacement for the operating lead), highlight the $120k outreach & storytelling budget line as the natural fit, and request a 30-min introductory meeting to scope a pilot. Write ./hq2-bill-murphy-draft.md as a plain-text email draft with subject line and body.",
+            "check": "test -s hq2-bill-murphy-draft.md && grep -qi 'Bill Murphy' hq2-bill-murphy-draft.md && grep -qi 'ThinkSpace' hq2-bill-murphy-draft.md && grep -qi '120k\\|outreach' hq2-bill-murphy-draft.md && grep -qi 'meeting' hq2-bill-murphy-draft.md && echo 'EXECUTED_CHECK=PASS hq2-bill-murphy-draft.md contains email draft to Bill Murphy'",
+            "verified": "hq2-bill-murphy-draft.md exists, is non-empty, and contains a draft email to Bill Murphy referencing ThinkSpace, the $120k budget, and a meeting request."
+        },
+        {
+            "key": "hq2-research-chamber",
+            "task_type": "copywriting",
+            "engine": "mock",
+            "timeout_s": 300,
+            "bead_id": "notes-jclol.1.2",
+            "paperclip_issue": "JAC-4582",
+            "expect_files": [
+                "hq2-chamber-draft.md"
+            ],
+            "spec": "You are drafting the outreach email to the Chamber President (the program coordination lead). The email must: position the Chamber as the coordination partner (not competing with the ADA fiscal lead), reference the $180k programming/founder sprint budget line as the collaboration angle, request a joint meeting with ADA to align on the AI pilot scope, and respect the constraint that everything must be light-structure and handoff-able. Write ./hq2-chamber-draft.md as a plain-text email draft with subject line and body.",
+            "check": "test -s hq2-chamber-draft.md && grep -qi 'Chamber' hq2-chamber-draft.md && grep -qi '180k\\|founder sprint' hq2-chamber-draft.md && grep -qi 'joint meeting\\|meeting' hq2-chamber-draft.md && echo 'EXECUTED_CHECK=PASS hq2-chamber-draft.md contains email draft to Chamber President'",
+            "verified": "hq2-chamber-draft.md exists, is non-empty, and contains a draft email to the Chamber President referencing the $180k budget and a joint meeting request."
+        },
+        {
+            "key": "hq2-send-emails",
+            "task_type": "fleet-work",
+            "engine": "mock",
+            "timeout_s": 600,
+            "bead_id": "notes-jclol.1.3",
+            "paperclip_issue": "JAC-4582",
+            "expect_files": [
+                "hq2-emails-sent-receipt.md"
+            ],
+            "spec": "You are the send step for the Ardmore ThinkSpace outreach. Both email drafts (hq2-bill-murphy-draft.md and hq2-chamber-draft.md) must already exist. Your job: document that both emails are ready to send, draft a meeting request for a 30-min introductory meeting to scope the AI pilot, and write ./hq2-emails-sent-receipt.md recording what was prepared, the meeting request details, and any response received. This task simulates the send action — in production, the human operator sends via their own email client and updates this receipt with delivery confirmation.",
+            "check": "test -s hq2-emails-sent-receipt.md && grep -qi 'Bill Murphy' hq2-emails-sent-receipt.md && grep -qi 'Chamber' hq2-emails-sent-receipt.md && grep -qi 'meeting\\|30-min\\|introductory' hq2-emails-sent-receipt.md && echo 'EXECUTED_CHECK=PASS hq2-emails-sent-receipt.md records both emails prepared + meeting request'",
+            "verified": "hq2-emails-sent-receipt.md exists, is non-empty, and records both outreach emails prepared and a 30-min meeting request."
+        },
+        {
+            "key": "hq3-requirements",
+            "task_type": "requirements",
+            "engine": "mock",
+            "timeout_s": 300,
+            "bead_id": "notes-jclol.2.1",
+            "paperclip_issue": "JAC-4582",
+            "expect_files": [
+                "hq3-requirements.md"
+            ],
+            "spec": "You are defining the scope and requirements for the founder-sprint AI toolkit prototype. Must: map to the three phases of the ADA model (ideation/validation, customer discovery, early traction), specify that the toolkit must run on a laptop with no server setup, be usable by founders with minimal technical background, be productizable as a replicable ThinkSpace-in-a-box component, and reference the $180k programming/founder sprint budget line. Write ./hq3-requirements.md with clear sections for each phase and the non-functional requirements.",
+            "check": "test -s hq3-requirements.md && grep -qi 'ideation' hq3-requirements.md && grep -qi 'customer discovery' hq3-requirements.md && grep -qi 'early traction' hq3-requirements.md && grep -qi 'laptop\\|no server' hq3-requirements.md && grep -qi '180k' hq3-requirements.md && echo 'EXECUTED_CHECK=PASS hq3-requirements.md covers all three ADA phases + laptop constraint + budget'",
+            "verified": "hq3-requirements.md exists, is non-empty, and covers all three ADA phases, laptop/no-server constraint, and the $180k budget reference."
+        },
+        {
+            "key": "hq3-toolkit-prototype",
+            "task_type": "code-feature",
+            "engine": "mock",
+            "timeout_s": 900,
+            "bead_id": "notes-jclol.2.2",
+            "paperclip_issue": "JAC-4582",
+            "expect_files": [
+                "hq3-toolkit-prototype.md"
+            ],
+            "spec": "You are building the AI toolkit prototype components. Must produce: (1) a lightweight AI assistant for market research (customer interviews, competitor analysis), and (2) a template-driven business model canvas generator. Both must run on a laptop, no server setup, usable by non-technical founders. Write ./hq3-toolkit-prototype.md describing the two components, their architecture, how they run locally (e.g., via pip install or a portable binary), and what AI model/backend they use.",
+            "check": "test -s hq3-toolkit-prototype.md && grep -qi 'market research' hq3-toolkit-prototype.md && grep -qi 'business model canvas' hq3-toolkit-prototype.md && grep -qi 'laptop\\|local\\|no server' hq3-toolkit-prototype.md && echo 'EXECUTED_CHECK=PASS hq3-toolkit-prototype.md covers both toolkit components + local runtime'",
+            "verified": "hq3-toolkit-prototype.md exists, is non-empty, and describes both market research assistant and business model canvas generator with local runtime constraints."
+        },
+        {
+            "key": "hq5-cadence-gates",
+            "task_type": "planning",
+            "engine": "mock",
+            "timeout_s": 300,
+            "bead_id": "notes-jclol.3.2",
+            "paperclip_issue": "JAC-4582",
+            "expect_files": [
+                "hq5-cadence-gates.md"
+            ],
+            "spec": "You are defining the communication cadence and decision gates tracker for the Ardmore ThinkSpace initiative. Must capture: (1) communication cadence — who gets touched and when (weekly check-in, monthly report, milestone gates), (2) decision gates — evidence needed at each step (Commerce amendment, operating lead hire, Spring 2028 building decision), (3) dependency links to other hermes-83hq subtasks. Write ./hq5-cadence-gates.md with clear sections for Cadence, Decision Gates, and Subtask Dependencies.",
+            "check": "test -s hq5-cadence-gates.md && grep -qi 'cadence\\|weekly\\|monthly' hq5-cadence-gates.md && grep -qi 'decision gate\\|Commerce amendment' hq5-cadence-gates.md && grep -qi 'dependency\\|83hq' hq5-cadence-gates.md && echo 'EXECUTED_CHECK=PASS hq5-cadence-gates.md covers cadence, gates, and subtask dependencies'",
+            "verified": "hq5-cadence-gates.md exists, is non-empty, and covers communication cadence, decision gates with Commerce amendment, and subtask dependency links."
+        },
+        {
+            "key": "hq5-stakeholder-map",
+            "task_type": "research",
+            "engine": "mock",
+            "timeout_s": 300,
+            "bead_id": "notes-jclol.3.1",
+            "paperclip_issue": "JAC-4582",
+            "expect_files": [
+                "hq5-stakeholder-map.md"
+            ],
+            "spec": "You are creating a living stakeholder map for the Ardmore ThinkSpace initiative. Capture: (1) key stakeholders — Bill Murphy (ADA), Chamber President, CORI, OK Dept. of Commerce, REI Oklahoma, SBDCs; (2) role and public contact info; (3) relationship to the initiative and influence level; (4) current status (engaged/pending/not-contacted). Write ./hq5-stakeholder-map.md as a structured table or list with all four fields per stakeholder.",
+            "check": "test -s hq5-stakeholder-map.md && grep -qi 'Bill Murphy' hq5-stakeholder-map.md && grep -qi 'Chamber' hq5-stakeholder-map.md && grep -qi 'Commerce' hq5-stakeholder-map.md && grep -qi 'REI' hq5-stakeholder-map.md && echo 'EXECUTED_CHECK=PASS hq5-stakeholder-map.md contains all key stakeholders with roles and status'",
+            "verified": "hq5-stakeholder-map.md exists, is non-empty, and contains all key stakeholders (Bill Murphy, Chamber, Commerce, REI, SBDCs) with roles and status."
+        }
+    ]
+}

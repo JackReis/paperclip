@@ -1,0 +1,21 @@
+{
+  "kind": "request_confirmation",
+  "continuationPolicy": "wake_assignee_on_accept",
+  "idempotencyKey": "confirmation:JAC-3929:ringer-judge-gates:20260729",
+  "payload": {
+    "version": 1,
+    "prompt": "The Ringer independent judge review for JAC-3929 is complete. All four draft lanes passed their executable checks. The judge report (SHA-256 a24277b3) identifies 6 approval gates. No implementation is authorized until gates pass. Approve proceeding to Phase 0 (Ratify the contract) upon these gates passing?",
+    "acceptLabel": "Approve all 6 gates — proceed to Phase 0",
+    "rejectLabel": "Hold — amend gates",
+    "rejectRequiresReason": true,
+    "rejectReasonLabel": "Which gate(s) to amend and what changes?",
+    "allowDeclineReason": true,
+    "supersedeOnUserComment": true,
+    "detailsMarkdown": "## Ringer Judge Review — Complete\n\n**Judge report:** `/Users/hermes/.ringer/artifacts/deliverables/fleet-spend-observatory-independent-judge-20260729-20260729T202530Z-p58409/independent-judge/report.md`\n**Report SHA-256:** `a24277b3`\n**Date:** 2026-07-29\n\n### Review outcome\nAll four draft lanes passed their executable checks. The judge identified 1 P0 finding (Paperclip fail-closed coverage), 5 P1 findings, 4 P2 findings, 1 P3 finding.\n\n### The 6 Approval Gates (checklist in `doc/plans/2026-08-04-jac-3929-gate-checklist.md`)\n\n1. **Schema gate** — approve quantity/null semantics (`{value|null, unit, reported_state, source_field, observed_at, confidence}`), `reasoning_tokens`, `tool_call_tokens`, `currency`, `pricing_version_ref`, event identity algorithm, lineage edge vocabulary, confidence levels. Child issues: JAC-4530, JAC-4532\n\n2. **Privacy gate** — approve field-level redaction, retention classes, source permission handling, deletion/tombstone propagation, executive/internal field separation. Child issue: JAC-4533\n\n3. **Adapter gate** — approve read-only Paperclip shadow adapter (Phase 1A) + Ringer composite shadow adapter (Phase 1B). Proof of no provider/telemetry/alert/service/credential/runtime mutation required. Child issues: JAC-4529, JAC-4531\n\n4. **Replay/identity gate** — approve deterministic event keys, pointer/hash-only replay, raw payload retention boundaries, checker-output hashing, idempotent re-ingest.\n\n5. **Guardrail gate** — approve staged detector, Paperclip packet template, Telegram redacted payload, pause authority limited to new/queued only. Child issues: JAC-4534, JAC-4536\n\n6. **Publication gate** — approve local-only vs tailnet scope, executive audience, auth, pointer surfaces, rollback acceptance tests. Child issues: JAC-4538, JAC-4535\n\n### What acceptance authorizes\nPlanning-only follow-up: adapter-discovery child issues + schema-validation spike. NO provider-account changes, telemetry re-configuration, or dashboard external publication.",
+    "target": {
+      "label": "Ringer Judge — 6 Approval Gates (a24277b3)",
+      "type": "custom",
+      "key": "ringer-judge-gates-20260729"
+    }
+  }
+}

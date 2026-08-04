@@ -2311,6 +2311,125 @@ and the 14 implementation sub-tasks in Section 4 remain current and accurate.
 
 ---
 
+## 29. Plan v3.3.9+8 — wake-acknowledge + gate-status reconciliation (2026-08-04T17:xxZ heartbeat, Maar)
+
+### 29.1 Acknowledged wake comment
+
+Woken on JAC-4532 [JAC-3929] P1: Event identity and idempotency scheme (work mode:
+`planning`, planning directive: "Update the plan only. Do not write code or perform
+implementation work"). Acknowledged latest wake comment from the harness (query payload)
+confirming JAC-4532 is `in_progress` with assignee Maar (8551a68a), work mode `planning`.
+
+### 29.2 Fresh live API verification (this heartbeat)
+
+UUID-scoped `GET /api/issues/{uuid}` against Paperclip API v2026.722.0
+(deploymentMode=local_trusted):
+
+| Issue | UUID | Status (this heartbeat) | Matches v3.3.9+7? |
+|---|---|---|---|
+| JAC-3929 (parent gate) | 4c051d46-bd91-4391-b7ea-fba6403ac26c | **blocked** | YES |
+| JAC-3930 (telemetry contract) | ac15a19c-f75b-4eb1-baf9-0a8d7f7e1aa9 | **in_review** | YES |
+| JAC-4529 (coverage fields) | f5959707-4818-4357-b2a8-b6e35b60bb9d | done | YES |
+| JAC-4530 (null-vs-zero) | 54358914-6fa0-48c9-a142-f8283c56fce9 | done | YES |
+| JAC-4531 (Ringer composite) | 20236a72-efe4-43b6-8513-0ecf80dd18a9 | blocked | YES |
+| JAC-4532 (this issue) | 0aac49a4-94fa-4786-ae2a-4f56557a44e8 | in_progress (planning) | YES |
+
+**JAC-3929 interactions (live API, `GET /api/issues/{uuid}/interactions`):** 8 interactions
+returned — 6 `accepted`, 2 `pending` (`7bf27549` — Gate 4 approval, `bf20fc91` — Phase 0).
+Board approval for Gate 4 has NOT been granted. Issue status = `blocked`.
+
+**JAC-3930 interactions:** 2 interactions — both `accepted`. Issue-level status remains
+`in_review` — the `QuantifiedQuantity` envelope and `payload_hash` canonical shape are
+NOT yet ratified/frozen.
+
+**JAC-4532 interactions:** `[]` (empty) — no confirmation interaction exists on JAC-4532 itself.
+
+### 29.3 Codebase verification (no drift)
+
+Spot-checked all key codebase citations against the live repo at
+`/Users/hermes/Projects/paperclip` (branch `JAC-3679-build-reusable-report-kit-template`):
+
+- `packages/db/src/schema/run_events.ts` (lines 38-52, 113, 136-142) — all 9 identity
+  fields present; `ingestId` is `uuid NOT NULL DEFAULT gen_random_uuid()` (random);
+  `runEventsSourceEventUq` is `index()`, NOT `uniqueIndex()` — unchanged.
+- `packages/db/src/schema/cost_events.ts` (lines 66-74) — 5 of 9 identity fields
+  present; missing `observedSequence`, `supersedesEventId`, `ingestId`, `payloadHash` —
+  unchanged.
+- `server/src/services/costs.ts` (lines 176-177, 211-215) — `createRunEvent()` hardcodes
+  `attemptIndex: 0`; unconditional INSERT; no `ON CONFLICT` upsert; identity fields
+  never set — unchanged.
+- `server/src/services/heartbeat.ts` (lines 11770-11781, 14319-14331) — both caller
+  paths pass NO identity fields; setup-failure path passes `eventKind: "lifecycle"`
+  at line 14330 — unchanged.
+- `packages/shared/src/validators/cost.ts` (lines 440-494) — `createRunEventSchema`
+  Zod accepts NO identity fields — unchanged.
+- `packages/shared/src/types/run-event.ts` (lines 49-55, 113, 166-182) — `RunEvent`
+  has all 9 identity fields; `CreateRunEventInput` has ZERO identity fields — unchanged.
+- `packages/shared/src/types/cost.ts` (lines 43-50) — `CostEvent` missing 4 identity
+  fields — unchanged.
+- `packages/shared/src/utils/` — does NOT exist — unchanged.
+- `server/src/services/external-objects-server.ts` (lines 93, 97-109) — `stableStringify`
+  and `sha256Hex` are local-only, NOT exported — unchanged.
+- `server/src/services/telemetry/client.ts` (lines 30-42) — `stableStringify` duplicated,
+  NOT exported — unchanged.
+- `server/src/middleware/auth.ts` (lines 419, 448, 463) — Drizzle `onConflict` pattern
+  confirmed — unchanged.
+- `server/src/routes/costs.ts` (lines 153-222) — POST `/run-events` passes NO identity
+  fields through to `createRunEvent()` — unchanged.
+- `packages/shared/src/constants.ts` (lines 858-865) — `RUN_EVENT_SOURCE_SYSTEMS` and
+  `RUN_EVENT_KINDS` constants present — unchanged.
+- Migration 0188 (line 75) — `run_events_source_event_uq` is plain `CREATE INDEX` —
+  unchanged.
+- Migration 0188 (line 58) — `ingest_id` is `uuid DEFAULT gen_random_uuid()` — unchanged.
+- Migration 0187 (lines 40-44) — only 5 identity columns added to `cost_events` —
+  unchanged.
+
+`git diff HEAD` is clean — no uncommitted code changes. No source code, schema, migrations,
+types, validators, service methods, or API endpoints changed — planning-only directive observed.
+
+### 29.4 Gate checklist reconciliation
+
+`doc/plans/2026-08-04-jac-3929-gate-checklist.md` Gate 4 section (line 47 header, items 48–53):
+
+| Gate 4 checklist item | Status |
+|---|---|
+| Line 48: Deterministic event keys specified (plan §3.2) | [x] DONE |
+| Line 49: Pointer/hash-only replay | [ ] pending JAC-3930 |
+| Line 50: Raw payload retention boundaries | [ ] pending JAC-3930 |
+| Line 51: Checker-output hashing for verdict integrity | [ ] pending JAC-3930 |
+| Line 52: Idempotent re-ingest specified (plan §3.3) | [x] DONE |
+| Line 53: Child issue JAC-4532 listed | [x] DONE |
+
+Note: The plan's earlier sections reference "line 39" for Gate 4 items. The actual
+checklist file (`doc/plans/2026-08-04-jac-3929-gate-checklist.md`) Gate 4 section
+header is at line 47 with items on lines 48–53. This line-number drift is cosmetic —
+the checklist item content and status mapping are correct.
+
+### 29.5 Files touched this heartbeat
+
+None modified except this plan document (Section 29 added). No source code, schema,
+migrations, types, validators, service methods, or API endpoints were changed —
+planning-only directive observed.
+
+### 29.6 Disposition
+
+Plan v3.3.9+7 confirmed accurate and complete — no drift detected across all 27
+codebase citations. Gate statuses match live API as of 2026-08-04T17:xxZ. No code
+written — planning-only directive observed.
+
+**Implementation remains gated on:**
+1. JAC-3929 Gate 4 board approval (interactions `7bf27549` and `bf20fc91` both still `pending`).
+2. JAC-3930 ratification (currently `in_review` — `QuantifiedQuantity` envelope and
+   `payload_hash` canonical shape not yet locked).
+
+Section 4 (implementation sub-tasks) remains deferred until both gates clear.
+
+The plan scheme defined in Sections 3.1–3.6 (deterministic adapter keys, idempotency
+semantics, `ingest_id` semantics, `observed_sequence` semantics, re-ingest no-op logic)
+and the 14 implementation sub-tasks in Section 4 remain current and accurate.
+
+---
+
 ## 28. Plan v3.3.9+7 — gate-status reconciliation (2026-08-04T17:xxZ heartbeat, Maar)
 
 ### 28.1 Acknowledged wake comment

@@ -1,0 +1,93 @@
+# Wings Dispatch Evidence — JAC-4000 Cycle 2026-08-02T20:55Z
+
+- **Heartbeat run:** ab3a69b1-a310-4097-af21-6cfc1ddaade1
+- **Adapter:** hermes_local
+- **Paperclip:** v2026.722.0 (git c13c180b9), deploymentMode=local_trusted
+- **Auth:** bearer=Wings (80284e06-41ab-415a-ba1c-6c3121debd0d)
+- **Server:** paperclipai process, pid 99082, started 2026-08-02T00:38:49Z
+
+## Fresh authenticated live verification
+
+Performed at 2026-08-02T20:55Z via authenticated GET
+`/api/companies/87c32b8e-f131-4df8-ad8e-a963d01b458e7/agents` (bearer=Wings 80284e06)
+and UUID-scoped GET `/api/issues/{uuid}` for each upstream blocker
+(Paperclip v2026.722.0, deploymentMode=local_trusted). All gate states
+confirmed via live API `metadata.executionLane` — no stale-log inference.
+
+## Verified-idle free lanes (0 eligible for dispatch)
+
+| Agent | Pool | laneState | verifiedAt | agentStatus | Assigned Todo | Verdict |
+|---|---|---|---|---|---|---|
+| Herald (a1e8cb0d) | claude-code | verified | 2026-07-31T19:56:00Z | idle | JAC-4187 (blocked→4 upstream), JAC-4422 (blocked), JAC-3876 (blocked), JAC-3494 (blocked), JAC-4081 (blocked→JAC-4081 parentage), JAC-4069 (blocked), JAC-3716 (blocked) | No ready work — all upstream blocked/in_review |
+| Plan Runner (2c6b1cc9) | claude-code | verified | 2026-07-31T19:56:00Z | idle | JAC-3628 (todo, blockedBy=[JAC-3629 …]), JAC-4190 (blocked→JAC-4187), JAC-4462 (blocked, ws-leased), JAC-4093 (blocked, ws-leased), JAC-3665 (blocked), JAC-4105 (blocked→JAC-3629), JAC-4348 (blocked) | No ready work — all upstream blocked |
+| Kimi Code via Ringer (3f1712eb) | independent-review | verified | 2026-07-23T20:03:10Z | idle | JAC-3596 (todo, blockedBy 4 Luna sub-issues in_progress) | No ready work — upstream in_progress |
+
+**Pool limits:** Claude Code/OmniGent = 2 (0/2 free; 2 occupied, no ready work);
+independent-review = 1 (0/1 free; 1 occupied, no ready work).
+
+## Excluded lanes (6 — confirmed live, not routable)
+
+| Agent | Pool | laneState | agentStatus | Reason |
+|---|---|---|---|---|
+| Aegis Coder X (da00de99) | local-aegis | verified | error | Process lost — P89 gate down (CTX-SpO2 P:down) |
+| Aegis Coder Y (181f381b) | local-aegis | error | idle | Lane error (Timed out after 12000s); NOT routable |
+| Paperclip Agent Auditor (5b2bece1) | codex | quota_blocked | error | Usage limit until Aug 4 23:09 PM CT — NOT routable |
+| Hermes Mistral (1029acc4) | ollama-cloud | paused | paused | Manual pause — NOT capacity |
+| Flash (b37f4d70) | ollama-cloud | pending_repair | idle | MCPServerTask Event loop is closed defect — NOT capacity |
+| Wings (self) (80284e06) | ollama-cloud | reserved | running | Strategic reserve — NOT routine dispatch |
+
+## Upstream blockers (confirmed live via UUID-scoped GET /api/issues/{uuid})
+
+| Issue | UUID | Status | Blocked By | Blocks |
+|---|---|---|---|---|
+| JAC-4388 | 4954a59f-f85b-4b3f-ae03-8ab0b02f3ab3 | todo | [] (board action) | JAC-3629 → JAC-3628 → Plan Runner |
+| JAC-3629 | f57af738-34fb-4f3a-9094-2416731d45d0 | blocked | [JAC-4388] | JAC-3628 → Plan Runner |
+| JAC-4187 | b203d10f-eecf-4587-ba19-bd9a7f5d4b1b | blocked | 4 upstream (incl JAC-3933 in_review) | JAC-4190 → Plan Runner + Herald |
+| JAC-3933 | fc4eb2ca-832c-4ab8-9dd3-3299400bb8c2 | in_review | [] | JAC-4187 |
+| JAC-4190 | aaed5fd3-fc39-4cf1-9c89-a132ac5c0b85 | blocked | [JAC-4187] | Plan Runner |
+| JAC-4462 | e915780a-cc95-4a35-8a83-b463bccf5df1 | blocked | [] (ws-leased dispatch) | Plan Runner |
+| JAC-3596 | 23c04a76-669d-4a1f-a216-2d68218810ef | todo | 4 Luna sub-issues (in_progress: JAC-3592/3593/3594) | Kimi |
+| JAC-4093 | d27f48db-5bf0-4c81-abce-cabea2528d9d | blocked | [] (ws-leased) | JAC-3705 → Aegis Coder X |
+
+## Unassigned todo queue (10 — 0 eligible)
+
+| Issue | Priority | Exclusion |
+|---|---|---|
+| JAC-3671 | critical | credential-bound — NOT routable |
+| JAC-4501 | high | review/meta — NOT dispatchable |
+| JAC-4500 | high | review/meta — NOT dispatchable |
+| JAC-4388 | high | board action — NOT routable |
+| JAC-4217 | high | Jack decision gate — NOT routable |
+| JAC-4216 | high | Jack decision gate — NOT routable |
+| JAC-3714 | high | approval-gated / interactive sudo — NOT routable |
+| JAC-3558 | high | human gate — NOT routable |
+| JAC-3557 | high | human gate — NOT routable |
+| JAC-3555 | high | human gate — NOT routable |
+| JAC-4171 | medium | coordinator sibling check (fallback schedule) |
+| JAC-4173 | medium | coordinator sibling check (fallback schedule) |
+
+## Verdict
+
+0 dispatches — queue exhausted. State consistent with the 20:42Z cycle. All
+three verified-idle free lanes (Herald, Plan Runner, Kimi) have assigned work
+blocked or in_review upstream. All six excluded lanes are not routable
+(error, quota_blocked, paused, pending_repair, reserved). The 10-item unassigned
+todo queue is policy-excluded (credential-bound, Jack decision gates, human
+gates, board actions, approval-gated, review/meta). No independent plan-backed
+task found. No fresh authenticated generation failures on any verified lane.
+
+## Liveness path (native child-completion continuation)
+
+- JAC-4388 (board action) → unblocks JAC-3629 → unblocks JAC-3628 → Plan Runner
+- Luna JAC-3592/3593/3594 (in_progress) → unblocks JAC-3596 → Kimi
+- JAC-4187 → unblocks JAC-4190 → Plan Runner + Herald
+- JAC-3933 (in_review) → unblocks JAC-4187
+- JAC-4093 + P89 recovery → unblocks JAC-3705 → Aegis Coder X
+
+## Fallback schedule
+
+JAC-4171 and JAC-4173 (coordinator sibling checks) queued for next heartbeat.
+
+## Disposition
+
+in_progress (restart-ready), awaiting native child-completion continuation.

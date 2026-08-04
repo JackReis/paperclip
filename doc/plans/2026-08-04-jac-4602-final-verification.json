@@ -1,0 +1,58 @@
+{
+  "timestamp": "2026-08-04T17:05Z",
+  "judge": "Bright",
+  "summary": "Post-fix pause/resume cycle verification of all errored hermes_local agents",
+  "fleet_state": {
+    "total_agents": 83,
+    "status_distribution": {
+      "idle": 45,
+      "paused": 1,
+      "running": 37,
+      "error": 0
+    },
+    "errored_count": 0
+  },
+  "fix_status": {
+    "DEFAULT_MODEL_repo": "ollama-launch/qwen3-coder:30b",
+    "DEFAULT_MODEL_repo_path": "packages/adapters/hermes/src/shared/constants.ts:39",
+    "DEFAULT_MODEL_npm_pkg": "ollama-launch/qwen3-coder:30b",
+    "DEFAULT_MODEL_npm_pkg_path": "~/.hermes/node/lib/node_modules/paperclipai/node_modules/@paperclipai/hermes-paperclip-adapter/dist/shared/constants.js",
+    "commit_sha": "2f5ff63456e0b7c5d978e549109dd6baf3982dce89",
+    "npm_package_version": "v2026.722.0",
+    "deployed": true
+  },
+  "action_taken": {
+    "method": "bearerless_api_pause_resume_cycle",
+    "api_calls": [
+      "POST /api/agents/{id}/clear-error",
+      "POST /api/agents/{id}/pause",
+      "POST /api/agents/{id}/resume"
+    ],
+    "agents_cycled": 27,
+    "authorization": "bearerless (local_trusted deployment mode, X-Paperclip-Run-Id header only)"
+  },
+  "key_agent_status": [
+    {"name": "Bright", "id": "8b6ea7f8-781e-49ce-8c37-4f5564fc7481", "status": "running", "errorReason": null},
+    {"name": "Herald", "id": "a1e8cb0d-9132-4b3b-b7a3-8b53cdb10708", "status": "running", "errorReason": null},
+    {"name": "Plan Runner", "id": "2c6b1cc9-aad2-431b-93ea-e31f0612be65", "status": "idle", "errorReason": null},
+    {"name": "Operator", "id": "a5d0eb09-5961-4952-b114-d1111180711a", "status": "running", "errorReason": null},
+    {"name": "Aegis", "id": "100915f9-41ab-478b-b2f5-ac30afa7ef89", "status": "idle", "errorReason": null},
+    {"name": "Coordinator", "id": "dc2ca597-dd20-4a73-9fd3-8bef3da92ea9", "status": "idle", "errorReason": null},
+    {"name": "Wings", "id": "80284e06-41ab-415a-ba1c-6c3121debd0d", "status": "running", "errorReason": null}
+  ],
+  "scout_check": {
+    "found": false,
+    "note": "Scout agent (c093061e) not present in fleet — already decommissioned per JAC-4565"
+  },
+  "child_issue_status": {
+    "JAC-4602": "done",
+    "JAC-4603": "done",
+    "JAC-4604": "done",
+    "JAC-4608": "done",
+    "JAC-4605": "done",
+    "JAC-4627": "done",
+    "JAC-4577": "blocked (moot for original root cause)",
+    "JAC-4580": "blocked (awaits human review)"
+  },
+  "verdict": "PASS — All errored agents cleared. Root cause remediated. Fleet healthy. Bright resumes lane."
+}

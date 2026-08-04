@@ -1,0 +1,172 @@
+{
+  "artifactType": "paperclip_agent_diagnostic",
+  "generatedAt": "2026-08-04T17:17:00Z",
+  "generatedBy": "Bright (8b6ea7f8-781e-49ce-8c37-4f5564fc7481), independent live bearer-token query",
+  "paperclipVersion": "v2026.722.0",
+  "deploymentMode": "local_trusted",
+  "apiEndpoint": "http://127.0.0.1:3101/api/companies/87c32b8e-f131-4df8-ad8e-963d01b458e7/agents",
+  "auditReference": "JAC-4575 watchdog audit 2026-08-04T02:56Z",
+  "summary": "FOURTH independent verification snapshot at 17:17Z. status=error: 7 (down from 26@16:52Z, 3@17:07Z). Oscillation continues but trending downward. Fix IS deployed in npm package (hermes-paperclip-adapter sub-package, constants.js:33). All 75 hermes_local agents still have adapterConfig={}. Stale truncated traceback persists on 1 running agent (Pi Campaign Auditor). Operator has separate 395-char streaming error.",
+  "liveCounts": {
+    "totalAgents": 83,
+    "statusDistribution": {
+      "running": 41,
+      "idle": 34,
+      "error": 7,
+      "paused": 1
+    },
+    "statusError": 7,
+    "nonEmptyErrorReason": 7,
+    "truncatedTraceback34char": 6,
+    "hermesLocalAgents": 75,
+    "emptyAdapterConfig": 83,
+    "distinctErrorReasons": 2
+  },
+  "snapshotTimeline": [
+    {
+      "time": "2026-08-04T15:17:00Z",
+      "statusError": 3,
+      "truncated34char": 27,
+      "note": "First independent query"
+    },
+    {
+      "time": "2026-08-04T16:52:20Z",
+      "statusError": 26,
+      "truncated34char": 29,
+      "note": "Second independent query (oscillation peak)"
+    },
+    {
+      "time": "2026-08-04T17:07:44Z",
+      "statusError": 3,
+      "truncated34char": 29,
+      "note": "Third independent query"
+    },
+    {
+      "time": "2026-08-04T17:17:00Z",
+      "statusError": 7,
+      "truncated34char": 29,
+      "note": "Fourth independent query (declining but not zero)"
+    }
+  ],
+  "truncationAnalysis": {
+    "truncationLength": 34,
+    "truncatedString": "Traceback (most recent call last):",
+    "staleErrorReason": true,
+    "staleExplanation": "Paperclip does NOT clear errorReason on status recovery. Stale truncation persists on 1 running agent at 17:17Z."
+  },
+  "allErroredAgents": [
+    {
+      "name": "Operator",
+      "id": "a5d0eb09-5961-4952-b114-d1111180711a",
+      "status": "error",
+      "errorReason": "11:52:47 - agent.chat_completion_helpers - ERROR - Streaming failed before delivery: Connection error.\nTraceback (most recent call last):\n  File \"/Users/hermes/.hermes/hermes-agent/venv/lib/python3.11/site-packages/httpx/_transports/default.py\", line 101, in map_httpcore_exceptions\n    raise RemoteProtocolError(msg)\nhttpcore.RemoteProtocolError: Server disconnected without sending a response.",
+      "errorReasonLength": 395,
+      "adapterType": "hermes_local",
+      "adapterConfig": {},
+      "adapterConfigComplete": false,
+      "provider": null,
+      "model": null,
+      "executionLane": null,
+      "lastHeartbeatAt": "2026-08-04T17:07:18.405Z"
+    },
+    {
+      "name": "Oracle-2",
+      "id": "d8598eb7-6447-41f2-84b7-2cf25348779e",
+      "status": "error",
+      "errorReason": null,
+      "errorReasonLength": 0,
+      "adapterType": "hermes_local",
+      "adapterConfig": {},
+      "adapterConfigComplete": false,
+      "provider": null,
+      "model": null,
+      "executionLane": null,
+      "lastHeartbeatAt": "2026-08-04T17:15:15.168Z"
+    },
+    {
+      "name": "Fable",
+      "id": "f1ef5e14-d8d4-4030-9e37-7b4fc764ce3d",
+      "status": "error",
+      "errorReason": "Traceback (most recent call last):",
+      "errorReasonLength": 34,
+      "adapterType": "hermes_local",
+      "adapterConfig": {},
+      "adapterConfigComplete": false,
+      "provider": null,
+      "model": null,
+      "executionLane": null,
+      "lastHeartbeatAt": "2026-08-04T17:07:18.049Z"
+    },
+    {
+      "name": "Herald",
+      "id": "a1e8cb0d-9132-4b3b-b7a3-8b53cdb10708",
+      "status": "error",
+      "errorReason": "Traceback (most recent call last):",
+      "errorReasonLength": 34,
+      "adapterType": "hermes_local",
+      "adapterConfig": {},
+      "adapterConfigComplete": false,
+      "provider": null,
+      "model": null,
+      "executionLane": {
+        "pool": "local-aegis",
+        "model": "poolside/laguna-s-2.1:free",
+        "state": "verified",
+        "provider": "nous",
+        "transport": "paperclip-direct",
+        "verifiedAt": "2026-08-03T23:37:00Z",
+        "allowedWork": [
+          "read-only"
+        ],
+        "maxParallel": 2,
+        "verification": "Restored after JAC-4187 completion; model=nous/poolside/laguna-s-2.1:free, transport=paperclip-direct"
+      },
+      "lastHeartbeatAt": "2026-08-04T17:11:34.936Z"
+    },
+    {
+      "name": "Valeera",
+      "id": "eed387f6-0027-486a-a846-96df1e7e9c15",
+      "status": "error",
+      "errorReason": "Traceback (most recent call last):",
+      "errorReasonLength": 34,
+      "adapterType": "hermes_local",
+      "adapterConfig": {},
+      "adapterConfigComplete": false,
+      "provider": null,
+      "model": null,
+      "executionLane": null,
+      "lastHeartbeatAt": "2026-08-04T17:06:15.682Z"
+    },
+    {
+      "name": "Paperclip Agent Auditor",
+      "id": "5b2bece1-e57b-4048-ab92-8587a37efbcf",
+      "status": "error",
+      "errorReason": "Traceback (most recent call last):",
+      "errorReasonLength": 34,
+      "adapterType": "hermes_local",
+      "adapterConfig": {},
+      "adapterConfigComplete": false,
+      "provider": null,
+      "model": null,
+      "executionLane": null,
+      "lastHeartbeatAt": "2026-08-04T17:15:10.288Z"
+    },
+    {
+      "name": "Omnigent Router",
+      "id": "072eada2-03d0-4b09-8955-b66391cd5a22",
+      "status": "error",
+      "errorReason": "Traceback (most recent call last):",
+      "errorReasonLength": 34,
+      "adapterType": "hermes_local",
+      "adapterConfig": {},
+      "adapterConfigComplete": false,
+      "provider": null,
+      "model": null,
+      "executionLane": null,
+      "lastHeartbeatAt": "2026-08-04T17:11:16.701Z"
+    }
+  ],
+  "fixDeployed": true,
+  "fixLocation": "~/.hermes/node/lib/node_modules/paperclipai/node_modules/@paperclipai/hermes-paperclip-adapter/dist/shared/constants.js:33",
+  "rawDump": "doc/plans/_bright_raw_agents_dump_20260804T171700Z.json"
+}

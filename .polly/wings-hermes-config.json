@@ -1,0 +1,23 @@
+{
+  "name": "Wings",
+  "adapter": "hermes",
+  "adapterConfig": {
+    "env": "aegis",
+    "profile": "paperclip-compact",
+    "model": "deepseek-v4-pro",
+    "provider": "ollama-cloud",
+    "gateway_timeout": 600,
+    "max_turns": 25,
+    "toolsets": ["hermes-cli", "web"],
+    "compression": {
+      "enabled": true,
+      "threshold": 0.3,
+      "target_ratio": 0.15
+    },
+    "telegram_identity": "W1NG5",
+    "model_fallbacks": [
+      {"provider": "ollama-cloud", "model": "mistral-large-latest"},
+      {"provider": "ollama-launch", "model": "qwen3-coder:30b", "base_url": "http://127.0.0.1:11434/v1"}
+    ]
+  }
+}
