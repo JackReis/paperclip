@@ -21,11 +21,18 @@ PROFILES_DIR="/Users/hermes/.hermes/profiles"
 SOPS_FILE="/Users/hermes/.secrets/llm-providers.env"
 CHANGED=0
 
-# Profiles that need OLLAMA_API_KEY (ollama-cloud consumers)
+# Profiles and config files that need OLLAMA_API_KEY (ollama-cloud consumers)
+# Covers all locations where the key was found during JAC-4503 audit,
+# plus profiles that route through ollama-cloud but were missing the key.
 TARGETS=(
   "$PROFILES_DIR/aegis/.env"
   "$PROFILES_DIR/paperclip-compact/.env"
   "$PROFILES_DIR/luna/.env"
+  "$PROFILES_DIR/worker/.env"
+  "$PROFILES_DIR/family/.env"
+  "$PROFILES_DIR/zatara/.env"
+  "$HOME/.hermes/.env"
+  "$HOME/.config/ringer/cloud-keys.env"
 )
 
 echo "=== Ollama Cloud API Key Recovery — $TS ==="

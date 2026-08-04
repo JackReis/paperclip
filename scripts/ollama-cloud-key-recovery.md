@@ -48,13 +48,19 @@ Once the new key is available, update it in the following `.env` files (or the
 secrets store they pull from):
 
 ```
-/Users/hermes/.hermes/profiles/aegis/.env            → OLLAMA_API_KEY=<new>
-/Users/hermes/.hermes/profiles/luna/.env             → OLLAMA_API_KEY=<new>  (missing — needs adding)
+/Users/hermes/.hermes/.env                  → OLLAMA_API_KEY=<new>
+/Users/hermes/.hermes/profiles/aegis/.env  → OLLAMA_API_KEY=<new>
+/Users/hermes/.hermes/profiles/luna/.env   → OLLAMA_API_KEY=<new>  (was missing — needs adding)
 /Users/hermes/.hermes/profiles/paperclip-compact/.env → OLLAMA_API_KEY=<new>
+/Users/hermes/.hermes/profiles/worker/.env → OLLAMA_API_KEY=<new>  (was missing — needs adding)
+/Users/hermes/.hermes/profiles/family/.env → OLLAMA_API_KEY=<new>  (was missing — needs adding)
+/Users/hermes/.hermes/profiles/zatara/.env → OLLAMA_API_KEY=<new>  (was missing — needs adding)
+/Users/hermes/.config/ringer/cloud-keys.env → OLLAMA_API_KEY=<new>
 ```
 
-For luna, OLLAMA_API_KEY must be ADDED to the .env (it is currently absent even
-though config.yaml routes auxiliary providers through ollama-cloud).
+For luna, worker, family, and zatara, `OLLAMA_API_KEY` must be ADDED to the
+`.env` files (it was absent even though config.yaml may route providers
+through ollama-cloud). The recovery script handles this automatically.
 
 ## Recovery Script
 See `ollama-cloud-key-recovery.sh` in this scratch dir — run after obtaining
@@ -67,6 +73,8 @@ bash ollama-cloud-key-recovery.sh "$OLLAMA_NEW_KEY"
 
 The script:
 1. Backs up each .env to .env.bak-<timestamp>
-2. Updates OLLAMA_API_KEY in aegis, paperclip-compact
-3. Adds OLLAMA_API_KEY=<new> to luna/.env if absent
+2. Updates/adds OLLAMA_API_KEY in all 8 locations (aegis, paperclip-compact, luna,
+   worker, family, zatara, ~/.hermes/.env, ~/.config/ringer/cloud-keys.env)
+3. Decrypts/updates the SOPS-encrypted ~/.secrets/llm-providers.env if sops and
+   age/GPG keys are available
 4. Verifies the key works against https://ollama.com/v1/chat/completions
