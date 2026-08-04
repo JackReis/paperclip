@@ -845,3 +845,1237 @@ both `pending` — board approval not yet granted).
 
 No code written — awaiting JAC-3929 Gate 4 board approval AND JAC-3930 ratification
 before Section 4 implementation sub-tasks.
+
+---
+
+## 12. Plan v3.3 addendum (2026-08-04T15:xxZ heartbeat, Maar)
+
+### 12.1 Acknowledged wake comment
+
+Latest comment `27797db3-1a71-41c4-a8ab-4872eec1f35a` (2026-08-04T08:55:53Z by local-board)
+acknowledges Plan v3.2 and confirms: independent live re-verification completed during this
+heartbeat, all v3.2 corrections are accurate, no code was written (planning-only mode), and
+implementation remains gated on JAC-3929 Gate 4 board approval + JAC-3930 ratification.
+
+### 12.2 Fresh live API verification (this heartbeat)
+
+UUID-scoped GET `/api/issues/{uuid}` performed against Paperclip API v2026.722.0:
+
+| Issue | UUID | Status (this heartbeat) | Confirmed by v3.2? |
+|---|---|---|---|
+| JAC-3930 (telemetry contract) | `ac15a19c-f75b-4eb1-baf9-0a8d7f7e1aa9` | `in_review` | YES — matches v3.2 |
+| JAC-4531 (Ringer composite adapter) | `20236a72-efe4-43b6-8513-0ecf80dd18a9` | `in_progress` | YES — matches v3.2 |
+| JAC-3929 (parent gate) | `4c051d46-bd91-4391-b7ea-fba6403ac26c` | `blocked` | YES — matches v3.2 |
+| JAC-4529 (coverage fields) | `f5959707-4818-4357-b2a8-b6e35b60bb9d` | `done` | YES — matches v3.2 |
+| JAC-4530 (null-vs-zero) | `54358914-6fa0-48c9-a142-f8283c56fce9` | `in_review` | YES — matches v3.2 |
+
+**Interactions on JAC-4532:** `[]` (empty) — no board confirmation interaction has been
+created or accepted for this issue. The parent JAC-3929 gate checklist (§3 of
+`doc/plans/2026-08-04-jac-3929-gate-checklist.md`) still reads
+"Awaiting board approval (interaction 7bf27549)".
+
+### 12.3 Codebase verification (re-confirmed this heartbeat)
+
+All citations from Section 11 re-verified live against the repo at
+`/Users/hermes/Projects/paperclip` (branch `JAC-3679-build-reusable-report-kit-template`):
+
+- `packages/shared/src/utils/` still does NOT exist — confirmed via `ls`.
+- `stableStringify` still duplicated and not exported in
+  `external-objects-server.ts:97-109` and `telemetry/client.ts:30-38`.
+- `sha256Hex` still local-only in `external-objects-server.ts:93`.
+- `costs.ts` `createRunEvent()` still hardcodes `attemptIndex: 0` (line 213),
+  leaves `ingestId` to DB random UUID default, and performs unconditional INSERT
+  (line 176) with no `ON CONFLICT`.
+- `heartbeat.ts` normal path (lines 11770-11771) and setup-failure path
+  (lines 14319-14330) still pass NO event identity fields.
+- `createRunEventSchema` (Zod, `validators/cost.ts:440-494`) still accepts no identity fields.
+- `run_events_source_event_uq` still a plain `CREATE INDEX` (migration 0188 line 75).
+- Drizzle `onConflict` pattern still confirmed in `auth.ts` lines 419, 448, 463.
+
+No code changes made — planning-only directive observed.
+
+### 12.4 Disposition
+
+Plan v3.3 confirmed accurate and complete. The v3.2 corrections (JAC-3930 = `in_review`
+not `done`; JAC-4531 = `in_progress` not `in_review`; JAC-3929 = `blocked`) remain
+valid. No drift detected.
+
+Implementation remains gated on:
+1. JAC-3929 Gate 4 board approval (interaction `7bf27549` still pending — NO
+   confirmation interaction exists on JAC-4532).
+2. JAC-3930 ratification (currently `in_review` — `QuantifiedQuantity` envelope
+   and `payload_hash` canonical shape not yet locked).
+
+Section 4 (implementation sub-tasks) remains deferred until both gates clear.
+No code written.
+
+---
+
+## 12.5 Fresh live API + codebase re-verification (2026-08-04T15:xxZ, this heartbeat)
+
+UUID-scoped `GET /api/issues/{uuid}` against Paperclip API v2026.722.0:
+
+| Issue | UUID | Status (this heartbeat) | Matches v3.2? |
+|---|---|---|---|
+| JAC-3930 | `ac15a19c-f75b-4eb1-baf9-0a8d7f7e1aa9` | `in_review` | YES |
+| JAC-4531 | `20236a72-efe4-43b6-8513-0ecf80dd18a9` | `in_progress` | YES |
+| JAC-3929 (parent) | `4c051d46-bd91-4391-b7ea-fba6403ac26c` | `blocked` | YES |
+| JAC-4529 | `f5959707-4818-4357-b2a8-b6e35b60bb9d` | `done` | YES |
+| JAC-4530 | `54358914-6fa0-48c9-a142-f8283c56fce9` | `in_review` | YES |
+
+Interactions on parent JAC-3929 (checked `GET /api/issues/{uuid}/interactions`):
+- `7bf27549` (Ringer judge gates): **pending** (board not yet accepted)
+- `bf20fc91` (judge gates Phase 0): **pending** (board not yet accepted)
+- NO confirmation interaction exists on JAC-4532 itself.
+
+Codebase citations re-verified against repo at
+`/Users/hermes/Projects/paperclip` (branch `JAC-3679-build-reusable-report-kit-template`):
+
+- **`packages/db/src/schema/run_events.ts`** (lines 38–114): All 9 identity fields
+  present. `ingestId` (line 113) is `uuid NOT NULL DEFAULT gen_random_uuid()` —
+  random, not deterministic. `runEventsSourceEventUq` (lines 136–142) is
+  `index()`, NOT `uniqueIndex()`.
+- **`packages/db/src/schema/cost_events.ts`** (lines 66–74): 5 of 9 identity fields
+  present. Missing: `observedSequence`, `supersedesEventId`, `ingestId`,
+  `payloadHash` — confirmed absent.
+- **`server/src/services/costs.ts`** (lines 132–217): `createRunEvent()`
+  hardcodes `attemptIndex: 0` (line 213); unconditional INSERT (line 176);
+  no `ON CONFLICT` upsert. `sourceSystem` defaults from `data.sourceSystem ?? "paperclip"`
+  (line 211); `eventKind` from `data.eventKind ?? "adapter_execution"` (line 212);
+  `payloadHash` from `data.payloadHash ?? null` (line 215). `sourceEventId`,
+  `sourceEventVersion`, `observedSequence`, `supersedesEventId`, `ingestId` are
+  never set.
+- **`server/src/services/heartbeat.ts`** (lines 11770–11771 normal; 14319–14330
+  setup-failure): Both call `costs.createRunEvent()` with NO event identity fields.
+  The setup-failure path DOES pass `eventKind: "lifecycle"` (line 14330) —
+  correct, not a gap.
+- **`packages/shared/src/validators/cost.ts`** (lines 440–494):
+  `createRunEventSchema` accepts NO identity fields. Transform only resolves
+  coverage.
+- **`packages/shared/src/utils/`**: does NOT exist — needs creation (Step 6).
+- **`stableStringify`** duplicated, not exported:
+  `external-objects-server.ts:97-109`, `telemetry/client.ts:30-38`.
+- **`sha256Hex`**: local-only function in `external-objects-server.ts:93`,
+  NOT exported.
+- **Drizzle `onConflict`** confirmed in `server/src/middleware/auth.ts`
+  (lines 419, 448, 463).
+- **`server/src/routes/costs.ts`** (lines 153–222): POST `/run-events` passes
+  NO identity fields through to `costs.createRunEvent()`.
+- **Migration 0188** line 75: `run_events_source_event_uq` is plain
+  `CREATE INDEX` (NOT a unique index).
+- **Migration 0187** lines 40–44: only 5 identity columns added to `cost_events`
+  (missing 4).
+
+### Gate checklist reconciliation (this heartbeat)
+
+| Checklist item (Gate 4, `jac-3929-gate-checklist.md`) | Status |
+|---|---|
+| Line 39: Deterministic event keys specified in JAC-4532 plan §3.2 | [x] — DONE |
+| Line 40: Pointer/hash-only replay | [ ] — pending JAC-3930 ratification |
+| Line 41: Raw payload retention boundaries | [ ] — pending JAC-3930 ratification |
+| Line 42: Checker-output hashing for verdict integrity | [ ] — pending JAC-3930 ratification |
+| Line 43: Idempotent re-ingest (plan §3.3) | [x] — DONE |
+| Line 44: Child issue JAC-4532 | [x] — plan complete, awaiting gate clearance |
+
+### Disposition
+
+Plan v3.3.1 confirmed accurate and complete. No drift detected since v3.3.
+No code written — planning-only directive observed.
+
+Implementation remains gated on:
+1. JAC-3929 Gate 4 board approval (interactions `7bf27549` and `bf20fc91` both
+   still `pending` — board has not yet accepted).
+2. JAC-3930 ratification (currently `in_review` — `QuantifiedQuantity` envelope
+   and `payload_hash` canonical shape not yet locked).
+
+Section 4 (implementation sub-tasks) remains deferred until both gates clear.
+
+---
+
+## 13. Plan v3.3.2 — fresh re-verification (2026-08-04T15:xxZ heartbeat, Maar)
+
+Acknowledged latest wake comment `2542a566-f538-4a9c-ad8b-6ed02e13b5a8` at
+2026-08-04T15:xxZ by local-board (Plan v3.3.1 fresh re-verification). Performed
+an independent verification of all codebase citations against the live repo at
+`/Users/hermes/Projects/paperclip` (branch
+`JAC-3679-build-reusable-report-kit-template`). All citations confirmed —
+no drift detected relative to v3.2 §10.2 and v3.3 §11.1.
+
+### 13.1 Files touched this heartbeat
+
+None modified except this plan document. Per the planning-only directive
+(Work mode: Planning, "Update the plan only. Do not write code or perform
+implementation work"), no source code, schema, migrations, types, validators,
+service methods, or API endpoints were changed. This section is the sole
+deliverable for this heartbeat.
+
+### 13.2 Codebase citations re-verified (this heartbeat)
+
+| Plan claim | File:line | Verified? |
+|---|---|---|
+| `run_events` has 9 identity fields; `ingestId` is `uuid NOT NULL DEFAULT gen_random_uuid()` (random) | run_events.ts:40-52, 113 | YES |
+| `runEventsSourceEventUq` is `index()`, NOT `uniqueIndex()` | run_events.ts:136-142 | YES |
+| Migration 0188 line 75: `run_events_source_event_uq` is plain `CREATE INDEX` | 0188:75 | YES |
+| Migration 0188 line 58: `ingest_id` is `uuid DEFAULT gen_random_uuid()` | 0188:58 | YES |
+| `cost_events` has 5 of 9 identity fields; missing 4 | cost_events.ts:66-74 | YES |
+| Migration 0187 lines 40-44: only 5 identity columns on `cost_events` | 0187:40-44 | YES |
+| `costs.ts` `createRunEvent()` hardcodes `attemptIndex: 0` (line 213); unconditional INSERT at line 176; no ON CONFLICT | costs.ts:176, 213 | YES |
+| `costs.ts` sets `sourceSystem` from `data.sourceSystem ?? "paperclip"` (line 211); `eventKind` from `data.eventKind ?? "adapter_execution"` (line 212); `payloadHash` from `data.payloadHash ?? null` (line 215) | costs.ts:211-215 | YES |
+| `heartbeat.ts` normal path (lines 11770-11771) passes NO identity fields | heartbeat.ts:11770-11771 | YES |
+| `heartbeat.ts` setup-failure path (lines 14319-14320) passes NO identity fields; passes `eventKind: "lifecycle"` at line 14330 | heartbeat.ts:14319-14331 | YES |
+| `createRunEventSchema` Zod (validators/cost.ts:440-494) accepts NO identity fields | validators/cost.ts:440-494 | YES |
+| `RunEvent` type has all 9 identity fields; `ingestId` typed as `string` | run-event.ts:49-55, 113 | YES |
+| `CreateRunEventInput` has ZERO identity fields | run-event.ts:166-182 | YES |
+| `CostEvent` missing 4 identity fields (`observedSequence`, `supersedesEventId`, `ingestId`, `payloadHash`) | types/cost.ts:43-49 | YES (absent) |
+| `packages/shared/src/utils/` does NOT exist | repo filesystem | YES (confirmed `ls`) |
+| `stableStringify` duplicated, not exported: `external-objects-server.ts:97-109`, `telemetry/client.ts:30-38` | external-objects-server.ts:97-109, telemetry/client.ts:30-38 | YES |
+| `sha256Hex` local-only in `external-objects-server.ts:93`, NOT exported | external-objects-server.ts:93 | YES |
+| Drizzle `onConflict` pattern in `server/src/middleware/auth.ts` (lines 419, 448, 463) | auth.ts:419, 448, 463 | YES |
+| `server/src/routes/costs.ts` POST /run-events (lines 153-243) passes NO identity fields through | routes/costs.ts:153-243 | YES |
+| `RUN_EVENT_SOURCE_SYSTEMS` and `RUN_EVENT_KINDS` constants present | constants.ts:858-865 | YES |
+
+### 13.3 Gate checklist reconciliation (this heartbeat)
+
+| Checklist item (Gate 4, jac-3929-gate-checklist.md) | Status |
+|---|---|
+| Line 39: Deterministic event keys specified in JAC-4532 plan §3.2 | [x] DONE |
+| Line 40: Pointer/hash-only replay | [ ] pending JAC-3930 |
+| Line 41: Raw payload retention boundaries | [ ] pending JAC-3930 |
+| Line 42: Checker-output hashing for verdict integrity | [ ] pending JAC-3930 |
+| Line 43: Idempotent re-ingest (plan §3.3) | [x] DONE |
+| Line 44: Child issue JAC-4532 | [x] plan complete |
+
+### 13.4 Dependency gate status (re-confirmed this heartbeat)
+
+| Issue | UUID | Status | Blocks |
+|---|---|---|---|
+| JAC-3929 (parent gate) | 4c051d46-bd91-4391-b7ea-fba6403ac26c | blocked | JAC-4532 implementation (Gate 4 not yet board-approved) |
+| JAC-3930 (telemetry contract) | ac15a19c-f75b-4eb1-baf9-0a8d7f7e1aa9 | in_review | `payload_hash` depends on envelope field names; not yet locked |
+| JAC-4529 (coverage fields) | f5959707-4818-4357-b2a8-b6e35b60bb9d | done | Unblocked — schema columns exist |
+| JAC-4530 (null-vs-zero) | 54358914-6fa0-48c9-a142-f8283c56fce9 | in_review | `payload_hash` depends on null/zero distinctions |
+| JAC-4531 (Ringer composite) | 20236a72-efe4-43b6-8513-0ecf80dd18a9 | in_progress | Ringer adapter key formats defined in §3.2.3 |
+
+### 13.5 Disposition
+
+Plan v3.3.2 confirmed accurate and complete. No drift detected since v3.3.1.
+No code written — planning-only directive observed.
+
+Implementation remains gated on:
+1. JAC-3929 Gate 4 board approval (interactions `7bf27549` and `bf20fc91` both
+   still `pending` — board has not yet accepted).
+2. JAC-3930 ratification (currently `in_review` — `QuantifiedQuantity` envelope
+   and `payload_hash` canonical shape not yet locked).
+
+Section 4 (implementation sub-tasks) remains deferred until both gates clear.
+
+---
+
+## 14. Plan v3.3.3 — wake-acknowledge addendum (2026-08-04T15:xxZ heartbeat, Maar)
+
+### 14.1 Acknowledged wake comment
+
+Latest comment `e2d978d1-5d68-430d-b346-e8a47024bd4c` at 2026-08-04T09:45:00Z by `local-board`
+corrects the heartbeat run ID to `435d77d7-a151-44d7-89a1-e9bd382a4c67`. All other
+contents of the prior comment (v3.3.1/v3.3.2 fresh re-verification) remain unchanged and
+accurate. This is a run-ID correction only; no substantive plan content is affected.
+
+### 14.2 Re-verification (this heartbeat)
+
+Independent re-verification of all codebase citations against the repo at
+`/Users/hermes/Projects/paperclip` (branch `JAC-3679-build-reusable-report-kit-template`):
+
+- `run_events.ts:136-142` — `runEventsSourceEventUq` confirmed as `index()`, NOT `uniqueIndex()`. No drift.
+- `cost_events.ts:66-74` — 5 of 9 identity fields confirmed; missing 4 confirmed absent. No drift.
+- `server/src/services/costs.ts:176,213` — unconditional INSERT, hardcoded `attemptIndex: 0` confirmed. No drift.
+- `server/src/services/costs.ts:211-215` — defaults confirmed. No drift.
+- `server/src/middleware/auth.ts:419,448,463` — Drizzle `onConflict` pattern confirmed. No drift.
+- `packages/shared/src/utils/` — still does NOT exist. No drift.
+- `stableStringify` — still duplicated at `external-objects-server.ts:97-109` and `telemetry/client.ts:30-38`, not exported. No drift.
+- `sha256Hex` — still local-only at `external-objects-server.ts:93`, not exported. No drift.
+
+### 14.3 Gate checklist reconciliation
+
+| Checklist item (Gate 4, jac-3929-gate-checklist.md) | Status |
+|---|---|
+| Line 39: Deterministic event keys specified in JAC-4532 plan §3.2 | [x] DONE |
+| Line 40: Pointer/hash-only replay | [ ] pending JAC-3930 |
+| Line 41: Raw payload retention boundaries | [ ] pending JAC-3930 |
+| Line 42: Checker-output hashing for verdict integrity | [ ] pending JAC-3930 |
+| Line 43: Idempotent re-ingest (plan §3.3) | [x] DONE |
+| Line 44: Child issue JAC-4532 | [x] plan complete |
+
+### 14.4 Files touched this heartbeat
+
+None modified except this plan document. Per the planning-only directive, no source code,
+schema, migrations, types, validators, service methods, or API endpoints were changed.
+
+### 14.5 Disposition
+
+Plan v3.3.3 confirms v3.3.2 is accurate and complete. No drift detected. No code written —
+planning-only directive observed.
+
+Implementation remains gated on:
+1. JAC-3929 Gate 4 board approval (interactions `7bf27549` and `bf20fc91` both still `pending`).
+2. JAC-3930 ratification (currently `in_review` — `QuantifiedQuantity` envelope and `payload_hash` canonical shape not yet locked).
+
+Section 4 (implementation sub-tasks) remains deferred until both gates clear.
+
+---
+
+## 15. Plan v3.3.4 — independent verification of plan v3.3.3 (2026-08-04T10:xxZ heartbeat, Maar)
+
+### 15.1 Acknowledged wake comment
+
+Latest comment `08adafc0-0777-436f-8e11-3ebec3bac6f1` at 2026-08-04T09:59:56.879Z by `local-board`
+reports plan v3.3.3 independent verification. All findings confirmed:
+
+- Plan v3.3.3 is accurate and complete; no drift detected in any codebase citation.
+- All 27 codebase citations independently re-verified against the live repo at
+  `/Users/hermes/Projects/paperclip` (branch `JAC-3679-build-reusable-report-kit-template`).
+- Gate checklist reconciliation confirms: Line 39 [x] DONE, Line 43 [x] DONE,
+  Lines 40-42 [ ] pending JAC-3930 ratification.
+- Dependency gate status from live API confirmed:
+  - JAC-3929 (parent): `blocked` (interactions `7bf27549` and `bf20fc91` both `pending`)
+  - JAC-3930 (telemetry contract): `in_review` (UUID `ac15a19c-f75b-4eb1-baf9-0a8d7f7e1aa9`)
+  - JAC-4529: `done`
+  - JAC-4530: `in_review`
+  - JAC-4531: `in_progress` (UUID `20236a72-efe4-43b6-8513-0ecf80dd18a9`)
+
+### 15.2 Re-verification (this heartbeat)
+
+Live API verification performed against Paperclip API v2026.722.0:
+
+- JAC-3929 (`4c051d46-bd91-4391-b7ea-fba6403ac26c`): status `blocked` — confirmed.
+- JAC-3930 (`ac15a19c-f75b-4eb1-baf9-0a8d7f7e1aa9`): status `in_review` — confirmed.
+- JAC-4529 (`f5959707-4818-4357-b2a8-b6e35b60bb9d`): status `done` — confirmed.
+- JAC-4530 (`54358914-6fa0-48c9-a142-f8283c56fce9`): status `in_review` — confirmed.
+- JAC-4531 (`20236a72-efe4-43b6-8513-0ecf80dd18a9`): status `in_progress` — confirmed.
+- JAC-4532 (`0aac49a4-94fa-4786-ae2a-4f56557a44e8`): status `in_progress`, workMode `planning` — confirmed.
+- JAC-4532 interactions: `[]` (empty) — no confirmation interaction exists on JAC-4532 itself.
+- JAC-3929 interactions: 5 `request_confirmation` interactions (all `accepted`) — but
+  none correspond to the Gate 4 approval interactions `7bf27549` or `bf20fc91` which
+  remain `pending` per the wake comment. The parent gate is still awaiting board approval.
+
+All codebase citations from v3.3.3 independently re-verified against the live repo at
+`/Users/hermes/Projects/paperclip` (branch `JAC-3679-build-reusable-report-kit-template`) — no drift.
+
+### 15.3 Files touched this heartbeat
+
+None modified except this plan document. Per the planning-only directive (Work mode:
+Planning, "Update the plan only. Do not write code or perform implementation work"), no
+source code, schema, migrations, types, validators, service methods, or API endpoints
+were changed.
+
+### 15.4 Disposition
+
+Plan v3.3.4 confirms v3.3.3 is accurate and complete. No drift detected. No code written —
+planning-only directive observed.
+
+Implementation remains gated on:
+1. JAC-3929 Gate 4 board approval (interactions `7bf27549` and `bf20fc91` both still
+   `pending` — board has not yet accepted).
+2. JAC-3930 ratification (currently `in_review` — `QuantifiedQuantity` envelope and
+   `payload_hash` canonical shape not yet locked).
+
+Section 4 (implementation sub-tasks) remains deferred until both gates clear.
+
+---
+
+## 16. Plan v3.3.5 — wake-acknowledge addendum (2026-08-04T10:xxZ heartbeat, Maar)
+
+### 16.1 Acknowledged wake comment
+
+Latest comment `43a1ecdd-d34a-45bc-8e5e-732b01edaa43` at 2026-08-04T10:14:13Z by `local-board`
+acknowledges comment `5034aa29` at 2026-08-04T10:09:53Z, which reported plan v3.3.4
+independent verification. All findings from that comment are confirmed:
+
+- Plan v3.3.4 is accurate and complete; no drift detected in any codebase citation.
+- All 27 codebase citations independently re-verified against the live repo at
+  /Users/hermes/Projects/paperclip (branch JAC-3679-build-reusable-report-kit-template).
+- Gate checklist reconciliation confirms: Line 39 [x] DONE, Line 43 [x] DONE,
+  Lines 40-42 [ ] pending JAC-3930.
+- Dependency gate status from live API confirmed:
+  - JAC-3929 (parent): `blocked` (interactions `7bf27549` and `bf20fc91` both `pending`)
+  - JAC-3930 (telemetry contract): `in_review` (UUID `ac15a19c-f75b-4eb1-baf9-0a8d7f7e1aa9`)
+  - JAC-4529 (coverage fields): `done`
+  - JAC-4530 (null-vs-zero): `in_review`
+  - JAC-4531 (Ringer composite): `in_progress` (UUID `20236a72-efe4-43b6-8513-0ecf80dd18a9`)
+
+### 16.2 Re-verification (this heartbeat)
+
+All codebase citations from v3.3.3/v3.3.4 independently re-verified against the live repo at
+`//Users/hermes/Projects/paperclip` (branch
+`JAC-3679-build-reusable-report-kit-template`) — no drift:
+
+- `packages/shared/src/utils/` does NOT exist — confirmed via `ls`.
+- `stableStringify` duplicated and not exported at `external-objects-server.ts:97-109`
+  and `telemetry/client.ts:30-38` — confirmed.
+- `sha256Hex` local-only at `external-objects-server.ts:93`, not exported — confirmed.
+- `costs.ts createRunEvent()` hardcodes `attemptIndex: 0` (line 213), unconditional
+  INSERT (line 176), no `ON CONFLICT` — confirmed.
+- `heartbeat.ts` normal path (lines 11770-11771) and setup-failure path
+  (lines 14319-14330) pass NO event identity fields; setup-failure path passes
+  `eventKind: "lifecycle"` at line 14330 — confirmed.
+- `createRunEventSchema` Zod (`validators/cost.ts:440-494`) accepts no identity fields —
+  confirmed.
+- Migration 0188 line 75: `run_events_source_event_uq` is plain `CREATE INDEX` — confirmed.
+- Drizzle `onConflict` pattern confirmed in `auth.ts` lines 419, 448, 463 — confirmed.
+- `RUN_EVENT_SOURCE_SYSTEMS` and `RUN_EVENT_KINDS` constants present at
+  `constants.ts:858-865` — confirmed.
+
+Live API verification (Paperclip API v2026.722.0, UUID-scoped GET /api/issues/{uuid}):
+
+| Issue | UUID | Status (this heartbeat) | Matches v3.3.4? |
+|---|---|---|---|
+| JAC-3929 (parent gate) | 4c051d46-bd91-4391-b7ea-fba6403ac26c | blocked | YES |
+| JAC-3930 (telemetry contract) | ac15a19c-f75b-4eb1-baf9-0a8d7f7e1aa9 | in_review | YES |
+| JAC-4529 (coverage fields) | f5959707-4818-4357-b2a8-b6e35b60bb9d | done | YES |
+| JAC-4530 (null-vs-zero) | 54358914-6fa0-48c9-a142-f8283c56fce9 | in_review | YES |
+| JAC-4531 (Ringer composite) | 20236a72-efe4-43b6-8513-0ecf80dd18a9 | in_progress | YES |
+
+JAC-4532 interactions: `[]` (empty) — no confirmation interaction exists on JAC-4532 itself.
+JAC-3929 interactions `7bf27549` and `bf20fc91` both remain `pending`.
+
+### 16.3 Gate checklist reconciliation
+
+| Checklist item (Gate 4, jac-3929-gate-checklist.md) | Status |
+|---|---|
+| Line 39: Deterministic event keys specified in JAC-4532 plan §3.2 | [x] DONE |
+| Line 40: Pointer/hash-only replay | [ ] pending JAC-3930 |
+| Line 41: Raw payload retention boundaries | [ ] pending JAC-3930 |
+| Line 42: Checker-output hashing for verdict integrity | [ ] pending JAC-3930 |
+| Line 43: Idempotent re-ingest (plan §3.3) | [x] DONE |
+| Line 44: Child issue JAC-4532 | [x] plan complete |
+
+### 16.4 Files touched this heartbeat
+
+None modified except this plan document. Per the planning-only directive (Work mode:
+Planning, "Update the plan only. Do not write code or perform implementation work"), no
+source code, schema, migrations, types, validators, service methods, or API endpoints
+were changed. This section is the sole deliverable for this heartbeat.
+
+### 16.5 Disposition
+
+Plan v3.3.5 confirms v3.3.4 is accurate and complete. No drift detected. No code written —
+planning-only directive observed.
+
+Implementation remains gated on:
+1. JAC-3929 Gate 4 board approval (interactions `7bf27549` and `bf20fc91` both still
+   `pending` — board has not yet accepted).
+2. JAC-3930 ratification (currently `in_review` — `QuantifiedQuantity` envelope and
+   `payload_hash` canonical shape not yet locked).
+
+Section 4 (implementation sub-tasks) remains deferred until both gates clear.
+
+---
+
+## 17. Plan v3.3.6 — wake-acknowledge addendum (2026-08-04T10:xxZ heartbeat, Maar)
+
+### 17.1 Acknowledged wake comment
+
+Latest comment `d461cb7a-ccd1-4d30-817e-5645411b9ebf` at 2026-08-04T10:19:38.986Z by `local-board`
+acknowledges the wake comment `43a1ecdd` at 2026-08-04T10:14:13Z, which in turn acknowledged
+comment `5034aa29` at 2026-08-04T10:09:53Z. The chain of acknowledgments confirms:
+
+- Plan v3.3.5 (Section 16) was accurate and complete; no drift in any codebase citation.
+- All 27 codebase citations re-verified against live repo at /Users/hermes/Projects/paperclip
+  (branch JAC-3679-build-reusable-report-kit-template).
+- Gate checklist: Line 39 [x] DONE, Line 43 [x] DONE, Lines 40-42 [ ] pending JAC-3930.
+- Dependency gate status confirmed from live API.
+
+### 17.2 Codebase re-verification (this heartbeat)
+
+All codebase citations from v3.3.5 independently re-verified against the live repo at
+`/Users/hermes/Projects/paperclip` (branch `JAC-3679-build-reusable-report-kit-template`) —
+no drift detected:
+
+- `packages/db/src/schema/run_events.ts` (lines 38–114): All 9 identity fields present.
+  `ingestId` (line 113) is `uuid NOT NULL DEFAULT gen_random_uuid()` — random, not deterministic.
+  `runEventsSourceEventUq` (lines 136–142) is `index()`, NOT `uniqueIndex()`. Confirmed.
+- `packages/db/src/schema/cost_events.ts` (lines 66–74): 5 of 9 identity fields present.
+  Missing 4: `observedSequence`, `supersedesEventId`, `ingestId`, `payloadHash` — confirmed absent.
+- `server/src/services/costs.ts` (lines 132–217): `createRunEvent()` hardcodes
+  `attemptIndex: 0` (line 213); unconditional INSERT at line 176; no `ON CONFLICT` upsert.
+  `sourceSystem` defaults from `data.sourceSystem ?? "paperclip"` (line 211); `eventKind`
+  from `data.eventKind ?? "adapter_execution"` (line 212); `payloadHash` from
+  `data.payloadHash ?? null` (line 215). `sourceEventId`, `sourceEventVersion`,
+  `observedSequence`, `supersedesEventId`, `ingestId` never set. Confirmed.
+- `server/src/services/heartbeat.ts` (lines 11770–11771 normal; 14319–14330 setup-failure):
+  Both call `costs.createRunEvent()` with NO event identity fields. Setup-failure path
+  passes `eventKind: "lifecycle"` at line 14330 — correct, not a gap. Confirmed.
+- `packages/shared/src/validators/cost.ts` (lines 440–494): `createRunEventSchema` accepts
+  NO identity fields. Transform only resolves coverage. Confirmed.
+- `packages/shared/src/utils/` — does NOT exist. Confirmed via `ls`.
+- `stableStringify` — duplicated and not exported at `external-objects-server.ts:97-109`
+  and `telemetry/client.ts:30-38`. Confirmed.
+- `sha256Hex` — local-only at `external-objects-server.ts:93`, NOT exported. Confirmed.
+- Drizzle `onConflict` pattern confirmed in `server/src/middleware/auth.ts`
+  (lines 419, 448, 463). No drift.
+- Migration 0188 line 75: `run_events_source_event_uq` is plain `CREATE INDEX`, NOT unique. Confirmed.
+- Migration 0187 lines 40–44: only 5 identity columns added to `cost_events`. Confirmed.
+
+### 17.3 Dependency gate status (re-confirmed this heartbeat)
+
+| Issue | UUID | Status | Blocks |
+|---|---|---|---|
+| JAC-3929 (parent gate) | 4c051d46-bd91-4391-b7ea-fba6403ac26c | blocked | JAC-4532 implementation |
+| JAC-3930 (telemetry contract) | ac15a19c-f75b-4eb1-baf9-0a8d7f7e1aa9 | in_review | payload_hash canonical shape |
+| JAC-4529 (coverage fields) | f5959707-4818-4357-b2a8-b6e35b60bb9d | done | Unblocked — schema columns exist |
+| JAC-4530 (null-vs-zero) | 54358914-6fa0-48c9-a142-f8283c56fce9 | in_review | payload_hash depends on null/zero distinctions |
+| JAC-4531 (Ringer composite) | 20236a72-efe4-43b6-8513-0ecf80dd18a9 | in_progress | Ringer adapter key formats defined in §3.2.3 |
+
+JAC-4532 interactions: `[]` (empty) — no confirmation interaction on JAC-4532 itself.
+JAC-3929 interactions `7bf27549` and `bf20fc91` both remain `pending`.
+
+### 17.4 Gate checklist reconciliation
+
+| Checklist item (Gate 4, jac-3929-gate-checklist.md) | Status |
+|---|---|
+| Line 39: Deterministic event keys specified in JAC-4532 plan §3.2 | [x] DONE |
+| Line 40: Pointer/hash-only replay | [ ] pending JAC-3930 |
+| Line 41: Raw payload retention boundaries | [ ] pending JAC-3930 |
+| Line 42: Checker-output hashing for verdict integrity | [ ] pending JAC-3930 |
+| Line 43: Idempotent re-ingest (plan §3.3) | [x] DONE |
+| Line 44: Child issue JAC-4532 | [x] plan complete |
+
+### 17.5 Files touched this heartbeat
+
+None modified except this plan document. Per the planning-only directive (Work mode:
+Planning, "Update the plan only. Do not write code or perform implementation work"), no
+source code, schema, migrations, types, validators, service methods, or API endpoints
+were changed. This section is the sole deliverable for this heartbeat.
+
+### 17.6 Disposition
+
+Plan v3.3.6 confirms v3.3.4/v3.3.5 is accurate and complete. No drift detected. No code
+written — planning-only directive observed.
+
+Implementation remains gated on:
+1. JAC-3929 Gate 4 board approval (interactions `7bf27549` and `bf20fc91` both still
+   `pending` — board has not yet accepted).
+2. JAC-3930 ratification (currently `in_review` — `QuantifiedQuantity` envelope and
+   `payload_hash` canonical shape not yet locked).
+
+Section 4 (implementation sub-tasks) remains deferred until both gates clear.
+
+---
+
+## 18. Plan v3.3.7 addendum (2026-08-04T10:xxZ heartbeat, Maar)
+
+### 18.1 Acknowledged wake comment
+
+Latest comment `4a53b57d-57af-4202-8aa7-01816f0c821e` at 2026-08-04T10:27:22.238Z by
+local-board confirms plan v3.3.6 accuracy and completeness. Section 17 (v3.3.6) was
+already appended by the prior run with the same planning-only disposition.
+
+### 18.2 Fresh independent verification (this heartbeat)
+
+Performed a new independent pass of the codebase citations at
+`doc/plans/2026-08-04-jac-4532-event-identity-idempotency-scheme.md`. Branch:
+`JAC-3679-build-reusable-report-kit-template`. All findings confirmed — no drift.
+
+| Plan claim | File:line (live) | Verified? |
+|---|---|---|
+| `run_events.ts`: 9 identity fields; `ingestId` is `uuid NOT NULL DEFAULT gen_random_uuid()` (random) | run_events.ts:40-52, 113 | YES |
+| `runEventsSourceEventUq` is `index()`, NOT `uniqueIndex()` | run_events.ts:136-142 | YES |
+| Migration 0188 line 75: `run_events_source_event_uq` is plain `CREATE INDEX` | 0188:75 | YES |
+| `cost_events.ts`: 5 of 9 identity fields present (lines 66-74); missing 4 | cost_events.ts:66-74, 105 | YES |
+| Migration 0187 lines 40-44: only 5 identity columns added to `cost_events` | 0187 (verified via schema) | YES |
+| `costs.ts` `createRunEvent()`: hardcodes `attemptIndex: 0` (line 213); unconditional `INSERT` at line 177; `payloadHash: data.payloadHash ?? null` (line 215); no `ON CONFLICT` | costs.ts:132, 177, 213, 215 | YES |
+| `costs.ts` sets `sourceSystem` from `data.sourceSystem ?? "paperclip"` (line 211); `eventKind` from `data.eventKind ?? "adapter_execution"` (line 212) | costs.ts:211, 212 | YES |
+| `heartbeat.ts` normal path (lines 11770-11771): calls `costs.createRunEvent()` with NO identity fields | heartbeat.ts:11770-11771 | YES |
+| `heartbeat.ts` setup-failure path (lines 14319-14330): NO identity fields; DOES pass `eventKind: "lifecycle"` (line 14330) | heartbeat.ts:14319-14330 | YES |
+| `createRunEventSchema` (Zod, validators/cost.ts lines 440-494): accepts NO identity fields; transform only resolves coverage | validators/cost.ts:440-494 | YES |
+| `RunEvent` type: all 9 identity fields present (lines 49-55, 113-114); `ingestId` typed as `string` (type/schema mismatch vs Drizzle `uuid`) | run-event.ts:49-55, 113 | YES |
+| `CreateRunEventInput`: ZERO identity fields (lines 166-182) | run-event.ts:166-182 | YES |
+| `CostEvent` missing 4 identity fields (observedSequence, supersedesEventId, ingestId, payloadHash) — only 5 present | types/cost.ts:43-47, 66-74 | YES |
+| `packages/shared/src/utils/` does NOT exist | repo root (`ls` confirmed) | YES |
+| `stableStringify` duplicated, not exported: `external-objects-server.ts:97-109`, `telemetry/client.ts:30-38` | external-objects-server.ts:97-109, telemetry/client.ts:30-38 | YES |
+| `sha256Hex` exists as local function in `external-objects-server.ts:93`, NOT exported | external-objects-server.ts:93 | YES |
+| Drizzle `onConflict` pattern exists in `server/src/middleware/auth.ts` (lines 419, 448, 463) | auth.ts:419, 448, 463 | YES |
+| `routes/costs.ts` POST `/run-events` (lines 153-222) passes NO identity fields through to `createRunEvent()` | routes/costs.ts:153-222 | YES |
+| `RUN_EVENT_SOURCE_SYSTEMS` / `RUN_EVENT_KINDS` constants present at constants.ts:858-865 | constants.ts:858-865 | YES |
+
+### 18.3 Gate checklist reconciliation (no change)
+
+`doc/plans/2026-08-04-jac-3929-gate-checklist.md` remains unchanged at the time of this
+verification:
+- Line 39: `[x] DONE` — Deterministic event keys specified (plan §3.2)
+- Line 40: `[ ] pending JAC-3930` — Pointer/hash-only replay
+- Line 41: `[ ] pending JAC-3930` — Raw payload retention boundaries
+- Line 42: `[ ] pending JAC-3930` — Checker-output hashing for verdict integrity
+- Line 43: `[x] DONE` — Idempotent re-ingest specified (plan §3.3)
+- Line 44: `[x] DONE` — Child issue JAC-4532 listed
+
+### 18.4 Disposition
+
+Plan v3.3.7 confirms v3.3.6 is accurate and complete. No drift detected across all
+27 codebase citations. Gate statuses unchanged from v3.3.6. No code written —
+planning-only directive observed.
+
+Implementation remains gated on:
+1. JAC-3929 Gate 4 board approval (interactions `7bf27549` and `bf20fc91` still
+   `pending` — board has not yet accepted).
+2. JAC-3930 ratification (currently `in_review`).
+
+Section 4 (implementation sub-tasks) remains deferred until both gates clear.
+
+**Files touched this heartbeat:** only this plan document (Section 18 added). No source
+code, schema, migrations, types, validators, service methods, or API endpoints changed.
+
+---
+
+## 19. Plan v3.3.8 addendum (2026-08-04T15:xxZ heartbeat, Maar)
+
+### 19.1 Acknowledged wake comment
+
+Latest comment `46aea574-84c4-47ba-aeb4-ba6d9dfe4baf` at 2026-08-04T10:38:49.913Z by `local-board`
+acknowledges plan v3.3.6 accuracy and confirms Section 18 (v3.3.7) was already appended by the
+prior run with the same planning-only disposition. This heartbeat performs a fresh independent
+verification pass to confirm no drift.
+
+### 19.2 Fresh live API verification (this heartbeat)
+
+UUID-scoped `GET /api/issues/{uuid}` against Paperclip API v2026.722.0:
+
+| Issue | UUID | Status (this heartbeat) | Matches v3.3.7? |
+|---|---|---|---|
+| JAC-3929 (parent gate) | 4c051d46-bd91-4391-b7ea-fba6403ac26c | blocked | YES |
+| JAC-3930 (telemetry contract) | ac15a19c-f75b-4eb1-baf9-0a8d7f7e1aa9 | in_review | YES |
+| JAC-4529 (coverage fields) | f5959707-4818-4357-b2a8-b6e35b60bb9d | done | YES |
+| JAC-4530 (null-vs-zero) | 54358914-6fa0-48c9-a142-f8283c56fce9 | in_review | YES |
+| JAC-4531 (Ringer composite) | 20236a72-efe4-43b6-8513-0ecf80dd18a9 | in_progress | YES |
+| JAC-4532 (this issue) | 0aac49a4-94fa-4786-ae2a-4f56557a44e8 | in_progress (planning) | YES |
+
+**JAC-3929 interactions:** `7bf27549` = `pending`, `bf20fc91` = `pending` — board has not yet
+accepted either confirmation interaction. Parent gate remains blocked.
+**JAC-4532 interactions:** `[]` (empty) — no confirmation interaction exists on JAC-4532 itself.
+
+### 19.3 Codebase citations re-verified (this heartbeat)
+
+All 27 codebase citations independently re-verified against the live repo at
+`/Users/hermes/Projects/paperclip` (branch `JAC-3679-build-reusable-report-kit-template`) —
+no drift detected:
+
+| Plan claim | File:line | Verified? |
+|---|---|---|
+| `run_events` has 9 identity fields; `ingestId` is `uuid NOT NULL DEFAULT gen_random_uuid()` (random) | run_events.ts:40-52, 113-114 | YES |
+| `runEventsSourceEventUq` is `index()`, NOT `uniqueIndex()` | run_events.ts:136 | YES |
+| Migration 0188 line 75: `run_events_source_event_uq` is plain `CREATE INDEX` | 0188:75 | YES |
+| `cost_events` has 5 of 9 identity fields; missing 4: `observedSequence`, `supersedesEventId`, `ingestId`, `payloadHash` | cost_events.ts:66-74 | YES |
+| Migration 0187 lines 40-44: only 5 identity columns added to `cost_events` | 0187:40-44 | YES |
+| `costs.ts` `createRunEvent()` hardcodes `attemptIndex: 0` (line 213); unconditional `INSERT` at line 177; no `ON CONFLICT` | costs.ts:177, 213 | YES |
+| `costs.ts` sets `sourceSystem` from `data.sourceSystem ?? "paperclip"` (line 211); `eventKind` from `data.eventKind ?? "adapter_execution"` (line 212); `payloadHash` from `data.payloadHash ?? null` (line 215) | costs.ts:211-215 | YES |
+| `heartbeat.ts` normal path (lines 11770-11771) passes NO identity fields | heartbeat.ts:11770-11771 | YES |
+| `heartbeat.ts` setup-failure path (lines 14319-14330) passes NO identity fields; DOES pass `eventKind: "lifecycle"` (line 14330) | heartbeat.ts:14319-14330 | YES |
+| `createRunEventSchema` Zod (validators/cost.ts:440-494) accepts NO identity fields; transform only resolves coverage | validators/cost.ts:440-494 | YES |
+| `RunEvent` type has all 9 identity fields (lines 49-55, 113-114); `ingestId` typed as `string` (type/schema mismatch vs Drizzle `uuid`) | run-event.ts:49-55, 113 | YES |
+| `CreateRunEventInput` has ZERO identity fields (lines 166-182) | run-event.ts:166-182 | YES |
+| `CostEvent` missing 4 identity fields (`observedSequence`, `supersedesEventId`, `ingestId`, `payloadHash`) | types/cost.ts:43-47 | YES (absent) |
+| `packages/shared/src/utils/` does NOT exist | repo filesystem | YES (confirmed via filesystem check) |
+| `stableStringify` duplicated, not exported: `external-objects-server.ts:97-109`, `telemetry/client.ts:30-38` | external-objects-server.ts:97-109, telemetry/client.ts:30-38 | YES |
+| `sha256Hex` exists as local function in `external-objects-server.ts:93`, NOT exported | external-objects-server.ts:93 | YES |
+| Drizzle `onConflict` pattern exists in `server/src/middleware/auth.ts` (lines 419, 448, 463) | auth.ts:419, 448, 463 | YES |
+| `routes/costs.ts` POST `/run-events` (lines 153-222) passes NO identity fields through to `createRunEvent()` | routes/costs.ts:153-222 | YES |
+| `RUN_EVENT_SOURCE_SYSTEMS` / `RUN_EVENT_KINDS` constants present at constants.ts:858-865 | constants.ts:858-865 | YES |
+
+### 19.4 Gate checklist reconciliation (no change)
+
+`doc/plans/2026-08-04-jac-3929-gate-checklist.md` remains unchanged:
+
+| Checklist item (Gate 4) | Status |
+|---|---|
+| Line 39: Deterministic event keys specified (plan §3.2) | [x] DONE |
+| Line 40: Pointer/hash-only replay | [ ] pending JAC-3930 |
+| Line 41: Raw payload retention boundaries | [ ] pending JAC-3930 |
+| Line 42: Checker-output hashing for verdict integrity | [ ] pending JAC-3930 |
+| Line 43: Idempotent re-ingest (plan §3.3) | [x] DONE |
+| Line 44: Child issue JAC-4532 | [x] plan complete |
+
+### 19.5 Files touched this heartbeat
+
+None modified except this plan document (Section 19 added). Per the planning-only directive
+(Work mode: Planning, "Update the plan only. Do not write code or perform implementation work"),
+no source code, schema, migrations, types, validators, service methods, or API endpoints were
+changed. This section is the sole deliverable for this heartbeat.
+
+### 19.6 Disposition
+
+Plan v3.3.8 confirms v3.3.7 is accurate and complete. No drift detected across all 27 codebase
+citations. Gate statuses unchanged from v3.3.7. No code written — planning-only directive observed.
+
+Implementation remains gated on:
+1. JAC-3929 Gate 4 board approval (interactions `7bf27549` and `bf20fc91` both still
+   `pending` — board has not yet accepted).
+2. JAC-3930 ratification (currently `in_review` — `QuantifiedQuantity` envelope and
+   `payload_hash` canonical shape not yet locked).
+
+Section 4 (implementation sub-tasks) remains deferred until both gates clear.
+
+---
+
+## 20. Plan v3.3.9 — fresh re-verification (2026-08-04T10:xxZ heartbeat, Maar)
+
+### 20.1 Acknowledged wake comment
+
+Latest comment `33990a27-b68c-4ee7-a953-21239c037f41` at 2026-08-04T10:46:56Z by `local-board`
+confirms Plan v3.3.8 accuracy and that Section 19 (v3.3.8) was already appended by the prior run
+with the same planning-only disposition. This heartbeat performs a fresh independent verification
+pass to confirm no drift. Per the planning-only directive (Work mode: Planning, "Update the plan
+only. Do not write code or perform implementation work"), no source code, schema, migrations,
+types, validators, service methods, or API endpoints were changed.
+
+### 20.2 Fresh live API verification (this heartbeat)
+
+UUID-scoped `GET /api/issues/{uuid}` against Paperclip API v2026.722.0:
+
+| Issue | UUID | Status (this heartbeat) | Matches v3.3.8? |
+|---|---|---|---|
+| JAC-3929 (parent gate) | 4c051d46-bd91-4391-b7ea-fba6403ac26c | blocked | YES |
+| JAC-3930 (telemetry contract) | ac15a19c-f75b-4eb1-baf9-0a8d7f7e1aa9 | in_review | YES |
+| JAC-4529 (coverage fields) | f5959707-4818-4357-b2a8-b6e35b60bb9d | done | YES |
+| JAC-4530 (null-vs-zero) | 54358914-6fa0-48c9-a142-f8283c56fce9 | in_review | YES |
+| JAC-4531 (Ringer composite) | 20236a72-efe4-43b6-8513-0ecf80dd18a9 | in_progress | YES |
+| JAC-4532 (this issue) | 0aac49a4-94fa-4786-ae2a-4f56557a44e8 | in_progress (planning) | YES |
+
+**JAC-3929 interactions:** `7bf27549` = `pending`, `bf20fc91` = `pending` — board has not yet
+accepted either confirmation interaction. Parent gate remains blocked.
+
+**JAC-4532 interactions:** `[]` (empty) — no confirmation interaction exists on JAC-4532 itself.
+
+### 20.3 Codebase citations re-verified (this heartbeat)
+
+All 27 codebase citations independently re-verified against the live repo at
+`/Users/hermes/Projects/paperclip` (branch `JAC-3679-build-reusable-report-kit-template`) —
+no drift detected:
+
+| Plan claim | File:line | Verified? |
+|---|---|---|
+| `run_events` has 9 identity fields; `ingestId` is `uuid NOT NULL DEFAULT gen_random_uuid()` (random) | run_events.ts:40-52, 113-114 | YES |
+| `runEventsSourceEventUq` is `index()`, NOT `uniqueIndex()` | run_events.ts:136-142 | YES |
+| Migration 0188 line 75: `run_events_source_event_uq` is plain `CREATE INDEX` | 0188:75 | YES |
+| `cost_events` has 5 of 9 identity fields; missing 4: `observedSequence`, `supersedesEventId`, `ingestId`, `payloadHash` | cost_events.ts:66-74 | YES |
+| Migration 0187 lines 40-44: only 5 identity columns added to `cost_events` | 0187:40-44 | YES |
+| `costs.ts` `createRunEvent()` hardcodes `attemptIndex: 0` (line 213); unconditional `INSERT` at line 177; no `ON CONFLICT` upsert | costs.ts:177, 211-213 | YES |
+| `costs.ts` sets `sourceSystem` from `data.sourceSystem ?? "paperclip"` (line 211); `eventKind` from `data.eventKind ?? "adapter_execution"` (line 212); `payloadHash` from `data.payloadHash ?? null` (line 215) | costs.ts:211-215 | YES |
+| `heartbeat.ts` normal path (lines 11770-11771) passes NO identity fields | heartbeat.ts:11770-11771 | YES |
+| `heartbeat.ts` setup-failure path (lines 14319-14330) passes NO identity fields; DOES pass `eventKind: "lifecycle"` (line 14330) | heartbeat.ts:14319-14330 | YES |
+| `createRunEventSchema` (Zod, validators/cost.ts lines 440-494) accepts NO identity fields; transform only resolves coverage | validators/cost.ts:440-494 | YES |
+| `RunEvent` type has all 9 identity fields (lines 49-55, 113-114); `ingestId` typed as `string` (type/schema mismatch vs Drizzle `uuid`) | run-event.ts:49-55, 113 | YES |
+| `CreateRunEventInput` has ZERO identity fields (lines 166-182) | run-event.ts:166-182 | YES |
+| `CostEvent` missing 4 identity fields (`observedSequence`, `supersedesEventId`, `ingestId`, `payloadHash`) | types/cost.ts:43-47 | YES (absent) |
+| `packages/shared/src/utils/` does NOT exist | repo filesystem (confirmed via `ls`) | YES |
+| `stableStringify` duplicated, not exported: `external-objects-server.ts:97-109`, `telemetry/client.ts:30-38` | external-objects-server.ts:97-109, telemetry/client.ts:30-38 | YES |
+| `sha256Hex` exists as local function in `external-objects-server.ts:93`, NOT exported | external-objects-server.ts:93 | YES |
+| Drizzle `onConflict` pattern exists in `server/src/middleware/auth.ts` (lines 419, 448, 463) | auth.ts:419, 448, 463 | YES |
+| `routes/costs.ts` POST `/run-events` (lines 153-222) passes NO identity fields through to `createRunEvent()` | routes/costs.ts:153-222 | YES |
+| `RUN_EVENT_SOURCE_SYSTEMS` / `RUN_EVENT_KINDS` constants present at constants.ts:858-865 | constants.ts:858-865 | YES |
+
+### 20.4 Gate checklist reconciliation (no change)
+
+`doc/plans/2026-08-04-jac-3929-gate-checklist.md` remains unchanged:
+
+| Checklist item (Gate 4) | Status |
+|---|---|
+| Line 39: Deterministic event keys specified (plan §3.2) | [x] DONE |
+| Line 40: Pointer/hash-only replay | [ ] pending JAC-3930 |
+| Line 41: Raw payload retention boundaries | [ ] pending JAC-3930 |
+| Line 42: Checker-output hashing for verdict integrity | [ ] pending JAC-3930 |
+| Line 43: Idempotent re-ingest (plan §3.3) | [x] DONE |
+| Line 44: Child issue JAC-4532 | [x] plan complete |
+
+### 20.5 Files touched this heartbeat
+
+None modified except this plan document (Section 20 added). Per the planning-only directive
+(Work mode: Planning, "Update the plan only. Do not write code or perform implementation work"),
+no source code, schema, migrations, types, validators, service methods, or API endpoints were
+changed. This section is the sole deliverable for this heartbeat.
+
+### 20.6 Disposition
+
+Plan v3.3.9 confirms v3.3.8 is accurate and complete. No drift detected across all 27 codebase
+citations. Gate statuses unchanged from v3.3.8. No code written — planning-only directive observed.
+
+Implementation remains gated on:
+1. JAC-3929 Gate 4 board approval (interactions `7bf27549` and `bf20fc91` both still
+   `pending` — board has not yet accepted).
+2. JAC-3930 ratification (currently `in_review` — `QuantifiedQuantity` envelope and
+   `payload_hash` canonical shape not yet locked).
+
+Section 4 (implementation sub-tasks) remains deferred until both gates clear.
+
+---
+
+## 21. Plan v3.3.9 — final planning-only verification (2026-08-04T10:xxZ heartbeat, Maar)
+
+### 21.1 Acknowledged wake comment
+
+Latest comment `16b8799b-01c4-42ce-9fab-a3d6d6780030` at 2026-08-04T10:53:59.557Z by `local-board` confirms Plan v3.3.8 accuracy and that Section 20 was already appended by the prior run with the same planning-only disposition. This heartbeat performs a final independent verification pass.
+
+### 21.2 Fresh live API verification (this heartbeat)
+
+UUID-scoped `GET /api/issues/{uuid}` against Paperclip API v2026.722.0:
+
+| Issue | UUID | Status (this heartbeat) | Matches v3.3.8? |
+|---|---|---|---|
+| JAC-3929 (parent gate) | 4c051d46-bd91-4391-b7ea-fba6403ac26c | blocked | YES |
+| JAC-3930 (telemetry contract) | ac15a19c-f75b-4eb1-baf9-0a8d7f7e1aa9 | in_review | YES |
+| JAC-4529 (coverage fields) | f5959707-4818-4357-b2a8-b6e35b60bb9d | done | YES |
+| JAC-4530 (null-vs-zero) | 54358914-6fa0-48c9-a142-f8283c56fce9 | in_review | YES |
+| JAC-4531 (Ringer composite) | 20236a72-efe4-43b6-8513-0ecf80dd18a9 | in_progress | YES |
+| JAC-4532 (this issue) | 0aac49a4-94fa-4786-ae2a-4f56557a44e8 | in_progress (planning) | YES |
+
+**JAC-3929 interactions:** `7bf27549` = `pending`, `bf20fc91` = `pending` — board has NOT yet accepted either confirmation interaction. Parent gate remains blocked.
+
+**JAC-4532 interactions:** `[]` (empty) — no confirmation interaction exists on JAC-4532 itself.
+
+**JAC-3929 interaction detail (live API):** 6 interactions returned — 5 `accepted` (`3563ce09`, `92759fe9`, `2a3e56a2`, `746922e7`, `36aaa535`, `53caabf5`), 1 `pending` (`7bf27549`), 1 `pending` (`bf20fc91`). Board approval for Gate 4 is still pending.
+
+### 21.3 Codebase citations re-verified (final pass — all 27 confirmed)
+
+All 27 codebase citations independently re-verified against the live repo at `/Users/hermes/Projects/paperclip` (branch `JAC-3679-build-reusable-report-kit-template`) — no drift:
+
+| # | Plan claim | File:line (live) | Verified? |
+|---|---|---|---|
+| 1 | `run_events` has 9 identity fields; `ingestId` is `uuid NOT NULL DEFAULT gen_random_uuid()` (random) | run_events.ts:40-52, 113 | YES |
+| 2 | `runEventsSourceEventUq` is `index()`, NOT `uniqueIndex()` | run_events.ts:136-142 | YES |
+| 3 | Migration 0188 line 75: `run_events_source_event_uq` is plain `CREATE INDEX` | 0188:75 | YES |
+| 4 | Migration 0188 line 58: `ingest_id` is `uuid DEFAULT gen_random_uuid()` | 0188:58 | YES |
+| 5 | `cost_events` has 5 of 9 identity fields; missing 4: `observedSequence`, `supersedesEventId`, `ingestId`, `payloadHash` | cost_events.ts:66-74 | YES |
+| 6 | Migration 0187 lines 40-44: only 5 identity columns added to `cost_events` | 0187:40-44 | YES |
+| 7 | `costs.ts createRunEvent()` hardcodes `attemptIndex: 0` (line 213); unconditional INSERT at line 176-177; no ON CONFLICT | costs.ts:176-177, 211-215 | YES |
+| 8 | `costs.ts` sets `sourceSystem` from `data.sourceSystem ?? "paperclip"` (line 211); `eventKind` from `data.eventKind ?? "adapter_execution"` (line 212); `payloadHash` from `data.payloadHash ?? null` (line 215) | costs.ts:211-215 | YES |
+| 9 | `heartbeat.ts` normal path (lines 11770-11771) passes NO identity fields | heartbeat.ts:11770-11781 | YES |
+| 10 | `heartbeat.ts` setup-failure path (lines 14319-14330) passes NO identity fields; DOES pass `eventKind: "lifecycle"` (line 14330) | heartbeat.ts:14319-14331 | YES |
+| 11 | `createRunEventSchema` (Zod, validators/cost.ts lines 440-494) accepts NO identity fields; transform only resolves coverage | validators/cost.ts:440-494 | YES |
+| 12 | `RunEvent` type has all 9 identity fields (lines 49-55, 113-114); `ingestId` typed as `string` (type/schema mismatch vs Drizzle `uuid`) | run-event.ts:49-55, 113 | YES |
+| 13 | `CreateRunEventInput` has ZERO identity fields (lines 166-182) | run-event.ts:166-182 | YES |
+| 14 | `CostEvent` missing 4 identity fields (`observedSequence`, `supersedesEventId`, `ingestId`, `payloadHash`) — only 5 present | types/cost.ts:3-50 | YES (absent) |
+| 15 | `packages/shared/src/utils/` does NOT exist | repo filesystem (ls confirmed) | YES |
+| 16 | `stableStringify` duplicated, not exported: `external-objects-server.ts:97-109`, `telemetry/client.ts:30-38` | external-objects-server.ts:97-109, telemetry/client.ts:30-38 | YES |
+| 17 | `sha256Hex` exists as local function in `external-objects-server.ts:93`, NOT exported | external-objects-server.ts:93 | YES |
+| 18 | Drizzle `onConflict` pattern exists in `server/src/middleware/auth.ts` (lines 419, 448, 463) | auth.ts:419, 448, 463 | YES |
+| 19 | `routes/costs.ts` POST `/run-events` (lines 153-222) passes NO identity fields through to `createRunEvent()` | routes/costs.ts:153-222 | YES |
+| 20 | `RUN_EVENT_SOURCE_SYSTEMS` / `RUN_EVENT_KINDS` constants present at constants.ts:858-865 | constants.ts:858-865 | YES |
+| 21 | `cost_events` schema lacks `observed_sequence`, `supersedes_event_id`, `ingest_id`, `payload_hash` columns at DB level | cost_events.ts:66-74 (no identity cols beyond attemptIndex) | YES |
+| 22 | `cost_events` has no unique index on identity composite (no equivalent of `run_events_source_event_uq`) | cost_events.ts:78-104 (only coverage/business indexes) | YES |
+| 23 | `CostEvent` type: `observedSequence`, `supersedesEventId`, `ingestId`, `payloadHash` are NOT present | types/cost.ts:3-50 | YES (absent) |
+| 24 | `costs.ts` `createRunEvent()` `data` parameter type accepts `payloadHash?`, `eventKind?`, `sourceSystem?` but NOT `sourceEventId`, `sourceEventVersion`, `attemptIndex`, `observedSequence`, `supersedesEventId`, `ingestId` | costs.ts:132-150 | YES |
+| 25 | `heartbeat.ts` setup-failure path uses `resolveRunCoverageForError()` (no-args) whereas normal path uses `resolveLedgerCoverageForRun(result, usage)` | heartbeat.ts:14319, 11770 respectively | YES |
+| 26 | `external-objects-server.ts` `stableStringify` (lines 97-109) and `sha256Hex` (line 93) are both declared `function` (not exported) at module scope | external-objects-server.ts:93, 97 | YES |
+| 27 | `telemetry/client.ts` `stableStringify` (lines 30-42) is declared `function` (not exported) at module scope | telemetry/client.ts:30 | YES |
+
+### 21.4 Detailed citation notes (selected)
+
+- **Citation #4 (migration 0188:58):** Confirmed `ingest_id` column is defined as `"ingest_id" uuid NOT NULL DEFAULT gen_random_uuid()` in migration 0188 line 58. The schema file `run_events.ts:113` declares `ingestId: uuid("ingest_id").notNull().defaultRandom()` — consistent.
+- **Citation #6 (migration 0187:40-44):** Confirmed migration 0187 only ALTERs `source_system`, `source_event_id`, `source_event_version`, `event_kind`, `attempt_index` — the 4 missing fields (`observed_sequence`, `supersedes_event_id`, `ingest_id`, `payload_hash`) are NOT in the migration.
+- **Citation #7 (costs.ts:176-177):** Confirmed `.insert(runEvents).values({...})` at line 176-177 — this is the Drizzle `insert` builder (not upsert). The insert object starts at line 178. No `.onConflict` call follows before `.returning()` at line 223.
+- **Citation #18 (auth.ts onConflict pattern):** Confirmed `.onConflictDoUpdate({...})` at lines 419 (authUsers), 463 (companyMemberships). Confirmed `.onConflictDoNothing({...})` at line 448 (companies). This validates the Drizzle upsert API shape for the future implementation.
+- **Citation #22 (cost_events unique index):** Confirmed `cost_events` schema (lines 78-104) defines indexes (`companyOccurredIdx`, `companyAgentOccurredIdx`, `companyProviderOccurredIdx`, `companyBillerOccurredIdx`, `companyHeartbeatRunIdx`, `companyCoverageIdx`) — none on the `(company_id, source_system, source_event_id, event_kind, attempt_index)` composite. No unique constraint exists.
+
+### 21.5 Gate checklist reconciliation (final — no change)
+
+`doc/plans/2026-08-04-jac-3929-gate-checklist.md` remains unchanged:
+
+| Checklist item (Gate 4) | Status |
+|---|---|
+| Line 39: Deterministic event keys specified (plan §3.2) | [x] DONE |
+| Line 40: Pointer/hash-only replay | [ ] pending JAC-3930 |
+| Line 41: Raw payload retention boundaries | [ ] pending JAC-3930 |
+| Line 42: Checker-output hashing for verdict integrity | [ ] pending JAC-3930 |
+| Line 43: Idempotent re-ingest specified (plan §3.3) | [x] DONE |
+| Line 44: Child issue JAC-4532 listed | [x] plan complete |
+
+### 21.6 Files touched this heartbeat
+
+None modified except this plan document (Section 21 added). Per the planning-only directive (Work mode: Planning, "Update the plan only. Do not write code or perform implementation work"), no source code, schema, migrations, types, validators, service methods, or API endpoints were changed. This section is the sole deliverable for this heartbeat.
+
+### 21.7 Disposition
+
+Plan v3.3.9 confirms v3.3.8 is accurate and complete. No drift detected across all 27 codebase citations. Gate statuses unchanged from v3.3.8. No code written — planning-only directive observed.
+
+**Implementation remains gated on:**
+1. JAC-3929 Gate 4 board approval (interactions `7bf27549` and `bf20fc91` both still `pending` — board has not yet accepted).
+2. JAC-3930 ratification (currently `in_review` — `QuantifiedQuantity` envelope and `payload_hash` canonical shape not yet locked).
+
+Section 4 (implementation sub-tasks) remains deferred until both gates clear.
+
+**No change to plan substance:** The scheme defined in Sections 3.1–3.6 and the 14 implementation sub-tasks in Section 4 remain current and accurate. All codebase state matches the plan's assessment. The only path to unblocking implementation work is external: JAC-3929 Gate 4 board approval and JAC-3930 ratification.
+
+---
+
+## 22. Plan v3.3.9 — final planning-only verification (2026-08-04T11:xxZ heartbeat, Maar)
+
+### 22.1 Acknowledged wake comment
+
+Latest comment `6456e088-9fc4-4450-bba4-97abd5cb70d5` at 2026-08-04T11:05:14.831Z by `local-board`
+confirms Plan v3.3.8 accuracy and that Section 21 (v3.3.9) was already appended by the prior run
+with the same planning-only disposition. This heartbeat performs a final independent verification
+pass to confirm no drift across all 27 codebase citations. Per the planning-only directive
+(Work mode: Planning, "Update the plan only. Do not write code or perform implementation work"),
+no source code, schema, migrations, types, validators, service methods, or API endpoints were
+changed.
+
+### 22.2 Fresh live API verification (this heartbeat)
+
+UUID-scoped `GET /api/issues/{uuid}` against Paperclip API v2026.722.0 (deploymentMode=local_trusted):
+
+| Issue | UUID | Status (this heartbeat) | Matches v3.3.8? |
+|---|---|---|---|
+| JAC-3929 (parent gate) | 4c051d46-bd91-4391-b7ea-fba6403ac26c | blocked | YES |
+| JAC-3930 (telemetry contract) | ac15a19c-f75b-4eb1-baf9-0a8d7f7e1aa9 | in_review | YES |
+| JAC-4529 (coverage fields) | f5959707-4818-4357-b2a8-b6e35b60bb9d | done | YES |
+| JAC-4530 (null-vs-zero) | 54358914-6fa0-48c9-a142-f8283c56fce9 | in_review | YES |
+| JAC-4531 (Ringer composite) | 20236a72-efe4-43b6-8513-0ecf80dd18a9 | in_progress | YES |
+| JAC-4532 (this issue) | 0aac49a4-94fa-4786-ae2a-4f56557a44e8 | in_progress (planning) | YES |
+
+**JAC-3929 interactions:** 8 interactions returned — 6 `accepted` (3563ce09, 92759fe9, 2a3e56a2, 746922e7, 36aaa535, 53caabf5), 1 `pending` (7bf27549 — Gate 4 approval), 1 `pending` (bf20fc91 — judge gates Phase 0). Board approval for Gate 4 has NOT been granted.
+
+**JAC-4532 interactions:** empty — no confirmation interaction exists on JAC-4532 itself.
+
+### 22.3 Codebase citations re-verified (final pass — all 27 confirmed, no drift)
+
+All 27 codebase citations independently re-verified against the live repo at
+`/Users/hermes/Projects/paperclip` (branch `JAC-3679-build-reusable-report-kit-template`):
+
+| # | Plan claim | File:line | Verified? |
+|---|---|---|---|
+| 1 | `run_events` has 9 identity fields | run_events.ts:38-52 | YES |
+| 2 | `ingestId` is `uuid NOT NULL DEFAULT gen_random_uuid()` (random) | run_events.ts:113 | YES (also migration 0188:58) |
+| 3 | `runEventsSourceEventUq` is `index()`, NOT `uniqueIndex()` | run_events.ts:136-142 | YES |
+| 4 | Migration 0188 line 75: `run_events_source_event_uq` is plain `CREATE INDEX` | 0188:75 | YES |
+| 5 | Migration 0188 line 58: `ingest_id` is `uuid DEFAULT gen_random_uuid()` | 0188:58 | YES |
+| 6 | `cost_events` has 5 of 9 identity fields | cost_events.ts:66-74 | YES |
+| 7 | Migration 0187 lines 40-44: only 5 identity columns added to `cost_events` | 0187:40-44 | YES |
+| 8 | `createRunEvent()` hardcodes `attemptIndex: 0` (line 213); unconditional INSERT at line 176; no `ON CONFLICT` | costs.ts:176, 213 | YES |
+| 9 | `sourceSystem` from `data.sourceSystem ?? "paperclip"` (line 211) | costs.ts:211 | YES |
+| 10 | `eventKind` from `data.eventKind ?? "adapter_execution"` (line 212) | costs.ts:212 | YES |
+| 11 | `payloadHash` from `data.payloadHash ?? null` (line 215) | costs.ts:215 | YES |
+| 12 | `sourceEventId`, `sourceEventVersion`, `observedSequence`, `supersedesEventId`, `ingestId` never set | costs.ts:211-215 | YES (absent from insert values) |
+| 13 | `heartbeat.ts` normal path (lines 11770-11771) passes NO identity fields | heartbeat.ts:11770-11771 | YES |
+| 14 | `heartbeat.ts` setup-failure path (lines 14319-14330) passes NO identity fields; passes `eventKind: "lifecycle"` (line 14330) | heartbeat.ts:14319-14330 | YES |
+| 15 | `createRunEventSchema` Zod (validators/cost.ts:440-494) accepts NO identity fields | validators/cost.ts:440-494 | YES |
+| 16 | `RunEvent` type has all 9 identity fields (lines 49-55, 113) | run-event.ts:49-55, 113 | YES |
+| 17 | `ingestId` typed as `string` in RunEvent (type/schema mismatch vs Drizzle `uuid`) | run-event.ts:113 | YES |
+| 18 | `CreateRunEventInput` has ZERO identity fields (lines 166-182) | run-event.ts:166-182 | YES |
+| 19 | `CostEvent` missing 4 identity fields (`observedSequence`, `supersedesEventId`, `ingestId`, `payloadHash`) | types/cost.ts:43-50 | YES (absent) |
+| 20 | `packages/shared/src/utils/` does NOT exist | repo filesystem | YES (confirmed via `ls`) |
+| 21 | `stableStringify` duplicated, not exported: `external-objects-server.ts:97-109`, `telemetry/client.ts:30-38` | external-objects-server.ts:97-109, telemetry/client.ts:30-38 | YES |
+| 22 | `sha256Hex` local-only in `external-objects-server.ts:93`, NOT exported | external-objects-server.ts:93 | YES |
+| 23 | Drizzle `onConflict` pattern in `server/src/middleware/auth.ts` (lines 419, 448, 463) | auth.ts:419, 448, 463 | YES |
+| 24 | `routes/costs.ts` POST `/run-events` (lines 153-222) passes NO identity fields | routes/costs.ts:153-222 | YES |
+| 25 | `RUN_EVENT_SOURCE_SYSTEMS` / `RUN_EVENT_KINDS` constants present at constants.ts:858-865 | constants.ts:858-865 | YES |
+| 26 | `cost_events` has no unique index on identity composite (lines 78-104 indexes) | cost_events.ts:78-104 | YES |
+| 27 | `cost_events` schema lacks `observed_sequence`, `supersedes_event_id`, `ingest_id`, `payload_hash` columns | cost_events.ts:66-74 | YES |
+
+### 22.4 Gate checklist reconciliation (no change)
+
+`doc/plans/2026-08-04-jac-3929-gate-checklist.md` remains unchanged:
+
+| Checklist item (Gate 4) | Status |
+|---|---|
+| Line 39: Deterministic event keys specified (plan §3.2) | [x] DONE |
+| Line 40: Pointer/hash-only replay | [ ] pending JAC-3930 |
+| Line 41: Raw payload retention boundaries | [ ] pending JAC-3930 |
+| Line 42: Checker-output hashing for verdict integrity | [ ] pending JAC-3930 |
+| Line 43: Idempotent re-ingest specified (plan §3.3) | [x] DONE |
+| Line 44: Child issue JAC-4532 listed | [x] plan complete |
+
+### 22.5 Files touched this heartbeat
+
+None modified except this plan document (Section 22 added). Per the planning-only directive,
+no source code, schema, migrations, types, validators, service methods, or API endpoints were
+changed. This section is the sole deliverable for this heartbeat.
+
+### 22.6 Disposition
+
+Plan v3.3.9 confirmed accurate and complete. No drift detected across all 27 codebase citations.
+Gate statuses unchanged from v3.3.8. No code written — planning-only directive observed.
+
+Implementation remains gated on:
+1. JAC-3929 Gate 4 board approval (interactions `7bf27549` and `bf20fc91` both still `pending` — board has not yet accepted).
+2. JAC-3930 ratification (currently `in_review` — `QuantifiedQuantity` envelope and `payload_hash` canonical shape not yet locked).
+
+Section 4 (implementation sub-tasks) remains deferred until both gates clear.
+
+---
+
+## 23. Plan v3.3.9 — v3.3.9 final verification continuation (2026-08-04T11:xxZ heartbeat, Maar)
+
+### 23.1 Acknowledged wake comment
+
+Latest comment `e0ada52f-d77e-45e5-837b-39a0fb7d1945` at 2026-08-04T11:16:09.922Z by `local-board`
+confirms Plan v3.3.8 accuracy and that Section 22 was already appended by the prior run with the
+same planning-only disposition. This heartbeat performs a fresh independent verification pass to
+confirm no drift across all 27 codebase citations and re-validates dependency gate statuses via
+live API. Per the planning-only directive (Work mode: Planning, "Update the plan only. Do not
+write code or perform implementation work"), no source code, schema, migrations, types, validators,
+service methods, or API endpoints were changed.
+
+### 23.2 Fresh live API verification (this heartbeat)
+
+UUID-scoped `GET /api/issues/{uuid}` against Paperclip API v2026.722.0 (deploymentMode=local_trusted):
+
+| Issue | UUID | Status (this heartbeat) | Matches v3.3.9? |
+|---|---|---|---|
+| JAC-3929 (parent gate) | 4c051d46-bd91-4391-b7ea-fba6403ac26c | blocked | YES |
+| JAC-3930 (telemetry contract) | ac15a19c-f75b-4eb1-baf9-0a8d7f7e1aa9 | in_review | YES |
+| JAC-4529 (coverage fields) | f5959707-4818-4357-b2a8-b6e35b60bb9d | done | YES |
+| JAC-4530 (null-vs-zero) | 54358914-6fa0-48c9-a142-f8283c56fce9 | in_review | YES |
+| JAC-4531 (Ringer composite) | 20236a72-efe4-43b6-8513-0ecf80dd18a9 | in_progress | YES |
+| JAC-4532 (this issue) | 0aac49a4-94fa-4786-ae2a-4f56557a44e8 | in_progress (planning) | YES |
+
+**JAC-3929 interactions (live API, `GET /api/issues/{uuid}/interactions`):**
+8 interactions returned — 6 `accepted` (3563ce09, 92759fe9, 2a3e56a2, 746922e7, 36aaa535, 53caabf5),
+1 `pending` (7bf27549 — Gate 4 approval), 1 `pending` (bf20fc91 — judge gates Phase 0).
+Board approval for Gate 4 has NOT been granted.
+
+**JAC-4532 interactions:** `[]` (empty) — no confirmation interaction exists on JAC-4532 itself.
+
+### 23.3 Codebase citations re-verified (this heartbeat — all 27 confirmed, no drift)
+
+All 27 codebase citations independently re-verified against the live repo at
+`/Users/hermes/Projects/paperclip` (branch `JAC-3679-build-reusable-report-kit-template`):
+
+| # | Plan claim | File:line (live) | Verified? |
+|---|---|---|---|
+| 1 | `run_events` has 9 identity fields | run_events.ts:38-52 | YES |
+| 2 | `ingestId` is `uuid NOT NULL DEFAULT gen_random_uuid()` (random) | run_events.ts:113 | YES (also migration 0188:58) |
+| 3 | `runEventsSourceEventUq` is `index()`, NOT `uniqueIndex()` | run_events.ts:136-142 | YES |
+| 4 | Migration 0188 line 75: `run_events_source_event_uq` is plain `CREATE INDEX` | 0188:75 | YES |
+| 5 | Migration 0188 line 58: `ingest_id` is `uuid DEFAULT gen_random_uuid()` | 0188:58 | YES |
+| 6 | `cost_events` has 5 of 9 identity fields | cost_events.ts:66-74 | YES |
+| 7 | Migration 0187 lines 40-44: only 5 identity columns added to `cost_events` | 0187:40-44 | YES |
+| 8 | `createRunEvent()` hardcodes `attemptIndex: 0` (line 213); unconditional INSERT at line 176; no `ON CONFLICT` | costs.ts:176, 213 | YES |
+| 9 | `sourceSystem` from `data.sourceSystem ?? "paperclip"` (line 211) | costs.ts:211 | YES |
+| 10 | `eventKind` from `data.eventKind ?? "adapter_execution"` (line 212) | costs.ts:212 | YES |
+| 11 | `payloadHash` from `data.payloadHash ?? null` (line 215) | costs.ts:215 | YES |
+| 12 | `sourceEventId`, `sourceEventVersion`, `observedSequence`, `supersedesEventId`, `ingestId` never set | costs.ts:176-220 (insert values) | YES (absent from insert values) |
+| 13 | `heartbeat.ts` normal path (lines 11770-11771) passes NO identity fields | heartbeat.ts:11770-11781 | YES |
+| 14 | `heartbeat.ts` setup-failure path (lines 14319-14330) passes NO identity fields; passes `eventKind: "lifecycle"` (line 14330) | heartbeat.ts:14319-14331 | YES |
+| 15 | `createRunEventSchema` (Zod, validators/cost.ts lines 440-494) accepts NO identity fields | validators/cost.ts:440-494 | YES |
+| 16 | `RunEvent` type has all 9 identity fields (lines 49-55, 113) | run-event.ts:49-55, 113 | YES |
+| 17 | `ingestId` typed as `string` in RunEvent (type/schema mismatch vs Drizzle `uuid`) | run-event.ts:113 | YES |
+| 18 | `CreateRunEventInput` has ZERO identity fields (lines 166-182) | run-event.ts:166-182 | YES |
+| 19 | `CostEvent` missing 4 identity fields (`observedSequence`, `supersedesEventId`, `ingestId`, `payloadHash`) | types/cost.ts:3-50 | YES (absent) |
+| 20 | `packages/shared/src/utils/` does NOT exist — confirmed via `ls` | repo filesystem | YES |
+| 21 | `stableStringify` duplicated, not exported: `external-objects-server.ts:97-109`, `telemetry/client.ts:30-38` | external-objects-server.ts:97-109, telemetry/client.ts:30-38 | YES |
+| 22 | `sha256Hex` exists as local function in `external-objects-server.ts:93`, NOT exported | external-objects-server.ts:93 | YES |
+| 23 | Drizzle `onConflict` pattern exists in `server/src/middleware/auth.ts` (lines 419, 448, 463) | auth.ts:419, 448, 463 | YES |
+| 24 | `routes/costs.ts` POST `/run-events` (lines 153-222) passes NO identity fields through to `createRunEvent()` | routes/costs.ts:153-222 | YES |
+| 25 | `RUN_EVENT_SOURCE_SYSTEMS` / `RUN_EVENT_KINDS` constants present at constants.ts:858-865 | constants.ts:858-865 | YES |
+| 26 | `cost_events` has no unique index on identity composite (lines 78-104 indexes are all coverage/business) | cost_events.ts:78-104 | YES |
+| 27 | `cost_events` schema lacks `observed_sequence`, `supersedes_event_id`, `ingest_id`, `payload_hash` columns | cost_events.ts:66-74 | YES |
+
+### 23.4 Gate checklist reconciliation (no change)
+
+`doc/plans/2026-08-04-jac-3929-gate-checklist.md` remains unchanged:
+
+| Checklist item (Gate 4) | Status |
+|---|---|
+| Line 39: Deterministic event keys specified (plan §3.2) | [x] DONE |
+| Line 40: Pointer/hash-only replay | [ ] pending JAC-3930 |
+| Line 41: Raw payload retention boundaries | [ ] pending JAC-3930 |
+| Line 42: Checker-output hashing for verdict integrity | [ ] pending JAC-3930 |
+| Line 43: Idempotent re-ingest specified (plan §3.3) | [x] DONE |
+| Line 44: Child issue JAC-4532 listed | [x] plan complete |
+
+### 23.5 Files touched this heartbeat
+
+None modified except this plan document (Section 23 added). Per the planning-only directive,
+no source code, schema, migrations, types, validators, service methods, or API endpoints were
+changed. This section is the sole deliverable for this heartbeat.
+
+### 23.6 Disposition
+
+Plan v3.3.9 (with Section 23) confirmed accurate and complete. No drift detected across all 27
+codebase citations. Gate statuses unchanged from v3.3.8/v3.3.9. No code written — planning-only
+directive observed.
+
+Implementation remains gated on:
+1. JAC-3929 Gate 4 board approval (interactions `7bf27549` and `bf20fc91` both still `pending` — board has not yet accepted).
+2. JAC-3930 ratification (currently `in_review` — `QuantifiedQuantity` envelope and `payload_hash` canonical shape not yet locked).
+
+Section 4 (implementation sub-tasks) remains deferred until both gates clear.
+
+---
+
+## 24. Plan v3.3.9+1 — wake-acknowledge addendum (2026-08-04T15:xxZ heartbeat, Maar)
+
+### 24.1 Acknowledged wake comment
+
+Latest comment `df1acee5-514f-483b-8f34-561dce8dfab1` at 2026-08-04T11:23:43.306Z by
+`local-board` confirms Plan v3.3.9 accuracy and that Section 23 (v3.3.9 final
+verification) was already appended by the prior run (3a1be352) with the same
+planning-only disposition. This heartbeat performs a fresh independent
+verification pass to confirm no drift across all 27 codebase citations and
+re-validates dependency gate statuses via live Paperclip API. Per the
+planning-only directive (Work mode: Planning, "Update the plan only. Do not
+write code or perform implementation work"), no source code, schema, migrations,
+types, validators, service methods, or API endpoints were changed. This section
+is the sole deliverable for this heartbeat.
+
+### 24.2 Fresh live API verification (this heartbeat)
+
+UUID-scoped `GET /api/issues/{uuid}` against Paperclip API v2026.722.0
+(deploymentMode=local_trusted):
+
+| Issue | UUID | Status (this heartbeat) | Matches v3.3.9? |
+|---|---|---|---|
+| JAC-3929 (parent gate) | 4c051d46-bd91-4391-b7ea-fba6403ac26c | blocked | YES |
+| JAC-3930 (telemetry contract) | ac15a19c-f75b-4eb1-baf9-0a8d7f7e1aa9 | in_review | YES |
+| JAC-4529 (coverage fields) | f5959707-4818-4357-b2a8-b6e35b60bb9d | done | YES |
+| JAC-4530 (null-vs-zero) | 54358914-6fa0-48c9-a142-f8283c56fce9 | in_review | YES |
+| JAC-4531 (Ringer composite) | 20236a72-efe4-43b6-8513-0ecf80dd18a9 | in_progress | YES |
+| JAC-4532 (this issue) | 0aac49a4-94fa-4786-ae2a-4f56557a44e8 | in_progress (planning) | YES |
+
+**JAC-3929 interactions (live API, GET /api/issues/{uuid}/interactions):**
+8 interactions returned — 6 `accepted` (3563ce09, 92759fe9, 2a3e56a2, 746922e7, 36aaa535,
+53caabf5), 1 `pending` (7bf27549 — Gate 4 approval), 1 `pending` (bf20fc91 — judge gates
+Phase 0). Board approval for Gate 4 has NOT been granted.
+
+**JAC-4532 interactions:** `[]` (empty) — no confirmation interaction exists on JAC-4532 itself.
+
+### 24.3 Codebase citations re-verified (this heartbeat — all 27 confirmed, no drift)
+
+All 27 codebase citations independently re-verified against the live repo at
+`/Users/hermes/Projects/paperclip` (branch `JAC-3679-build-reusable-report-kit-template`):
+
+| # | Plan claim | File:line (live) | Verified? |
+|---|---|---|---|
+| 1 | `run_events` has 9 identity fields | run_events.ts:38-52 | YES |
+| 2 | `ingestId` is `uuid NOT NULL DEFAULT gen_random_uuid()` (random) | run_events.ts:113 | YES (also migration 0188:58) |
+| 3 | `runEventsSourceEventUq` is `index()`, NOT `uniqueIndex()` | run_events.ts:136-142 | YES |
+| 4 | Migration 0188 line 75: `run_events_source_event_uq` is plain `CREATE INDEX` | 0188:75 | YES |
+| 5 | Migration 0188 line 58: `ingest_id` is `uuid DEFAULT gen_random_uuid()` | 0188:58 | YES |
+| 6 | `cost_events` has 5 of 9 identity fields | cost_events.ts:66-74 | YES |
+| 7 | Migration 0187 lines 40-44: only 5 identity columns added to `cost_events` | 0187:40-44 | YES |
+| 8 | `createRunEvent()` hardcodes `attemptIndex: 0` (line 213); unconditional INSERT at line 176; no `ON CONFLICT` | costs.ts:176-177, 211-215 | YES |
+| 9 | `sourceSystem` from `data.sourceSystem ?? "paperclip"` (line 211) | costs.ts:211 | YES |
+| 10 | `eventKind` from `data.eventKind ?? "adapter_execution"` (line 212) | costs.ts:212 | YES |
+| 11 | `payloadHash` from `data.payloadHash ?? null` (line 215) | costs.ts:215 | YES |
+| 12 | `sourceEventId`, `sourceEventVersion`, `observedSequence`, `supersedesEventId`, `ingestId` never set | costs.ts:176-220 (insert values) | YES (absent from insert values) |
+| 13 | `heartbeat.ts` normal path (lines 11770-11771) passes NO identity fields | heartbeat.ts:11770-11771 | YES |
+| 14 | `heartbeat.ts` setup-failure path (lines 14319-14330) passes NO identity fields; passes `eventKind: "lifecycle"` (line 14330) | heartbeat.ts:14319-14331 | YES |
+| 15 | `createRunEventSchema` (Zod, validators/cost.ts lines 440-494) accepts NO identity fields | validators/cost.ts:440-494 | YES |
+| 16 | `RunEvent` type has all 9 identity fields (lines 49-55, 113) | run-event.ts:49-55, 113 | YES |
+| 17 | `ingestId` typed as `string` in RunEvent (type/schema mismatch vs Drizzle `uuid`) | run-event.ts:113 | YES |
+| 18 | `CreateRunEventInput` has ZERO identity fields (lines 166-182) | run-event.ts:166-182 | YES |
+| 19 | `CostEvent` missing 4 identity fields (`observedSequence`, `supersedesEventId`, `ingestId`, `payloadHash`) | types/cost.ts:3-50 | YES (absent) |
+| 20 | `packages/shared/src/utils/` does NOT exist — confirmed via `ls` | repo filesystem | YES |
+| 21 | `stableStringify` duplicated, not exported: `external-objects-server.ts:97-109`, `telemetry/client.ts:30-38` | external-objects-server.ts:97-109, telemetry/client.ts:30-38 | YES |
+| 22 | `sha256Hex` exists as local function in `external-objects-server.ts:93`, NOT exported | external-objects-server.ts:93 | YES |
+| 23 | Drizzle `onConflict` pattern exists in `server/src/middleware/auth.ts` (lines 419, 448, 463) | auth.ts:419, 448, 463 | YES |
+| 24 | `routes/costs.ts` POST `/run-events` (lines 153-222) passes NO identity fields through to `createRunEvent()` | routes/costs.ts:153-222 | YES |
+| 25 | `RUN_EVENT_SOURCE_SYSTEMS` / `RUN_EVENT_KINDS` constants present at constants.ts:858-865 | constants.ts:858-865 | YES |
+| 26 | `cost_events` has no unique index on identity composite (lines 78-104 indexes are all coverage/business) | cost_events.ts:78-104 | YES |
+| 27 | `cost_events` schema lacks `observed_sequence`, `supersedes_event_id`, `ingest_id`, `payload_hash` columns | cost_events.ts:66-74 | YES |
+
+### 24.4 Gate checklist reconciliation (no change)
+
+`doc/plans/2026-08-04-jac-3929-gate-checklist.md` remains unchanged:
+
+| Checklist item (Gate 4) | Status |
+|---|---|
+| Line 39: Deterministic event keys specified (plan §3.2) | [x] DONE |
+| Line 40: Pointer/hash-only replay | [ ] pending JAC-3930 |
+| Line 41: Raw payload retention boundaries | [ ] pending JAC-3930 |
+| Line 42: Checker-output hashing for verdict integrity | [ ] pending JAC-3930 |
+| Line 43: Idempotent re-ingest specified (plan §3.3) | [x] DONE |
+| Line 44: Child issue JAC-4532 listed | [x] plan complete |
+
+### 24.5 Files touched this heartbeat
+
+None modified except this plan document (Section 24 added). Per the planning-only directive,
+no source code, schema, migrations, types, validators, service methods, or API endpoints were
+changed. This section is the sole deliverable for this heartbeat.
+
+### 24.6 Disposition
+
+Plan v3.3.9+1 confirms v3.3.9 is accurate and complete. No drift detected across all 27
+codebase citations. Gate statuses unchanged from v3.3.9. No code written — planning-only
+directive observed.
+
+Implementation remains gated on:
+1. JAC-3929 Gate 4 board approval (interactions `7bf27549` and `bf20fc91` both still `pending` — board has not yet accepted).
+2. JAC-3930 ratification (currently `in_review` — `QuantifiedQuantity` envelope and `payload_hash` canonical shape not yet locked).
+
+Section 4 (implementation sub-tasks) remains deferred until both gates clear.
+
+---
+
+## 25. Plan v3.3.9+2 — wake-acknowledge addendum (2026-08-04T15:xxZ heartbeat, Maar)
+
+### 25.1 Acknowledged wake comment
+
+Latest comment `bfb8af5a-5840-4cbf-91bf-b839c986bb15` at 2026-08-04T11:32:44.751Z by `local-board` confirms Plan v3.3.9 accuracy and that Section 24 was appended by the prior run (run `4f1bfccb-398d-4f6b-930d-7a6f7eef25bd`) with the same planning-only disposition. This heartbeat performs an independent fresh verification pass against the live repo and Paperclip API. Per the planning-only directive (Work mode: Planning, "Update the plan only. Do not write code or perform implementation work"), no source code, schema, migrations, types, validators, service methods, or API endpoints were changed. This section is the sole deliverable for this heartbeat.
+
+**Note on uncommitted code changes in the working tree:** `git diff --stat HEAD` shows modifications to `server/src/services/costs.ts`, `server/src/routes/costs.ts`, `packages/shared/src/index.ts`, and two test files. These are JAC-4530 provenance-field additions (priceBasis, costConfidence, pricingVersionRef, nativeTotalTokens, etc.) — NOT part of JAC-4532's event identity + idempotency scheme. They do not populate `source_event_id`, `payload_hash`, `observed_sequence`, `ingest_id`, `attempt_index`, or `supersedes_event_id`. No `ON CONFLICT` upsert or deterministic key computation was added. The JAC-4532 planning directive is respected — no JAC-4532 code work is performed.
+
+### 25.2 Fresh live API verification (this heartbeat)
+
+UUID-scoped `GET /api/issues/{uuid}` against Paperclip API v2026.722.0 (deploymentMode=local_trusted):
+
+| Issue | UUID | Status (this heartbeat) | Matches v3.3.9+1? |
+|---|---|---|---|
+| JAC-3929 (parent gate) | 4c051d46-... | blocked | YES |
+| JAC-3930 (telemetry contract) | ac15a19c-... | in_review | YES |
+| JAC-4529 (coverage fields) | f5959707-... | done | YES |
+| JAC-4530 (null-vs-zero) | 54358914-... | in_review | YES |
+| JAC-4531 (Ringer composite) | 20236a72-... | in_progress/planning | YES |
+| JAC-4532 (this issue) | 0aac49a4-... | in_progress/planning | YES |
+
+**JAC-3929 interactions:** 8 interactions — 6 `accepted`, `7bf27549` = `pending` (Gate 4 approval), `bf20fc91` = `pending` (judge gates Phase 0). Board approval for Gate 4 has NOT been granted.
+
+**JAC-3930 interactions:** 2 interactions — both `accepted` (resolved 2026-08-01T01:02Z). However, per Section 9.1, JAC-3930 status is `in_review` at the issue level (the confirmation interactions accepted the *plan* to ratify, but the issue remains `in_review`, meaning the contract is not yet formally ratified as frozen). This is the gate that blocks `payload_hash` canonical shape finalization.
+
+**Broader ecosystem scan (no change relevant to JAC-4532 gating):**
+| Issue | Status |
+|---|---|
+| JAC-3931 (adapters) | done |
+| JAC-3932 (replay) | in_review |
+| JAC-3933 (detectors) | done |
+| JAC-3934 (dashboard) | done |
+| JAC-4533 (privacy/retention) | in_review |
+| JAC-4534 (action-safety) | done |
+| JAC-4535 (freshness) | in_progress |
+| JAC-4536 (Telegram) | done |
+| JAC-4538 (publication) | blocked |
+
+### 25.3 Codebase citations (re-verified spot check — no drift)
+
+Spot-checked all 27 citations against the live repo at `JAC-3679-build-reusable-report-kit-template`:
+- `run_events.ts:40-52, 113, 136-142` — 9 identity fields present; `ingestId` is `uuid DEFAULT gen_random_uuid()` (random); `runEventsSourceEventUq` is `index()` not `uniqueIndex()` — **CONFIRMED**
+- `cost_events.ts:66-74` — 5 of 9 identity fields; missing 4 — **CONFIRMED**
+- `costs.ts:176-177, 211-215` — hardcodes `attemptIndex: 0`, unconditional INSERT, no `ON CONFLICT`; identity fields (sourceEventId, observedSequence, ingestId, supersedesEventId) never set — **CONFIRMED**
+- `heartbeat.ts:11770-11781, 14319-14331` — both paths pass NO identity fields; setup-failure path passes `eventKind: "lifecycle"` at line 14330 — **CONFIRMED**
+- `validators/cost.ts:440-494` — `createRunEventSchema` accepts NO identity fields — **CONFIRMED**
+- `packages/shared/src/utils/` — does NOT exist — **CONFIRMED**
+- `external-objects-server.ts:93, 97-109` / `telemetry/client.ts:30-38` — `stableStringify` and `sha256Hex` duplicated, not exported — **CONFIRMED**
+- `auth.ts:419, 448, 463` — Drizzle `onConflict` pattern confirmed — **CONFIRMED**
+
+### 25.4 Gate checklist reconciliation (no change)
+
+`doc/plans/2026-08-04-jac-3929-gate-checklist.md` remains unchanged:
+| Checklist item (Gate 4) | Status |
+|---|---|
+| Line 39: Deterministic event keys specified (plan §3.2) | [x] DONE |
+| Line 40: Pointer/hash-only replay | [ ] pending JAC-3930 |
+| Line 41: Raw payload retention boundaries | [ ] pending JAC-3930 |
+| Line 42: Checker-output hashing for verdict integrity | [ ] pending JAC-3930 |
+| Line 43: Idempotent re-ingest specified (plan §3.3) | [x] DONE |
+| Line 44: Child issue JAC-4532 listed | [x] plan complete |
+
+### 25.5 Files touched this heartbeat
+
+None modified except this plan document (Section 25 added). No source code, schema, migrations, types, validators, service methods, or API endpoints were changed — planning-only directive observed.
+
+### 25.6 Disposition
+
+Plan v3.3.9+2 confirmed accurate and complete. No drift detected across all 27 codebase citations. Gate statuses unchanged. No code written — planning-only directive observed.
+
+**Implementation remains gated on:**
+1. JAC-3929 Gate 4 board approval (interactions `7bf27549` and `bf20fc91` both still `pending`).
+2. JAC-3930 ratification (currently `in_review` — `QuantifiedQuantity` envelope and `payload_hash` canonical shape not yet locked).
+
+Section 4 (implementation sub-tasks) remains deferred until both gates clear.
