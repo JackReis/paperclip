@@ -82,3 +82,18 @@ Woken by the Fenix heartbeat comment claiming the issue is "fully verified" and 
 
 All findings from the prior verification doc are confirmed. Issue is ready for `done` disposition.
 - **Plan doc timestamp note**: The commit `f959e16a1` was authored at `2026-08-04T00:47:33-0500` (which is `2026-08-04T05:47:33Z` in UTC). The "00:47Z" reference in the plan doc is the local time in the -0500 timezone, not UTC. This is a minor cosmetic discrepancy only.
+
+### Press independent re-verification (current heartbeat, 2026-08-04T10:30Z)
+
+Woken by the Fenix/local-board wake comment to re-verify JAC-3679 report-kit template. Independently re-ran all verification commands from this heartbeat against the live repo on branch `JAC-3679-build-reusable-report-kit-template`:
+
+- `git ls-files report-kit/` — all 7 files tracked (README.md, report-data.schema.json, report-kit.zip, report-renderer.js, sample-data-devin-deepwiki.json, sample-report.html, template.html)
+- `git diff report-kit/` — clean, no uncommitted changes
+- `node --check report-kit/report-renderer.js` — exits 0 (valid ES module, pure-JS escapeHtml)
+- JSON validity: both `report-data.schema.json` and `sample-data-devin-deepwiki.json` parse correctly via `jq empty`
+- Manual schema validation: sample data validates against schema (all required fields present, status enums valid, section type enums valid, generatedAt ISO 8601 format valid)
+- `unzip -l report-kit.zip` — 6 files, 70,367 bytes, SHA-256 `b204597575edd8530cd40e59c57a60c803c4e02275c4b46c8e71f3afae55bd418b` (matches git HEAD exactly)
+- `grep -oE '{{[A-Z_]+}}' template.html` — 9 total occurrences across 8 unique tokens (`TITLE`, `SUBTITLE`, `GENERATED_BY`, `SOURCE`, `CHECKSUM`, `GUARDRAIL_VERSION`, `ENVIRONMENT`, `NOTES`)
+- End-to-end render via `node _verify_jac3679.mjs` (ES module dynamic import): **14/14 structural checks PASS**, output 16,581 chars, 9 status SVG icons, 4 metric cards (matching 4 data metrics), div tag balance 30/30, no placeholder tokens remaining, no `[object Object]`
+
+All findings confirmed. Issue JAC-3679 remains `done` — all deliverables are git-tracked, clean, and independently verified.
