@@ -1,5 +1,46 @@
 export { agentAdapterTypeSchema, optionalAgentAdapterTypeSchema } from "./adapter-type.js";
 export {
+  decisionEffectStalenessSchema,
+  decisionOptionStyleSchema,
+  commentOnIssueDecisionEffectSchema,
+  createIssueDecisionEffectSchema,
+  updateIssueStatusDecisionEffectSchema,
+  assignIssueDecisionEffectSchema,
+  cancelIssueTreeDecisionEffectSchema,
+  resolveBlockerDecisionEffectSchema,
+  decisionEffectSchema,
+  decisionInputSchema,
+  decisionOptionSchema,
+  decisionOptionsSchema,
+  decisionInputsSchema,
+  decisionSpecSchema,
+  type DecisionEffectInput,
+  type DecisionOptionInput,
+  type DecisionInputInput,
+  type DecisionSpecInput,
+} from "./validators/decision.js";
+
+export type {
+  DecisionEffectStaleness,
+  DecisionOptionStyle,
+  DecisionInput,
+  CommentOnIssueDecisionEffect,
+  CreateIssueDecisionEffect,
+  UpdateIssueStatusDecisionEffect,
+  AssignIssueDecisionEffect,
+  CancelIssueTreeDecisionEffect,
+  ResolveBlockerDecisionEffect,
+  DecisionEffect,
+  DecisionOption,
+  DecisionStatsCounts,
+  DecisionChosenOptionCount,
+  DecisionRuleKeyStats,
+  DecisionStatsResponse,
+  AttentionArchiveManifestEntry,
+  AttentionArchiveTargetSnapshot,
+} from "./types/decision.js";
+
+export {
   getAgentOrgChainHealth,
   getAgentWorkEligibility,
   isAgentAssignableToWork,
@@ -56,13 +97,45 @@ export type {
   AttentionItem,
   AttentionItemDetail,
   AttentionItemDismissal,
+  AttentionFeedQuery,
   AttentionProjectRef,
+  AttentionQueueRef,
   AttentionSeverity,
+  AttentionSortMode,
   AttentionSourceKind,
   AttentionSubject,
   AttentionSubjectKind,
+  AttentionTriageAttribution,
   AttentionWorkspaceRef,
 } from "./types/attention.js";
+export { ATTENTION_SOURCE_KINDS } from "./types/attention.js";
+export type {
+  DecisionQueue,
+  DecisionQueueItem,
+  DecisionQueueSeedRule,
+  DecisionQueueSeedRuleSignal,
+  DecisionTriage,
+  DecisionTriageDecideBy,
+} from "./types/decision-queue.js";
+export {
+  decisionAttentionSourceKindSchema,
+  decisionQueueKeySchema,
+  createDecisionQueueSchema,
+  updateDecisionQueueSchema,
+  addDecisionQueueItemSchema,
+  removeDecisionQueueItemSchema,
+  decisionTriageDecideBySchema,
+  updateDecisionTriageSchema,
+  updateDecisionRetentionSchema,
+  createDecisionArchiveProposalSchema,
+  type CreateDecisionQueueInput,
+  type UpdateDecisionQueueInput,
+  type AddDecisionQueueItemInput,
+  type RemoveDecisionQueueItemInput,
+  type UpdateDecisionTriageInput,
+  type UpdateDecisionRetentionInput,
+  type CreateDecisionArchiveProposalInput,
+} from "./validators/decision-queue.js";
 export type {
   DecisionTrainingExample,
   DecisionTrainingNotesHistoryEntry,
@@ -152,6 +225,7 @@ export {
   recommendedDefaultsForApp,
 } from "./app-definitions.js";
 export { APP_DEFINITIONS } from "./app-definitions.generated.js";
+export * from "./validators/status-card.js";
 export { appDefinitionSchema, appDefinitionsSchema, connectionMethodDefSchema } from "./validators/app-definition.js";
 export {
   humanizeConnectionDisplayName,
@@ -190,8 +264,10 @@ export {
   ISSUE_COMMENT_METADATA_ROW_TYPES,
   ISSUE_COMMENT_PRESENTATION_KINDS,
   ISSUE_COMMENT_PRESENTATION_TONES,
+  ISSUE_COMMENT_PRESENTATION_DENSITIES,
   clampIssueRequestDepth,
   ISSUE_THREAD_INTERACTION_KINDS,
+  ISSUE_THREAD_INTERACTION_RESOLVER_POLICIES,
   ISSUE_THREAD_INTERACTION_STATUSES,
   ISSUE_THREAD_INTERACTION_CONTINUATION_POLICIES,
   ISSUE_ORIGIN_KINDS,
@@ -376,7 +452,9 @@ export {
   type IssueCommentMetadataRowType,
   type IssueCommentPresentationKind,
   type IssueCommentPresentationTone,
+  type IssueCommentPresentationDensity,
   type IssueThreadInteractionKind,
+  type IssueThreadInteractionResolverPolicy,
   type IssueThreadInteractionStatus,
   type IssueThreadInteractionContinuationPolicy,
   REQUEST_CHECKBOX_CONFIRMATION_OPTION_LIMIT,
@@ -579,6 +657,8 @@ export {
 
 export type {
   Company,
+  InteractionResolverGovernance,
+  InteractionResolverKindGovernance,
   GenerateSummarySlotRequest,
   GenerateSummarySlotResponse,
   GetSummarySlotResponse,
@@ -640,6 +720,8 @@ export type {
   CompanySkillForkReassignment,
   CompanySkillForkResult,
   CompanySkillForkPrecheckResult,
+  CompanySkillRenameRequest,
+  CompanySkillRenameResult,
   CompanySkillUpdateRequest,
   CompanySkillUpdateStatus,
   CompanySkillAuditSeverity,
@@ -652,6 +734,9 @@ export type {
   CompanySkillImportRequest,
   CompanySkillImportResult,
   CompanySkillProjectScanRequest,
+  CompanySkillProjectBrowseRequest,
+  CompanySkillProjectBrowseEntry,
+  CompanySkillProjectBrowseResult,
   CompanySkillProjectScanCandidateStatus,
   CompanySkillProjectScanCandidate,
   CompanySkillProjectScanSkipped,
@@ -717,8 +802,11 @@ export type {
   AgentSkillSyncRequest,
   InstanceExecutionMode,
   InstanceExperimentalSettings,
+  InstanceExperimentalSettingsWithManaged,
   InstanceGeneralSettings,
   InstanceSettings,
+  ManagedExperimentalFeatureKey,
+  ManagedSettingMetadata,
   IssueGraphLivenessAutoRecoveryPreview,
   IssueGraphLivenessAutoRecoveryPreviewItem,
   BackupRetentionPolicy,
@@ -809,6 +897,7 @@ export type {
   WorkspaceRealizationTransport,
   ExecutionWorkspaceStrategyType,
   ExecutionWorkspaceMode,
+  SharedWorkspaceConcurrency,
   ExecutionWorkspaceProviderType,
   ExecutionWorkspaceStatus,
   ExecutionWorkspaceStrategy,
@@ -858,6 +947,8 @@ export type {
   ExternalObjectSummaryItem,
   CompactIssue,
   Issue,
+  IssueChangeReceiptEntry,
+  IssueChanges,
   IssueAssigneeAdapterOverrides,
   IssueBlockerDiagnosticFlag,
   IssueBlockerDiagnosticIssueSummary,
@@ -875,9 +966,17 @@ export type {
   IssueBlockerAttention,
   IssueBlockerAttentionReason,
   IssueBlockerAttentionState,
+  IssueReviewAttention,
+  IssueReviewAttentionPath,
+  IssueReviewAttentionPathKind,
+  IssueReviewAttentionState,
+  StalledReviewDecisionAction,
+  StalledReviewDecisionResponse,
   IssueInboxAttentionKind,
   IssueBlockedInboxAction,
   IssueBlockedInboxAttention,
+  IssueUnblockDescriptor,
+  IssueUnblockOwner,
   IssueBlockedInboxIssueRef,
   IssueBlockedInboxOwner,
   IssueBlockedInboxOwnerType,
@@ -1062,6 +1161,9 @@ export type {
   CompanyPortabilityFileEntry,
   CompanyPortabilityCompanyManifestEntry,
   CompanyPortabilitySidebarOrder,
+  CompanyPortabilityLabelManifestEntry,
+  CompanyPortabilityBlobManifestEntry,
+  CompanyPortabilityEmbeddedAssetManifestEntry,
   CompanyPortabilityAgentManifestEntry,
   CompanyPortabilitySkillManifestEntry,
   CompanyPortabilityProjectManifestEntry,
@@ -1069,6 +1171,10 @@ export type {
   CompanyPortabilityIssueRoutineTriggerManifestEntry,
   CompanyPortabilityIssueRoutineManifestEntry,
   CompanyPortabilityIssueCommentManifestEntry,
+  CompanyPortabilityIssueDocumentManifestEntry,
+  CompanyPortabilityIssueWorkProductManifestEntry,
+  CompanyPortabilityIssueMonitorManifestEntry,
+  CompanyPortabilityIssueAttachmentManifestEntry,
   CompanyPortabilityIssueManifestEntry,
   CompanyPortabilityManifest,
   CompanyPortabilityExportResult,
@@ -1381,7 +1487,9 @@ export {
 } from "./validators/sidebar-preferences.js";
 export {
   resourceMembershipStateSchema,
+  updateDocumentResourceMembershipSchema,
   updateResourceMembershipSchema,
+  type UpdateDocumentResourceMembership,
   type UpdateResourceMembership,
 } from "./validators/resource-memberships.js";
 export {
@@ -1428,6 +1536,7 @@ export {
   DEFAULT_ISSUE_GRAPH_LIVENESS_AUTO_RECOVERY_LOOKBACK_HOURS,
   MIN_ISSUE_GRAPH_LIVENESS_AUTO_RECOVERY_LOOKBACK_HOURS,
   MAX_ISSUE_GRAPH_LIVENESS_AUTO_RECOVERY_LOOKBACK_HOURS,
+  PAPERCLIP_CLOUD_MANAGED_BY,
 } from "./types/instance.js";
 
 export type {
@@ -1447,22 +1556,6 @@ export {
   SMOKE_RUN_TRIGGERS,
 } from "./types/smoke-lab.js";
 
-export type {
-  CloudUpstreamConnectStartResponse,
-  CloudUpstreamActivationDecision,
-  CloudUpstreamActivationEntityType,
-  CloudUpstreamConnection,
-  CloudUpstreamConflict,
-  CloudUpstreamPreview,
-  CloudUpstreamRun,
-  CloudUpstreamRunEvent,
-  CloudUpstreamsState,
-  CloudUpstreamStep,
-  CloudUpstreamSummaryCount,
-  CloudUpstreamTarget,
-  CloudUpstreamWarning,
-} from "./types/cloud-upstream.js";
-
 export type { ServerGitInfo, ServerGitLocalChanges, ServerInfoSnapshot } from "./types/server-info.js";
 
 export {
@@ -1476,6 +1569,8 @@ export {
   patchInstanceGeneralSettingsSchema,
   type PatchInstanceGeneralSettings,
   instanceExperimentalSettingsSchema,
+  instanceExperimentalSettingsWithManagedSchema,
+  managedSettingMetadataSchema,
   patchInstanceExperimentalSettingsSchema,
   patchInstanceSettingsSchema,
   issueGraphLivenessAutoRecoveryRequestSchema,
@@ -1503,6 +1598,7 @@ export {
 
 export {
   createCompanySchema,
+  interactionResolverGovernanceSchema,
   updateCompanySchema,
   updateCompanyBrandingSchema,
   feedbackTargetTypeSchema,
@@ -1631,6 +1727,7 @@ export {
   issueBlockedInboxSeveritySchema,
   issueBlockedInboxStateSchema,
   updateIssueSchema,
+  stalledReviewDecisionSchema,
   issueExecutionPolicySchema,
   issueExecutionStateSchema,
   resolveIssueRecoveryActionSchema,
@@ -1673,6 +1770,7 @@ export {
   acceptIssueThreadInteractionSchema,
   rejectIssueThreadInteractionSchema,
   cancelIssueThreadInteractionSchema,
+  withdrawIssueThreadInteractionSchema,
   respondIssueThreadInteractionSchema,
   submitIssueThreadInteractionVerdictsSchema,
   linkIssueApprovalSchema,
@@ -1728,6 +1826,7 @@ export {
   type CreateAcceptedPlanDecomposition,
   type CreateIssueLabel,
   type UpdateIssue,
+  type StalledReviewDecision,
   type ResolveIssueRecoveryAction,
   type CheckoutIssue,
   type AddIssueComment,
@@ -1735,6 +1834,7 @@ export {
   type AcceptIssueThreadInteraction,
   type RejectIssueThreadInteraction,
   type CancelIssueThreadInteraction,
+  type WithdrawIssueThreadInteraction,
   type RespondIssueThreadInteraction,
   type SubmitIssueThreadInteractionVerdicts,
   type LinkIssueApproval,
@@ -2029,12 +2129,17 @@ export {
   companySkillCommentCreateSchema,
   companySkillCommentUpdateSchema,
   companySkillForkSchema,
+  companySkillRenameSchema,
+  companySkillRenameResultSchema,
   companySkillUpdateSchema,
   companySkillUpdateStatusSchema,
   companySkillAuditFindingSchema,
   companySkillAuditResultSchema,
   companySkillImportSchema,
   companySkillProjectScanRequestSchema,
+  companySkillProjectBrowseRequestSchema,
+  companySkillProjectBrowseEntrySchema,
+  companySkillProjectBrowseResultSchema,
   companySkillProjectScanSkippedSchema,
   companySkillProjectScanConflictSchema,
   companySkillProjectScanResultSchema,
@@ -2296,3 +2401,15 @@ export {
   type EnvironmentCustomImageTerminalSessionToken,
 } from "./validators/environment-custom-images.js";
 export * from "./validators/skill-policy.js";
+export {
+  FEATURE_TIERS,
+  INSTANCE_FEATURE_CATALOG,
+  INSTANCE_FEATURE_KEYS,
+  buildFeatureCatalogArtifact,
+  featureCatalogArtifactSchema,
+  renderFeatureCatalogArtifact,
+  type FeatureCatalogArtifact,
+  type FeatureCatalogEntry,
+  type FeatureTier,
+  type InstanceFeatureKey,
+} from "./feature-catalog.js";

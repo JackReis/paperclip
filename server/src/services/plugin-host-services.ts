@@ -40,6 +40,8 @@ import { documentService } from "./documents.js";
 import { heartbeatService } from "./heartbeat.js";
 import { budgetService } from "./budgets.js";
 import { issueApprovalService } from "./issue-approvals.js";
+import { approvalService } from "./approvals.js";
+import { getStorageService } from "../storage/index.js";
 import { subscribeCompanyLiveEvents } from "./live-events.js";
 import { createHash, randomBytes, randomUUID } from "node:crypto";
 import path from "node:path";
@@ -75,7 +77,13 @@ import { logger } from "../middleware/logger.js";
 import { getTelemetryClient } from "../telemetry.js";
 import { accessService } from "./access.js";
 import { authorizationService, type AuthorizationActor } from "./authorization.js";
-import { sanitizeRecord } from "../redaction.js";
+import { redactEventPayload, sanitizeRecord } from "../redaction.js";
+import type { WorkerHostCallContext } from "@paperclipai/plugin-sdk";
+import {
+  normalizeProviderFamily,
+  SANDBOX_STARTUP_SPAN_ATTRS,
+} from "@paperclipai/adapter-utils/acpx-engine/startup-timing";
+import { recordProviderPluginSpan, type ParsedTraceparent } from "../instrumentation.js";
 
 // ---------------------------------------------------------------------------
 // SSRF protection for plugin HTTP fetch
@@ -488,6 +496,124 @@ if (_logFlushInterval.unref) _logFlushInterval.unref();
 /** Maximum time (ms) to keep a session event subscription alive before forcing cleanup. */
 const SESSION_EVENT_SUBSCRIPTION_TIMEOUT_MS = 30 * 60 * 1_000; // 30 minutes
 
+// ---------------------------------------------------------------------------
+// Provider span trust boundary (the `span.record` host handler)
+// ---------------------------------------------------------------------------
+//
+// The plugin worker runs in a separate process, so the host treats every field
+// of a worker-sent span as untrusted input. The host re-clamps the span name
+// and every attribute here, before it records the span. A worker-side or
+// plugin-side helper is not sufficient; this is the single boundary.
+
+const SPAN_ATTRS = SANDBOX_STARTUP_SPAN_ATTRS;
+
+/** The closed set of provider span names a plugin may emit. */
+const KNOWN_PROVIDER_SPAN_NAMES: ReadonlySet<string> = new Set(["pack", "transfer"]);
+
+/** Clamp the span name to a closed, namespaced set. A known name maps to
+ * `sandbox.provider.<name>`; any other value maps to `sandbox.provider.other`,
+ * so a span name never carries free-form data. */
+function clampProviderSpanName(raw: unknown): string {
+  const name = typeof raw === "string" && KNOWN_PROVIDER_SPAN_NAMES.has(raw) ? raw : "other";
+  return `sandbox.provider.${name}`;
+}
+
+/** The closed allowlist of attribute keys a provider span may carry. The host
+ * drops every other key, so a command, an argument, a path, an id, a standard
+ * output, a standard error, or an `extra` field can never ride a provider span. */
+const PROVIDER_SPAN_ATTR_ALLOWLIST: ReadonlySet<string> = new Set<string>([
+  SPAN_ATTRS.provider,
+  SPAN_ATTRS.outcome,
+  SPAN_ATTRS.packWallMs,
+  SPAN_ATTRS.transferWallMs,
+  SPAN_ATTRS.transferGuardCount,
+]);
+
+/** The subset of allowed keys that carry a finite number. */
+const PROVIDER_SPAN_NUMERIC_ATTRS: ReadonlySet<string> = new Set<string>([
+  SPAN_ATTRS.packWallMs,
+  SPAN_ATTRS.transferWallMs,
+  SPAN_ATTRS.transferGuardCount,
+]);
+
+/** The closed value set for the `outcome` attribute. */
+const KNOWN_SPAN_OUTCOMES: ReadonlySet<string> = new Set(["ok", "skipped", "failed"]);
+
+/**
+ * Re-clamp the worker-sent attributes at the trust boundary. Drop every key that
+ * is not on the allowlist. Re-map `provider` through `normalizeProviderFamily`,
+ * bound `outcome` to its closed set, and keep a numeric attribute only when it
+ * is a finite number. The result holds only bounded, low-cardinality values.
+ */
+export function clampProviderSpanAttributes(
+  raw: Record<string, unknown> | undefined,
+): Record<string, string | number | boolean> {
+  const clamped: Record<string, string | number | boolean> = {};
+  if (!raw) return clamped;
+  for (const [key, value] of Object.entries(raw)) {
+    if (!PROVIDER_SPAN_ATTR_ALLOWLIST.has(key)) continue;
+    if (key === SPAN_ATTRS.provider) {
+      clamped[key] = normalizeProviderFamily(typeof value === "string" ? value : undefined);
+      continue;
+    }
+    if (key === SPAN_ATTRS.outcome) {
+      if (typeof value === "string" && KNOWN_SPAN_OUTCOMES.has(value)) clamped[key] = value;
+      continue;
+    }
+    if (PROVIDER_SPAN_NUMERIC_ATTRS.has(key)) {
+      if (typeof value === "number" && Number.isFinite(value)) clamped[key] = value;
+      continue;
+    }
+  }
+  return clamped;
+}
+
+/**
+ * Parse and validate a W3C `traceparent`. Return the parts, or `null` when the
+ * value is absent or malformed. The host mints the value, but this is the trust
+ * boundary, so it validates before use. It never logs the value.
+ */
+export function parseTraceparent(raw: string | undefined | null): ParsedTraceparent | null {
+  if (typeof raw !== "string") return null;
+  const match = /^([0-9a-f]{2})-([0-9a-f]{32})-([0-9a-f]{16})-([0-9a-f]{2})$/.exec(raw);
+  if (!match) return null;
+  const [, version, traceId, spanId, flags] = match;
+  if (version === "ff") return null; // the W3C spec forbids version 0xff
+  if (traceId === "0".repeat(32)) return null; // an all-zero trace id is invalid
+  if (spanId === "0".repeat(16)) return null; // an all-zero span id is invalid
+  return { traceId, spanId, traceFlags: parseInt(flags, 16) };
+}
+
+/** Keep only the numeric status code. A status message could carry free-form
+ * text, so the host drops it — never a standard-stream text on a span. */
+function clampSpanStatus(
+  status: { code?: unknown; message?: unknown } | undefined,
+): { code: number } | undefined {
+  if (!status || typeof status.code !== "number" || !Number.isFinite(status.code)) return undefined;
+  return { code: status.code };
+}
+
+/**
+ * Record a worker-sent provider span through the real tracer. This is the host
+ * trust boundary: it validates the host-minted `traceparent`, re-clamps the span
+ * name and every attribute, mints the parentage host-side, and drops a status
+ * message. It rejects a span with a missing or malformed `traceparent`. It never
+ * throws — observability must not change control flow.
+ */
+export function recordWorkerProviderSpan(
+  params: { name: string; attributes?: Record<string, unknown>; status?: { code?: unknown; message?: unknown } },
+  context: WorkerHostCallContext | undefined,
+): void {
+  const parent = parseTraceparent(context?.traceparent);
+  if (!parent) return; // reject a missing or malformed traceparent
+  recordProviderPluginSpan({
+    name: clampProviderSpanName(params.name),
+    parent,
+    attributes: clampProviderSpanAttributes(params.attributes),
+    ...(clampSpanStatus(params.status) ? { status: clampSpanStatus(params.status) } : {}),
+  });
+}
+
 export function buildHostServices(
   db: Db,
   pluginId: string,
@@ -544,6 +670,8 @@ export function buildHostServices(
   const authorization = authorizationService(db);
   const budgets = budgetService(db);
   const issueApprovals = issueApprovalService(db);
+  const approvalSvc = approvalService(db);
+  const interactions = issueThreadInteractionService(db);
   const scopedBus = eventBus.forPlugin(pluginKey);
 
   // Track active session event subscriptions for cleanup
@@ -660,12 +788,27 @@ export function buildHostServices(
    * plugin attribute a mutation to them. Mirrors the authorization bar the
    * web app's own board routes apply — a plugin can only ever attribute an
    * action to an identity that could have taken it in the web app itself.
-   * Used by any plugin capability that accepts an `actorUserId` (currently
-   * `createComment`'s human-attributed path).
+   * Used by any plugin capability that accepts an `actorUserId`
+   * (`createComment`'s human-attributed path, `respondInteraction`, and
+   * `approvals.decide`).
+   *
+   * All current call sites are non-safe (write) actions, so by default this
+   * also rejects a `viewer`-role member — the web app's board write-routes
+   * treat `membershipRole === "viewer"` as read-only and 403 it ("Viewer
+   * access is read-only", routes/authz.ts:115-116). Without this bar a plugin
+   * holding `approvals.respond` / `issue.interactions.respond` could attribute
+   * a decision to a viewer who is denied that same action in the web UI —
+   * strictly more authority than the paired user has (privilege escalation).
+   * A future *read-only* attribution path can opt into allowing viewers with
+   * `{ allowViewer: true }`; the default is failure-closed.
    */
-  const requireActiveHumanMember = async (companyId: string, userId: string): Promise<void> => {
+  const requireActiveHumanMember = async (
+    companyId: string,
+    userId: string,
+    { allowViewer = false }: { allowViewer?: boolean } = {},
+  ): Promise<void> => {
     const [membership] = await db
-      .select({ id: companyMemberships.id })
+      .select({ id: companyMemberships.id, membershipRole: companyMemberships.membershipRole })
       .from(companyMemberships)
       .where(and(
         eq(companyMemberships.companyId, companyId),
@@ -677,7 +820,114 @@ export function buildHostServices(
     if (!membership) {
       throw new Error(`actorUserId "${userId}" is not an active human member of this company`);
     }
+    if (!allowViewer && membership.membershipRole === "viewer") {
+      throw new Error(`actorUserId "${userId}" has viewer (read-only) access and cannot take this write action`);
+    }
   };
+
+  /**
+   * Wake the assignee of a continuation issue after a plugin-relayed board-user
+   * interaction resolution, mirroring the web app's board interaction routes
+   * (routes/issues.ts's queueResolvedInteractionContinuationWakeup) so a
+   * confirmation accepted/rejected from chat resumes the agent the same way it
+   * would from the web app. Deliberately narrower than the HTTP helper: it
+   * carries the core interaction context plus the plan-review continuation
+   * payload (the confirmation kind the gateway resolves), and skips the
+   * checkbox/tool-action/item-verdict extras that the gateway's yes/no decision
+   * cards never produce. Failure-tolerant: a wake failure is logged, never
+   * thrown back to the plugin (the decision itself already applied).
+   */
+  const queuePluginInteractionContinuationWakeup = (args: {
+    issue: { id: string; assigneeAgentId: string | null; status: string };
+    interaction: {
+      id: string;
+      kind: string;
+      status: string;
+      continuationPolicy: string;
+      sourceCommentId?: string | null;
+      sourceRunId?: string | null;
+      payload?: unknown;
+    };
+    actorUserId: string;
+    source: string;
+  }): void => {
+    const { interaction, issue } = args;
+    if (
+      interaction.continuationPolicy !== "wake_assignee"
+      && interaction.continuationPolicy !== "wake_assignee_on_accept"
+    ) return;
+    if (
+      interaction.continuationPolicy === "wake_assignee_on_accept"
+      && interaction.status !== "accepted"
+    ) return;
+    if (interaction.status === "expired") return;
+    if (!issue.assigneeAgentId || issue.status === "done" || issue.status === "cancelled") return;
+
+    let planReviewInteraction: Record<string, unknown> | null = null;
+    if (interaction.kind === "request_confirmation" && isRecord(interaction.payload)) {
+      const target = isRecord(interaction.payload.target) ? interaction.payload.target : null;
+      if (
+        target
+        && target.type === "issue_document"
+        && target.key === "plan"
+        && typeof target.issueId === "string"
+        && target.issueId === issue.id
+      ) {
+        planReviewInteraction = {
+          id: interaction.id,
+          kind: interaction.kind,
+          status: interaction.status,
+          target,
+          acceptedTargetRevision: interaction.status === "accepted" ? target : null,
+        };
+      }
+    }
+
+    void heartbeat.wakeup(issue.assigneeAgentId, {
+      source: "automation",
+      triggerDetail: "system",
+      reason: "issue_commented",
+      payload: {
+        issueId: issue.id,
+        interactionId: interaction.id,
+        interactionKind: interaction.kind,
+        interactionStatus: interaction.status,
+        sourceCommentId: interaction.sourceCommentId ?? null,
+        sourceRunId: interaction.sourceRunId ?? null,
+        ...(planReviewInteraction ? { planReviewInteraction } : {}),
+        mutation: "interaction",
+      },
+      requestedByActorType: "user",
+      requestedByActorId: args.actorUserId,
+      contextSnapshot: {
+        issueId: issue.id,
+        taskId: issue.id,
+        interactionId: interaction.id,
+        interactionKind: interaction.kind,
+        interactionStatus: interaction.status,
+        ...(planReviewInteraction ? { planReviewInteraction } : {}),
+        wakeReason: "issue_commented",
+        source: `plugin:${pluginKey}`,
+      },
+    }).catch((err) => logger.warn({
+      err,
+      issueId: issue.id,
+      interactionId: interaction.id,
+      agentId: issue.assigneeAgentId,
+      source: args.source,
+    }, "failed to wake assignee on plugin-relayed interaction resolution"));
+  };
+
+  /**
+   * Redact an approval's payload before returning it through the plugin bridge,
+   * mirroring the web app's own approval read routes (routes/approvals.ts's
+   * redactApprovalPayload). Ensures the chat surface never receives secrets the
+   * web app itself hides from an approval reader.
+   */
+  const redactApprovalPayload = <T extends { payload: Record<string, unknown> }>(approval: T): T => ({
+    ...approval,
+    payload: redactEventPayload(approval.payload) ?? {},
+  });
 
   const pluginActivityDetails = (
     details: Record<string, unknown> | null | undefined,
@@ -1356,6 +1606,17 @@ export function buildHostServices(
             console.error("[plugin-host-services] Triggered log flush failed:", err);
           });
         }
+      },
+    },
+
+    tracer: {
+      async record(params, context) {
+        // The host trust boundary: validate the host-minted `traceparent`,
+        // re-clamp the span name and every attribute, mint the parentage
+        // host-side, and record the span through the real tracer. The capability
+        // gate in `createHostClientHandlers` already rejected an ungranted
+        // plugin before this runs.
+        recordWorkerProviderSpan(params, context);
       },
     },
 
@@ -2123,6 +2384,228 @@ export function buildHostServices(
         });
         return interaction as any;
       },
+      async listInteractions(params) {
+        const companyId = ensureCompanyId(params.companyId);
+        await ensurePluginAvailableForCompany(companyId);
+        if (!inCompany(await issues.getById(params.issueId), companyId)) return [];
+        return (await interactions.listForIssue(params.issueId)) as any;
+      },
+      async respondInteraction(params) {
+        const companyId = ensureCompanyId(params.companyId);
+        await ensurePluginAvailableForCompany(companyId);
+        const issue = requireInCompany("Issue", await issues.getById(params.issueId), companyId);
+        // Resolving an interaction is a board-user action (the web app's
+        // interaction-resolve routes are board-only). The host re-verifies the
+        // paired user is an active human member at apply time and never trusts
+        // the plugin-supplied identity — matching the createComment bar.
+        if (!params.actorUserId) {
+          throw new Error("actorUserId is required to respond to an interaction on behalf of a board user");
+        }
+        await requireActiveHumanMember(companyId, params.actorUserId);
+
+        const current = await interactions.getById(params.interactionId);
+        if (!current || current.issueId !== issue.id || current.companyId !== companyId) {
+          throw new Error(`Interaction "${params.interactionId}" not found for this issue`);
+        }
+        // Idempotent replay: an already-resolved interaction converges without
+        // re-applying, so a duplicate button tap from chat is a safe no-op.
+        if (current.status !== "pending") {
+          return { interaction: current as any, applied: false };
+        }
+
+        const actor = { userId: params.actorUserId };
+        let resolved: typeof current;
+        let continuationTarget = {
+          id: issue.id,
+          assigneeAgentId: issue.assigneeAgentId,
+          status: issue.status,
+        };
+        if (params.action === "accept") {
+          const result = await interactions.acceptInteraction(
+            { id: issue.id, companyId, projectId: issue.projectId ?? null, goalId: issue.goalId ?? null },
+            params.interactionId,
+            {},
+            actor,
+          );
+          resolved = result.interaction as typeof current;
+          if (result.continuationIssue) {
+            continuationTarget = {
+              id: result.continuationIssue.id,
+              assigneeAgentId: result.continuationIssue.assigneeAgentId,
+              status: result.continuationIssue.status,
+            };
+          }
+        } else {
+          resolved = (await interactions.rejectInteraction(
+            { id: issue.id, companyId },
+            params.interactionId,
+            { reason: params.reason ?? undefined },
+            actor,
+          )) as typeof current;
+        }
+
+        await logPluginActivity({
+          companyId,
+          action: params.action === "accept"
+            ? "issue.thread_interaction_accepted"
+            : "issue.thread_interaction_rejected",
+          entityType: "issue",
+          entityId: issue.id,
+          actor: { actorUserId: params.actorUserId },
+          details: {
+            identifier: issue.identifier,
+            interactionId: resolved.id,
+            interactionKind: resolved.kind,
+            interactionStatus: resolved.status,
+          },
+        });
+
+        queuePluginInteractionContinuationWakeup({
+          issue: continuationTarget,
+          interaction: resolved,
+          actorUserId: params.actorUserId,
+          source: `plugin:${pluginKey}:interaction.${params.action}`,
+        });
+
+        return { interaction: resolved as any, applied: true };
+      },
+      async listAttachments(params) {
+        const companyId = ensureCompanyId(params.companyId);
+        await ensurePluginAvailableForCompany(companyId);
+        if (!inCompany(await issues.getById(params.issueId), companyId)) return [];
+        return (await issues.listAttachments(params.issueId)) as any;
+      },
+      async getAttachmentContent(params) {
+        const companyId = ensureCompanyId(params.companyId);
+        await ensurePluginAvailableForCompany(companyId);
+        const attachment = await issues.getAttachmentById(params.attachmentId);
+        // Unknown and cross-company ids are deliberately indistinguishable to
+        // the plugin: both return null (no existence oracle across companies).
+        if (!attachment || attachment.companyId !== companyId) return null;
+
+        const maxBytes = typeof params.maxBytes === "number" && params.maxBytes > 0 ? params.maxBytes : null;
+        if (maxBytes !== null && attachment.byteSize > maxBytes) {
+          throw new Error(
+            `attachment ${attachment.id} is ${attachment.byteSize} bytes, over the ${maxBytes}-byte cap`,
+          );
+        }
+
+        const object = await getStorageService().getObject(attachment.companyId, attachment.objectKey);
+        const chunks: Buffer[] = [];
+        let total = 0;
+        for await (const chunk of object.stream) {
+          const buf = Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk);
+          total += buf.length;
+          // Defense in depth: enforce the cap during streaming too, so a
+          // metadata/object size mismatch can never exceed the requested cap.
+          if (maxBytes !== null && total > maxBytes) {
+            object.stream.destroy();
+            throw new Error(`attachment ${attachment.id} exceeded the ${maxBytes}-byte cap while reading`);
+          }
+          chunks.push(buf);
+        }
+        const bytes = Buffer.concat(chunks);
+
+        await logPluginActivity({
+          companyId,
+          action: "issue.attachment.read",
+          entityType: "issue",
+          entityId: attachment.issueId,
+          details: {
+            attachmentId: attachment.id,
+            byteSize: bytes.length,
+            contentType: attachment.contentType,
+          },
+        });
+
+        return {
+          attachmentId: attachment.id,
+          contentType: attachment.contentType,
+          byteSize: bytes.length,
+          sha256: attachment.sha256,
+          originalFilename: attachment.originalFilename ?? null,
+          contentBase64: bytes.toString("base64"),
+        };
+      },
+    },
+
+    approvals: {
+      async list(params) {
+        const companyId = ensureCompanyId(params.companyId);
+        await ensurePluginAvailableForCompany(companyId);
+        const rows = await approvalSvc.list(companyId, params.status ?? undefined);
+        // Match the web app's approval read surface: payloads are redacted so
+        // the chat bridge never receives secrets the web app itself hides.
+        return rows.map((approval) => redactApprovalPayload(approval)) as any;
+      },
+      async get(params) {
+        const companyId = ensureCompanyId(params.companyId);
+        await ensurePluginAvailableForCompany(companyId);
+        const approval = await approvalSvc.getById(params.approvalId);
+        if (!approval || approval.companyId !== companyId) return null;
+        return redactApprovalPayload(approval) as any;
+      },
+      async decide(params) {
+        const companyId = ensureCompanyId(params.companyId);
+        await ensurePluginAvailableForCompany(companyId);
+        const existing = await approvalSvc.getById(params.approvalId);
+        if (!existing || existing.companyId !== companyId) {
+          throw new Error(`Approval "${params.approvalId}" not found`);
+        }
+        // Deciding an approval is a board-user action (the web app's approval
+        // decision routes are board-only). Re-verify active membership at apply
+        // time; never trust the plugin-supplied identity.
+        if (!params.actorUserId) {
+          throw new Error("actorUserId is required to decide an approval on behalf of a board user");
+        }
+        await requireActiveHumanMember(companyId, params.actorUserId);
+
+        const { approval, applied } = params.action === "approve"
+          ? await approvalSvc.approve(params.approvalId, params.actorUserId, params.decisionNote ?? null)
+          : await approvalSvc.reject(params.approvalId, params.actorUserId, params.decisionNote ?? null);
+
+        await logPluginActivity({
+          companyId,
+          action: params.action === "approve" ? "approval.approved" : "approval.rejected",
+          entityType: "approval",
+          entityId: approval.id,
+          actor: { actorUserId: params.actorUserId },
+          details: {
+            type: approval.type,
+            requestedByAgentId: approval.requestedByAgentId,
+            applied,
+          },
+        });
+
+        // Mirror the web app's approve/reject routes: wake the requesting agent
+        // so it resumes after a chat-driven decision. Only on a fresh decision
+        // (applied) and only when a requester agent exists.
+        if (applied && approval.requestedByAgentId) {
+          void heartbeat.wakeup(approval.requestedByAgentId, {
+            source: "automation",
+            triggerDetail: "system",
+            reason: params.action === "approve" ? "approval_approved" : "approval_rejected",
+            payload: {
+              approvalId: approval.id,
+              approvalStatus: approval.status,
+            },
+            requestedByActorType: "user",
+            requestedByActorId: params.actorUserId,
+            contextSnapshot: {
+              source: `plugin:${pluginKey}:approval.${params.action}`,
+              approvalId: approval.id,
+              approvalStatus: approval.status,
+              wakeReason: params.action === "approve" ? "approval_approved" : "approval_rejected",
+            },
+          }).catch((err) => logger.warn({
+            err,
+            approvalId: approval.id,
+            requestedByAgentId: approval.requestedByAgentId,
+          }, "failed to wake requester on plugin-relayed approval decision"));
+        }
+
+        return { approval: redactApprovalPayload(approval) as any, applied };
+      },
     },
 
     issueDocuments: {
@@ -2224,6 +2707,14 @@ export function buildHostServices(
           triggerDetail: "system",
           reason: params.reason ?? null,
           payload: { prompt: params.prompt },
+          contextSnapshot: {
+            wakeReason: params.reason ?? null,
+            paperclipAgentMessage: {
+              text: params.prompt,
+              source: "plugin_invoke",
+              pluginKey,
+            },
+          },
           requestedByActorType: "system",
           requestedByActorId: pluginId,
         });
@@ -2702,8 +3193,15 @@ export function buildHostServices(
           payload: { prompt: params.prompt },
           contextSnapshot: {
             taskKey: session.taskKey,
+            wakeReason: params.reason ?? null,
             wakeSource: "automation",
             wakeTriggerDetail: "system",
+            paperclipAgentMessage: {
+              text: params.prompt,
+              source: "plugin_session",
+              pluginKey,
+              sessionId: params.sessionId,
+            },
           },
           requestedByActorType: "system",
           requestedByActorId: pluginId,
@@ -2745,7 +3243,9 @@ export function buildHostServices(
                   seq: 0,
                   eventType: status === "succeeded" ? "done" : "error",
                   stream: "system",
-                  message: status === "succeeded" ? "Run completed" : `Run ${status}`,
+                  message: status === "succeeded"
+                    ? (typeof payload.finalText === "string" ? payload.finalText : null)
+                    : `Run ${status}`,
                   payload: payload,
                 });
                 cleanup();

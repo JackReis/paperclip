@@ -19,6 +19,7 @@ import { projectWorkspaces } from "./project_workspaces.js";
 import { executionWorkspaces } from "./execution_workspaces.js";
 import { agentSessions } from "./agent_sessions.js";
 import type { SourceTrustMetadata } from "@paperclipai/shared";
+import type { IssueUnblockDescriptor } from "@paperclipai/shared";
 
 export const issues = pgTable(
   "issues",
@@ -69,6 +70,9 @@ export const issues = pgTable(
     productivityReviewOverride: jsonb("productivity_review_override")
       .$type<{ triggerSnoozes?: Array<{ trigger: string; snoozedUntil: string; reason?: string }> } | null>(),
     sourceTrust: jsonb("source_trust").$type<SourceTrustMetadata | null>(),
+    unblockDescriptor: jsonb("unblock_descriptor").$type<IssueUnblockDescriptor | null>(),
+    blockedTransitionAt: timestamp("blocked_transition_at", { withTimezone: true }),
+    blockedOwnerNotifiedAt: timestamp("blocked_owner_notified_at", { withTimezone: true }),
     startedAt: timestamp("started_at", { withTimezone: true }),
     completedAt: timestamp("completed_at", { withTimezone: true }),
     cancelledAt: timestamp("cancelled_at", { withTimezone: true }),
