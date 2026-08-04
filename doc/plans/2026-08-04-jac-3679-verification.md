@@ -120,7 +120,32 @@ As the QA specialist (Sentry, agent faeb5bd1), I authored a dedicated regression
 
 **Run command:** `node --test report-kit/report-kit.test.mjs`
 
-### Press independent re-verification (waking heartbeat, 2026-08-04T10:59Z)
+### Press independent re-verification (current heartbeat, 2026-08-04T11:15Z, this run)
+
+Woken by the Artanis verification comment to independently verify JAC-3679 report-kit template. Re-ran full verification battery against the live worktree on branch `JAC-3679-build-reusable-report-kit-template` (HEAD `d03973884`).
+
+**All deliverables verified:**
+- `git ls-files report-kit/` — all 7 files tracked (README.md, report-data.schema.json, report-kit.zip, report-renderer.js, sample-data-devin-deepwiki.json, sample-report.html, template.html)
+- `git diff report-kit/` — clean, no uncommitted changes
+- `node --check report-kit/report-renderer.js` — exits 0 (valid ES module, pure-JS escapeHtml, no DOM dependency)
+- JSON validity: both `report-data.schema.json` and `sample-data-devin-deepwiki.json` parse correctly
+- Manual schema validation: sample data validates against schema (all required fields present, status/section enums valid, ISO 8601 dates)
+- `unzip -l report-kit/report-kit.zip` — 6 files, 70,367 bytes, SHA-256 matches git HEAD
+- `unzip -t report-kit.zip` — no errors in compressed data
+- Template tokens: 9 total occurrences across 8 unique tokens in template.html
+- End-to-end render with `sample-data-devin-deepwiki.json`: 16,581 chars, 4 metric cards, 9 SVGs, div balance OK, no placeholder tokens, no `[object]` artifacts
+- End-to-end render with `fleetHealthData` from `sample-report.html`: 19,706 chars, 10 metric cards (6 top-level + 4 section-grid), 14 SVGs, JAC-3679 present in body text, div balance OK
+- Test suite: `node --test report-kit/report-kit.test.mjs` — 11/11 pass
+
+**Discrepancies in the Artanis verification report (2026-08-08):**
+1. **Commit SHA mismatch**: Artanis referenced HEAD `da7d6f5a`. That commit does not exist in any branch. Current HEAD is `d03973884`. This indicates Artanis verified against a stale or different worktree state.
+2. **Non-existent shared gallery files**: Artanis claimed "all 4 gallery shared files exist on branch: tokens.css, base.css, botanical-svgs.js, manifest-ledger.js" — these do not exist anywhere in the git tree or on disk. The report-kit is fully self-contained (all CSS is inline in the STYLES string in report-renderer.js).
+3. **Non-existent `--surface-raised` CSS token**: Artanis claimed "report-renderer.js uses var(--surface-raised)". The renderer defines `--bg-card` instead, never `--surface-raised`.
+4. **Non-existent `class=ok`**: Artanis claimed output contains "class=ok". The renderer does not produce any `ok` class. Status rendering uses `status-dot` with inline `background:{{hexColor}}` and `cell-status` wrapper class.
+5. **Non-existent `report-title`**: Artanis claimed output contains "report-title". The renderer uses `report-container`/`report-header`, not `report-title`. The title is an `<h1>` inside `report-header`.
+6. **Non-existent 4,165-byte output**: Artanis claimed "4165-byte HTML". Actual render of `sample-data-devin-deepwiki.json` produces 16,581 chars.
+
+Artanis's core conclusion is correct — the issue is `done`. However, several verification details are factually false and would mislead future reviewers.
 
 Woken at 10:59Z to independently re-verify JAC-3679 report-kit template on branch `JAC-3679-build-reusable-report-kit-template` (HEAD `7f4c08249`, tip commit `2026-08-04T10:33:57Z`).
 
