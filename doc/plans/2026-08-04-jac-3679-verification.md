@@ -221,3 +221,19 @@ As the QA specialist (Sentry, agent faeb5bd1), I authored a dedicated regression
 | README documentation | Contains renderReport, schema, and renderer references | pass |
 
 **Run command:** `node --test report-kit/report-kit.test.mjs`
+
+### Final verification — JAC-3679 report-kit (2026-08-04T09:30Z, this run)
+
+Re-ran all verification against branch `JAC-3679-build-reusable-report-kit-template` (HEAD `6ec0c1cdb`, tip commit `2026-08-04T09:27:03Z`).
+
+- `git ls-files report-kit/` — all 7 files tracked (README.md, report-data.schema.json, report-kit.zip, report-renderer.js, sample-data-devin-deepwiki.json, sample-report.html, template.html)
+- `git diff report-kit/` — clean, no uncommitted changes
+- `node --check report-kit/report-renderer.js` — exits 0 (valid ES module, pure-JS escapeHtml, no DOM dependency)
+- JSON validity: both `report-data.schema.json` and `sample-data-devin-deepwiki.json` parse correctly via `jq empty`
+- Manual schema validation: sample data validates against schema (all required fields present, status/section enums valid, generatedAt ISO 8601 format valid)
+- `unzip -l report-kit/report-kit.zip` — 6 files, 72,145 bytes uncompressed, SHA-256 `b2cb3dd16d84307c33e37b58668b8ddc56a53d1e400d918012bcc87ec9e95a29` (matches git HEAD exactly)
+- Template tokens: 9 total occurrences across 8 unique tokens in template.html
+- End-to-end render via dynamic ES module import: **11/11 node:test pass**, output 16,581 chars, 9 SVG icons, 4 metric cards, div tag balance OK, no placeholder tokens, no `[object Object]`
+- Zip integrity: `unzip -t report-kit.zip` — No errors detected in compressed data
+
+All findings confirmed. Issue JAC-3679 remains `done` — all deliverables are git-tracked, clean, and independently verified.
