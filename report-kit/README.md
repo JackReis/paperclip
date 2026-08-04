@@ -672,8 +672,12 @@ rows: [["Agent A", { status: "healthy" }]]
 
 ## Changelog
 
+### v1.2.4 (2026-08-04)
+|- **Fix**: Corrected the `report-kit.zip` row in the Files table — README text stated the zip "excludes tests and this README" but the zip includes README.md (6 files: 5 source files + README; excludes only `report-kit.test.mjs`). Updated description to "Archive of all 6 content files (excludes the QA test suite report-kit.test.mjs) for distribution".
+|- **Fix**: Rebuilt `report-kit.zip` to include the corrected README.md.
+
 ### v1.2.3 (2026-08-04)
-- **Fix**: Rebuilt `report-kit.zip` to include the updated README.md (v1.2.2 content). The previous zip contained the stale v1.2.1 README despite the v1.2.2 documentation changes being committed to the repo.
+|- **Fix**: Rebuilt `report-kit.zip` to include the updated README.md (v1.2.2 content). The previous zip contained the stale v1.2.1 README despite the v1.2.2 documentation changes being committed to the repo.
 
 ### v1.2.2 (2026-08-04)
 - **Docs**: Added "Running Tests" section with `node --test` command and full test catalog (11 tests covering syntax, XSS, schema, render, zip, README).
