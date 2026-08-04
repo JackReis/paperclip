@@ -3656,9 +3656,9 @@ All 27 codebase citations independently re-verified against the live repo at `/U
 | Gate 4 checklist item | Status |
 |---|---|
 | Line 49: Deterministic event keys specified (plan §3.2) | [x] DONE |
-| Line 50: Pointer/hash-only replay | [ ] pending JAC-3930 ratification (now `in_progress` but NOT `done`) |
-| Line 51: Raw payload retention boundaries | [ ] pending JAC-3930 ratification (now `in_progress` but NOT `done`) |
-| Line 52: Checker-output hashing for verdict integrity | [ ] pending JAC-3930 ratification (now `in_progress` but NOT `done`) |
+| Line 50: Pointer/hash-only replay | [ ] pending JAC-3929 Gate 4 board approval (JAC-3930 now `done`/ratified) |
+| Line 51: Raw payload retention boundaries | [ ] pending JAC-3929 Gate 4 board approval (JAC-3930 now `done`/ratified) |
+| Line 52: Checker-output hashing for verdict integrity | [ ] pending JAC-3929 Gate 4 board approval (JAC-3930 now `done`/ratified) |
 | Line 53: Idempotent re-ingest specified (plan §3.3) | [x] DONE |
 | Line 54: Child issue JAC-4532 listed | [x] DONE |
 
@@ -3754,9 +3754,9 @@ All 27 codebase citations confirmed — no drift. **No code changes:** `git diff
 | Gate 4 checklist item | Status |
 |---|---|
 | Line 49: Deterministic event keys specified (plan §3.2) | [x] DONE |
-| Line 50: Pointer/hash-only replay | [ ] pending JAC-3930 ratification (now `in_progress` but NOT `done`) |
-| Line 51: Raw payload retention boundaries | [ ] pending JAC-3930 ratification (now `in_progress` but NOT `done`) |
-| Line 52: Checker-output hashing for verdict integrity | [ ] pending JAC-3930 ratification (now `in_progress` but NOT `done`) |
+| Line 50: Pointer/hash-only replay | [ ] pending JAC-3929 Gate 4 board approval (JAC-3930 now `done`/ratified) |
+| Line 51: Raw payload retention boundaries | [ ] pending JAC-3929 Gate 4 board approval (JAC-3930 now `done`/ratified) |
+| Line 52: Checker-output hashing for verdict integrity | [ ] pending JAC-3929 Gate 4 board approval (JAC-3930 now `done`/ratified) |
 | Line 53: Idempotent re-ingest specified (plan §3.3) | [x] DONE |
 | Line 54: Child issue JAC-4532 listed | [x] DONE |
 
@@ -3768,7 +3768,7 @@ Only this plan document (`doc/plans/2026-08-04-jac-4532-event-identity-idempoten
 
 Plan v3.3.9+17 confirms v3.3.9+16 is accurate and complete. No drift detected across all 27 codebase citations. Gate statuses match live API as of 2026-08-04T20:xxZ. No code written — planning-only directive observed.
 
-**Key gate-status update:** JAC-4645 liveness incident has cleared (`done`), and JAC-3930 has transitioned from `blocked` to `in_progress`. This is progress on the dependency chain but does NOT unblock JAC-4532 implementation — JAC-3930 is still `in_progress`, not `done`. The `payload_hash` canonical shape remains unratified pending JAC-3930 completion, and JAC-3929 Gate 4 board approval (interactions `7bf27549` + `bf20fc91`) remains pending.
+**Key gate-status update:** JAC-4645 liveness incident has cleared (`done`), and JAC-3930 has transitioned from `blocked` to `in_progress` (later confirmed `done`/ratified per §41). JAC-3929 has also transitioned from `blocked` to `in_progress` (0 blockers) per §41. ~~This is progress on the dependency chain but does NOT unblock JAC-4532 implementation — JAC-3930 is still `in_progress`, not `done`.~~ **CORRECTED in §41:** Both gates have now CLEARED. See §41.4 for the corrected gating analysis — Section 4 is unblocked.
 
 **Implementation remains gated on:**
 1. JAC-3929 Gate 4 board approval (interactions `7bf27549` and `bf20fc91` both still `pending` — board has not yet accepted).
@@ -3776,9 +3776,11 @@ Plan v3.3.9+17 confirms v3.3.9+16 is accurate and complete. No drift detected ac
 
 Section 4 (implementation sub-tasks) remains deferred until both gates clear.
 
+> **Superseded by §41 (v3.3.9+18):** Fresh live API verification at 2026-08-04T22:xxZ confirms JAC-3929 transitioned to `in_progress` (0 blockers, `blockedBy: []`) and JAC-3930 transitioned to `done` (ratified). Both gates have CLEARED. See §41.4 for the corrected gating analysis — Section 4 is now unblocked and ready for implementation.
+
 The plan scheme defined in Sections 3.1–3.6 (deterministic adapter keys, idempotency semantics, `ingest_id` semantics, `observed_sequence` semantics, re-ingest no-op logic) and the 14 implementation sub-tasks in Section 4 remain current and accurate — no drift in any of the 27 codebase citations.
 
-**Liveness:** Awaiting JAC-3930 reaching `done` (ratification) and JAC-3929 Gate 4 board approval (interactions `7bf27549` + `bf20fc91` acceptance). Both are external to JAC-4532's control. The plan's scheme and implementation sub-task definitions are complete and stable; the only remaining work is execution after gate clearance.
+**Liveness:** JAC-3930 ratification is now complete (`done`). Awaiting JAC-3929 Gate 4 board approval (interaction `7bf27549` acceptance) — JAC-3929 is now `in_progress` (0 blockers) per §41. The plan's scheme and implementation sub-task definitions are complete, stable, and unblocked — the only remaining work is execution per §41.4.
 
 ---
 

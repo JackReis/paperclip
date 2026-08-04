@@ -1,6 +1,6 @@
 # JAC-3929 — 6 Ringer Judge Approval Gates Checklist
 
-**Status:** Awaiting board approval (interaction 7bf27549)
+**Status:** Awaiting board approval (interaction 7bf27549) — parent gate remains `blocked` with `needs_attention`; 10 unresolved blockers. JAC-3930 ratification complete (see Gate 1 note); JAC-4532 still deferred pending Gate 4 board approval.
 **Judge report:** `/Users/hermes/.ringer/artifacts/deliverables/fleet-spend-observatory-independent-judge-20260729-20260729T202530Z-p58409/independent-judge/report.md`
 **Report SHA-256:** `a24277b3`
 
@@ -8,12 +8,12 @@
 |- [x] Quantity/null semantics: `{value|null, unit, reported_state, source_field, observed_at, confidence}` — implemented as nullable columns with fail-closed coverage resolution (null=not_reported, 0=explicitly zero). Full `QuantifiedQuantity` envelope per-quantity is planned in JAC-4530 §3.1 (Path B preferred for V1).
 |- [x] Add `reasoning_tokens`, `tool_call_tokens` fields — already on both `cost_events` and `run_events` (migration 0187/0188)
 |- [x] Add `currency`, `pricing_version_ref`, `cost_confidence` fields — `currency` and `pricing_version_ref` on `cost_events`; `currency` on `run_events`. **`cost_confidence` is still MISSING** (only generic `confidence` exists). `price_basis` is also MISSING. See JAC-4530 plan §2.2.
-| - [~] Event identity algorithm: `source_system` + `source_event_id` + `source_event_version` + `event_kind` + `attempt_index` + `observed_sequence` — columns exist; `sourceEventId` + `payloadHash` not yet populated (JAC-4532, in_progress/planning — plan complete at doc/plans/2026-08-04-jac-4532-event-identity-idempotency-scheme.md, awaiting JAC-3930 ratification)
+| - [~] Event identity algorithm: `source_system` + `source_event_id` + `source_event_version` + `event_kind` + `attempt_index` + `observed_sequence` — columns exist; `sourceEventId` + `payloadHash` not yet populated (JAC-4532, in_progress/planning — plan complete at doc/plans/2026-08-04-jac-4532-event-identity-idempotency-scheme.md, JAC-3930 ratified `done` 2026-08-04; JAC-3929 Gate 4 board approval interaction `7bf27549` still `pending`)
 | - [ ] Lineage edge vocabulary: parent, child, handoff, retry, fan-out group, aggregation boundary
 | - [x] Confidence levels defined and applied — `CONFIDENCE_LEVELS` = ["high", "medium", "low"], applied in fail-closed resolution
-| - **Child issues:** JAC-4530 (done), JAC-4532 (in_progress), JAC-4531 (in_progress), JAC-4533 (in_review), JAC-4538 (blocked)
+| - **Child issues:** JAC-4530 (done), JAC-4532 (in_progress), JAC-4531 (done), JAC-4533 (in_review), JAC-4538 (blocked)
 |
->|**JAC-3930 ratification (2026-08-04T20:50Z):** Independent review verdict: PASS. Reviewer stated "looks done to me." Machine validation: 10/10 valid pass, 7/7 invalid rejected. Board confirmations 1cadc298 and f08cdbc4 both accepted. JAC-3930 is ready to be marked `done` by its assignee (Coordinator) — awaiting sign-off to resolve liveness incident JAC-4645. Once ratified, JAC-4532, JAC-4531, and JAC-4538 are unblocked.
+|>|**JAC-3930 ratification (updated 2026-08-04T22:xxZ):** Independent review verdict: PASS. Reviewer stated "looks done to me." Machine validation: 10/10 valid pass, 7/7 invalid rejected. Board confirmations `1cadc298` (resolved 2026-08-01T01:02:30Z) and `f08cdbc4` (resolved 2026-08-01T01:02:38Z) both accepted. **JAC-3930 is now `done` (ratified).** Liveness incident JAC-4645 cleared (`done`, 2026-08-04). JAC-3929 Gate 4 board approval (interaction `7bf27549`) remains `pending` — parent gate still `blocked`. JAC-4532 implementation remains DEFERRED pending Gate 4 acceptance.
 
 ## Gate 2 — Privacy Gate [P1]
 <!-- Gate 2 checklist updated 2026-08-04T17:3xZ by Maar: plan revision 2 approved (interaction 82dee633, outcome: accepted). Child implementation issues created: JAC-4632–JAC-4640. -->
