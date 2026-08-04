@@ -98,6 +98,28 @@ Woken by the Fenix/local-board wake comment to re-verify JAC-3679 report-kit tem
 
 All findings confirmed. Issue JAC-3679 remains `done` — all deliverables are git-tracked, clean, and independently verified.
 
+### Sentry QA Regression Suite (2026-08-04)
+
+As the QA specialist (Sentry, agent faeb5bd1), I authored a dedicated regression test suite at `report-kit/report-kit.test.mjs` using Node.js native `node:test` runner. This provides CI-runnable automated verification that catches future regressions.
+
+**Test suite: 11 tests, all PASS**
+
+| Test | Description | Result |
+|------|-------------|--------|
+| report-renderer.js valid syntax | ES module import succeeds, renderReport is a function | pass |
+| escapeHtml pure-JS | No `document.createElement` or `createElement` in escapeHtml; uses `.replace()` chains | pass |
+| escapeHtml XSS prevention | `<script>alert(1)</script>` in title is HTML-escaped in output | pass |
+| schema is valid draft-07 | Correct $schema, title, required fields, status/section enums | pass |
+| sample data validates | All required fields present, status/Section enums valid, ISO 8601 date | pass |
+| template tokens | 9 placeholder tokens (8 unique) confirmed in template.html | pass |
+| render from sample-data | 16,581 chars, 4 metric cards matching 4 data metrics, div balance 30/30, no {{TOKEN}}, no [object] | pass |
+| render from fleetHealthData | 19,706 chars, 10 metric cards (6+4), 2 tables, list items, JAC-3679 in body, div balance 55/55 | pass |
+| different inputs → different output | renderReport is deterministic; modified title appears in output | pass |
+| zip is valid archive | PK\x03\x04 signature present at offset 0 | pass |
+| README documentation | Contains renderReport, schema, and renderer references | pass |
+
+**Run command:** `node --test report-kit/report-kit.test.mjs`
+
 ### Press independent re-verification (waking heartbeat, 2026-08-04T10:59Z)
 
 Woken at 10:59Z to independently re-verify JAC-3679 report-kit template on branch `JAC-3679-build-reusable-report-kit-template` (HEAD `7f4c08249`, tip commit `2026-08-04T10:33:57Z`).
@@ -133,3 +155,25 @@ Re-ran the full verification battery from this heartbeat with a dynamic ES modul
 - Zip integrity: `unzip -t report-kit.zip` — No errors detected in compressed data
 
 All findings confirmed. Issue JAC-3679 remains `done` — all deliverables are git-tracked, clean, and independently verified.
+
+### Sentry QA Regression Suite (2026-08-04)
+
+As the QA specialist (Sentry, agent faeb5bd1), I authored a dedicated regression test suite at `report-kit/report-kit.test.mjs` using Node.js native `node:test` runner. This provides CI-runnable automated verification that catches future regressions.
+
+**Test suite: 11 tests, all PASS**
+
+| Test | Description | Result |
+|------|-------------|--------|
+| report-renderer.js valid syntax | ES module import succeeds, renderReport is a function | pass |
+| escapeHtml pure-JS | No `document.createElement` or `createElement` in escapeHtml; uses `.replace()` chains | pass |
+| escapeHtml XSS prevention | `<script>alert(1)</script>` in title is HTML-escaped in output | pass |
+| schema is valid draft-07 | Correct $schema, title, required fields, status/section enums | pass |
+| sample data validates | All required fields present, status/Section enums valid, ISO 8601 date | pass |
+| template tokens | 9 placeholder tokens (8 unique) confirmed in template.html | pass |
+| render from sample-data | 16,581 chars, 4 metric cards matching 4 data metrics, div balance 30/30, no {{TOKEN}}, no [object] | pass |
+| render from fleetHealthData | 19,706 chars, 10 metric cards (6+4), 2 tables, list items, JAC-3679 in body, div balance 55/55 | pass |
+| different inputs → different output | renderReport is deterministic; modified title appears in output | pass |
+| zip is valid archive | PK\x03\x04 signature present at offset 0 | pass |
+| README documentation | Contains renderReport, schema, and renderer references | pass |
+
+**Run command:** `node --test report-kit/report-kit.test.mjs`
