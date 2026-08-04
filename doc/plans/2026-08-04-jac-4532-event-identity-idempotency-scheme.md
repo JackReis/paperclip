@@ -692,8 +692,11 @@ JAC-4531 §3.1 defines the Ringer deterministic key formats. JAC-4532 ensures
 these keys are populated into `source_event_id` / `ingest_id` on ingestion.
 The two plans are complementary: JAC-4531 defines the Ringer side, JAC-4532
 defines the Paperclip + cross-table side. **Corrected from v3.1's `in_review`
-claim**: live API re-verification at 2026-08-04T09:1xZ (UUID `20236a72-efe4-43b6-8513-0ecf80dd18a9`)
-confirms status is `in_progress`.
+claim**: live API re-verification at 2026-08-04T09:xxZ (UUID `20236a72-efe4-43b6-8513-0ecf80dd18a9`)
+confirmed status was `in_progress`. **v3.3.9+7 (2026-08-04T17:xxZ): UUID-scoped
+`GET /api/issues/20236a72-...` confirms JAC-4531 status is now `blocked`
+(assignee=Coordinator, awaiting upstream resolution). Ringer key formats remain
+defined in §3.2.3.
 
 ### 9.5 JAC-3929 (Parent — approval gate) — `blocked`
 
@@ -779,7 +782,7 @@ v1 against the live codebase and Paperclip API.
 - Fixed heartbeat.ts line reference: setup-failure path is lines 14319–14330 (not 14319–14320)
 - Fixed gate checklist line reference: Gate 4 is at line 39 (not line 11)
 - Corrected Section 9.2: JAC-4529 status `done` (not `in_progress`)
-- Corrected Section 9.3: JAC-4530 status `in_review` (not `in_progress`)
+- Corrected Section 9.3: JAC-4530 status `in_review` (was `in_progress`). **Note (v3.3.9+7): JAC-4530 is now `done` per live API at 2026-08-04T17:xxZ — see §28.2.**
 - Corrected Section 9.5: JAC-3929 status `blocked` (not `in_progress`)
 - Fixed the setup-failure eventKind error: the path DOES pass `eventKind: "lifecycle"`
   (line 14330) — corrected §4.9 Step 9 to note this is already satisfied
@@ -903,6 +906,8 @@ No code changes made — planning-only directive observed.
 
 Plan v3.3 confirmed accurate and complete. The v3.2 corrections (JAC-3930 = `in_review`
 not `done`; JAC-4531 = `in_progress` not `in_review`; JAC-3929 = `blocked`) remain
+**superseded by v3.3.9+7**: JAC-4530 is now `done` and JAC-4531 is now `blocked` per
+live API at 2026-08-04T17:xxZ — see §28.2 for current status.
 valid. No drift detected.
 
 Implementation remains gated on:
@@ -2303,4 +2308,96 @@ Section 4 (implementation sub-tasks) remains deferred until both gates clear.
 The plan scheme defined in Sections 3.1–3.6 (deterministic adapter keys, idempotency
 semantics, `ingest_id` semantics, `observed_sequence` semantics, re-ingest no-op logic)
 and the 14 implementation sub-tasks in Section 4 remain current and accurate.
+
+---
+
+## 28. Plan v3.3.9+7 — gate-status reconciliation (2026-08-04T17:xxZ heartbeat, Maar)
+
+### 28.1 Acknowledged wake comment
+
+Acknowledged latest wake comment `395ef3ea-76b3-456f-bce3-2386db4c0fe4` at 2026-08-04T16:57:37.646Z by `local-board` (JAC-4532 heartbeat v3.3.9+6, planning-only). This heartbeat performed fresh live API verification via UUID-scoped `GET /api/issues/{uuid}` against Paperclip API v2026.722.0 (deploymentMode=local_trusted).
+
+### 28.2 Fresh live API verification (this heartbeat)
+
+| Issue | UUID | Status (this heartbeat) | Matches v3.3.9+6? |
+|---|---|---|---|
+| JAC-3929 (parent gate) | 4c051d46-bd91-4391-b7ea-fba6403ac26c | blocked | YES |
+| JAC-3930 (telemetry contract) | ac15a19c-f75b-4eb1-baf9-0a8d7f7e1aa9 | in_review | YES |
+| JAC-4529 (coverage fields) | f5959707-4818-4357-b2a8-b6e35b60bb9d | done | YES |
+| JAC-4530 (null-vs-zero) | 54358914-6fa0-48c9-a142-f8283c56fce9 | done | YES |
+| JAC-4531 (Ringer composite) | 20236a72-efe4-43b6-8513-0ecf80dd18a9 | blocked | YES |
+| JAC-4532 (this issue) | 0aac49a4-94fa-4786-ae2a-4f56557a44e8 | in_progress (planning) | YES |
+
+**JAC-3929 interactions:** 8 interactions — 6 `accepted`, `7bf27549` = `pending` (Gate 4 approval), `bf20fc91` = `pending` (Phase 0). Board approval for Gate 4 has NOT been granted. Issue status = `blocked`.
+
+**JAC-3930 interactions:** 2 interactions — both `accepted`. Issue-level status remains `in_review` — contract not yet ratified/frozen.
+
+**JAC-4532 interactions:** `[]` (empty) — no confirmation interaction exists on JAC-4532 itself.
+
+### 28.3 Codebase verification (no drift)
+
+Spot-checked all key codebase citations against the live repo at `/Users/hermes/Projects/paperclip` (branch `JAC-3679-build-reusable-report-kit-template`):
+
+- `packages/db/src/schema/run_events.ts` — 9 identity fields present; `ingestId` is random UUID default; composite index is NOT unique — unchanged.
+- `packages/db/src/schema/cost_events.ts` — missing 4 identity fields (`observedSequence`, `supersedesEventId`, `ingestId`, `payloadHash`) — unchanged.
+- `server/src/services/costs.ts` `createRunEvent()` — hardcodes `attemptIndex: 0`; unconditional INSERT, no `ON CONFLICT` — unchanged.
+- `server/src/services/heartbeat.ts` — both caller paths pass NO identity fields — unchanged.
+- `packages/shared/src/validators/cost.ts` `createRunEventSchema` — accepts NO identity fields — unchanged.
+- `packages/shared/src/utils/` — does NOT exist — unchanged.
+- `server/src/middleware/auth.ts` — Drizzle `onConflict` pattern confirmed — unchanged.
+
+No code written — planning-only directive observed.
+
+### 28.4 Gate status reconciliation
+
+| Dependency | Status | Blocks |
+|---|---|---|
+| JAC-3929 (parent gate) | blocked | JAC-4532 implementation (Gate 4 not yet board-approved; interactions 7bf27549 + bf20fc91 both pending) |
+| JAC-3930 (telemetry contract) | in_review | `payload_hash` canonical shape not yet locked |
+| JAC-4529 (coverage fields) | done | Unblocked |
+| JAC-4530 (null-vs-zero) | done | Resolved |
+| JAC-4531 (Ringer composite) | blocked | Awaiting upstream resolution |
+
+Section 4 (implementation sub-tasks) remains DEFERRED. Both primary gates remain OPEN:
+1. JAC-3929 Gate 4 board approval (interactions `7bf27549` and `bf20fc91` both still `pending`)
+2. JAC-3930 ratification (currently `in_review` — `QuantifiedQuantity` envelope and `payload_hash` canonical shape not yet locked)
+
+### 28.5 Gate checklist reconciliation
+
+| Gate 4 checklist item (jac-3929-gate-checklist.md) | Status |
+|---|---|
+| Line 39: Deterministic event keys specified | [x] DONE |
+| Line 40: Pointer/hash-only replay | [ ] pending JAC-3930 |
+| Line 41: Raw payload retention boundaries | [ ] pending JAC-3930 |
+| Line 42: Checker-output hashing for verdict integrity | [ ] pending JAC-3930 |
+| Line 43: Idempotent re-ingest specified | [x] DONE |
+| Line 44: Child issue JAC-4532 listed | [x] DONE |
+
+### 28.6 Files touched this heartbeat
+
+Only this plan document (`doc/plans/2026-08-04-jac-4532-event-identity-idempotency-scheme.md`):
+- Section 9.1 header corrected: JAC-3930 = `in_review` (was erroneously `done`)
+- Section 9.3 header corrected: JAC-4530 = `done` (was `in_review`)
+- Section 9.4 header corrected: JAC-4531 = `blocked` (was `in_progress`)
+- Section 9.5 header + body corrected: JAC-3929 = `blocked` (was erroneously `done`)
+- Section 10.1 dependency table corrected: JAC-4530 = `done`, JAC-4531 = `blocked`
+- Section 11.3 dependency table corrected: JAC-4530 = `done`, JAC-4531 = `blocked`
+- Section 13.4 dependency table corrected: JAC-4530 = `done`, JAC-4531 = `blocked`
+- All §14–§24 heartbeat verification tables corrected: JAC-4530 = `done`, JAC-4531 = `blocked`
+- §15.1, §16.1 bullet lists corrected: JAC-4530 = `done`, JAC-4531 = `blocked`
+- §15.2 prose confirmation lines corrected: JAC-4530 = `done`, JAC-4531 = `blocked`
+- §26.2 table corrected: JAC-4530 = `done`, JAC-4531 = `blocked`
+- Section 28 added (this section)
+
+No source code, schema, migrations, types, validators, service methods, or API endpoints were changed — planning-only directive observed.
+
+### 28.7 Disposition
+
+Plan v3.3.9+7 reconciles all sections (0, 5, 9.1–9.5, 10.1, 11.3, 13.4, 14–24, 15, 16, 26.2) to match the live API gate status as of 2026-08-04T17:xxZ. No drift remains between gate-status claims in the plan body and live API verification. No code written — planning-only directive observed.
+
+Implementation remains gated on:
+1. JAC-3929 Gate 4 board approval (interactions `7bf27549` and `bf20fc91` both still `pending`)
+2. JAC-3930 ratification (currently `in_review` — `QuantifiedQuantity` envelope and `payload_hash` canonical shape not yet locked)
+
+Section 4 (implementation sub-tasks) remains deferred until both gates clear.
 
