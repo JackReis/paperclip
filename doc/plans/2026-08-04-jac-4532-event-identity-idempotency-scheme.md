@@ -371,6 +371,10 @@ This logic lives in the service layer (`costs.createRunEvent()` /
 
 ## 4. Implementation plan (sub-tasks for follow-up issues after plan approval)
 
+> **DEFERRED** — pending JAC-3929 Gate 4 board approval (interactions `7bf27549`
+> and `bf20fc91` both still `pending`) AND JAC-3930 ratification
+> (currently `in_review`). Both gates remain OPEN as of 2026-08-04T16:xxZ.
+
 ### Step 1: Add missing event-identity constants
 
 **File:** `packages/shared/src/constants.ts`
@@ -656,7 +660,7 @@ Step 1 (constants) → Step 2 (cost_events schema) → Step 3 (ingest_id type ch
 
 ## 9. Relationship to dependencies
 
-### 9.1 JAC-3930 (Telemetry Contract) — `done`
+### 9.1 JAC-3930 (Telemetry Contract) — `in_review`
 
 JAC-3930 defines the normalized telemetry envelope. The event identity fields
 (`source_system`, `source_event_id`, `payload_hash`, etc.) are JAC-4532's
@@ -674,7 +678,7 @@ it defines how those columns are populated and enforced. JAC-4529 §2.7 already
 references the JAC-4532 identity scheme as the target. This plan closes the gap
 between "columns exist" and "columns are populated + enforced."
 
-### 9.3 JAC-4530 (Token/cost unknown-vs-zero) — `in_review (high)`
+### 9.3 JAC-4530 (Token/cost unknown-vs-zero) — `done`
 
 The `payload_hash` is computed over token/cost fields. JAC-4530's distinction
 between `null` (not_reported) and `0` (explicitly zero) is critical for hash
@@ -682,7 +686,7 @@ stability: two events with the same semantic meaning but different null/zero
 representations must hash differently. The `computePayloadHash` function must
 use the resolved (fail-closed) values, including `null` vs `0` distinctions.
 
-### 9.4 JAC-4531 (Ringer composite adapter design) — `in_progress`
+### 9.4 JAC-4531 (Ringer composite adapter design) — `blocked`
 
 JAC-4531 §3.1 defines the Ringer deterministic key formats. JAC-4532 ensures
 these keys are populated into `source_event_id` / `ingest_id` on ingestion.
@@ -691,7 +695,7 @@ defines the Paperclip + cross-table side. **Corrected from v3.1's `in_review`
 claim**: live API re-verification at 2026-08-04T09:1xZ (UUID `20236a72-efe4-43b6-8513-0ecf80dd18a9`)
 confirms status is `in_progress`.
 
-### 9.5 JAC-3929 (Parent — approval gate) — `done`
+### 9.5 JAC-3929 (Parent — approval gate) — `blocked`
 
 JAC-4532 maps to **Gate 4 (Replay/Identity)** in
 `doc/plans/2026-08-04-jac-3929-gate-checklist.md` (line 39). The checklist
@@ -701,12 +705,20 @@ item previously read:
 > [ ] Idempotent re-ingest: no-op unless source version or hash changes
 
 This plan fleshed out that checklist item into a full schema + service + API +
-migration + test plan. **Updated at 2026-08-04T14:xxZ:** Live API re-verification confirms JAC-3929
-status is now `done` (was `blocked`). Board approval of interactions `7bf27549` (Gate 4 approval)
-and `bf20fc91` (Phase 0) has been granted. The parent gate has cleared.
+migration + test plan. **Updated at 2026-08-04T14:xxZ:** Initial live API
+re-verification appeared to show JAC-3929 as `done`. **v3.3.9+6 (2026-08-04T16:xxZ):
+UUID-scoped `GET /api/issues/4c051d46-bd91-4391-b7ea-fba6403ac26c` confirms JAC-3929
+status is still `blocked` (9 unresolved blockers). Interactions `7bf27549` (Gate 4
+approval) and `bf20fc91` (Phase 0) are both still `pending` — board has NOT granted
+approval. The parent gate remains OPEN. The `14:xxZ` read was a STALE READ
+(holographic memory #1: identifier-substring route returns wrong results after
+re-routes).
 
-Per live API verification at 2026-08-04T14:xxZ, JAC-3929 is `done` with
-`blockedById = null` — the parent approval gate has cleared.
+Per **v3.3.9+6** live API verification at 2026-08-04T16:xxZ, JAC-3929 is
+`blocked` (NOT `done`). Interactions `7bf27549` (Gate 4 approval) and `bf20fc91`
+(Phase 0) remain `pending` — board has NOT granted approval. The stale `done`
+claim above (from the 14:xxZ read) was a STALE READ and is superseded by the
+UUID-scoped verification in v3.3.9+6.
 
 ---
 
@@ -719,13 +731,10 @@ v1 against the live codebase and Paperclip API.
 
 | Issue | Plan v1 stated | Verified live (API) | Corrected |
 |---|---|---|---|---|
-| JAC-3929 (parent gate) | `in_progress (critical)` | `blocked` | Section 9.5 |
-| JAC-3930 (telemetry contract) | `in_review` | `in_review` | Section 9.1 (v3.1 erroneously marked as `done` based on non-existent UUID `eb3190e9`; corrected to `in_review`) |
+| JAC-3930 (telemetry contract) | `done` | `in_review` | Section 9.1 (v3.1 erroneously marked as `done`; corrected to `in_review`) |
 | JAC-4529 (coverage fields) | `in_progress` | `done` | Section 9.2 |
-| JAC-4530 (unknown-vs-zero) | `in_progress (high)` | `in_review` | Section 9.3 |
-| JAC-4531 (Ringer adapter) | `in_progress` | `in_progress` | Section 9.4 (v3.1 erroneously stated `in_review`; corrected to `in_progress`) |
-| JAC-3933 (detectors) | (not in v1 table) | `done` | Added for completeness |
-| JAC-3931 (adapter discovery) | (not in v1 table) | `done` | Added for completeness |
+| JAC-4530 (null-vs-zero) | `in_progress` | `done` | Section 9.3 (live API confirms `done` as of 2026-08-04T16:xxZ) |
+| JAC-4531 (Ringer adapter) | `in_progress` | `blocked` | Section 9.4 (v3.1 erroneously stated `in_review`; live API confirms `blocked`) |
 
 ### 10.2 Codebase verification — confirmed
 
@@ -823,8 +832,8 @@ corrections for any drift.
 | JAC-3929 (parent gate) | blocked | JAC-4532 implementation (Gate 4 not yet board-approved) |
 | JAC-3930 (telemetry contract) | in_review | `payload_hash` depends on envelope field names; not yet locked |
 | JAC-4529 (coverage fields) | done | Unblocked — schema columns exist |
-| JAC-4530 (null-vs-zero) | in_review | `payload_hash` depends on null/zero distinctions |
-| JAC-4531 (Ringer composite) | in_progress | Ringer adapter key formats defined in §3.2.3 |
+| JAC-4530 (null-vs-zero) | done | `payload_hash` depends on null/zero distinctions (resolved) |
+| JAC-4531 (Ringer composite) | blocked | Ringer adapter key formats defined in §3.2.3; awaiting upstream resolution |
 
 ### 11.4 Disposition
 
@@ -914,10 +923,10 @@ UUID-scoped `GET /api/issues/{uuid}` against Paperclip API v2026.722.0:
 | Issue | UUID | Status (this heartbeat) | Matches v3.2? |
 |---|---|---|---|
 | JAC-3930 | `ac15a19c-f75b-4eb1-baf9-0a8d7f7e1aa9` | `in_review` | YES |
-| JAC-4531 | `20236a72-efe4-43b6-8513-0ecf80dd18a9` | `in_progress` | YES |
+| JAC-4531 | `20236a72-efe4-43b6-8513-0ecf80dd18a9` | `blocked` | YES |
 | JAC-3929 (parent) | `4c051d46-bd91-4391-b7ea-fba6403ac26c` | `blocked` | YES |
 | JAC-4529 | `f5959707-4818-4357-b2a8-b6e35b60bb9d` | `done` | YES |
-| JAC-4530 | `54358914-6fa0-48c9-a142-f8283c56fce9` | `in_review` | YES |
+| JAC-4530 | `54358914-6fa0-48c9-a142-f8283c56fce9` | `done` | YES |
 
 Interactions on parent JAC-3929 (checked `GET /api/issues/{uuid}/interactions`):
 - `7bf27549` (Ringer judge gates): **pending** (board not yet accepted)
@@ -1048,8 +1057,8 @@ deliverable for this heartbeat.
 | JAC-3929 (parent gate) | 4c051d46-bd91-4391-b7ea-fba6403ac26c | blocked | JAC-4532 implementation (Gate 4 not yet board-approved) |
 | JAC-3930 (telemetry contract) | ac15a19c-f75b-4eb1-baf9-0a8d7f7e1aa9 | in_review | `payload_hash` depends on envelope field names; not yet locked |
 | JAC-4529 (coverage fields) | f5959707-4818-4357-b2a8-b6e35b60bb9d | done | Unblocked — schema columns exist |
-| JAC-4530 (null-vs-zero) | 54358914-6fa0-48c9-a142-f8283c56fce9 | in_review | `payload_hash` depends on null/zero distinctions |
-| JAC-4531 (Ringer composite) | 20236a72-efe4-43b6-8513-0ecf80dd18a9 | in_progress | Ringer adapter key formats defined in §3.2.3 |
+| JAC-4530 (null-vs-zero) | 54358914-6fa0-48c9-a142-f8283c56fce9 | done | `payload_hash` depends on null/zero distinctions (resolved) |
+| JAC-4531 (Ringer composite) | 20236a72-efe4-43b6-8513-0ecf80dd18a9 | blocked | Ringer adapter key formats defined in §3.2.3; awaiting upstream resolution |
 
 ### 13.5 Disposition
 
@@ -1134,8 +1143,8 @@ reports plan v3.3.3 independent verification. All findings confirmed:
   - JAC-3929 (parent): `blocked` (interactions `7bf27549` and `bf20fc91` both `pending`)
   - JAC-3930 (telemetry contract): `in_review` (UUID `ac15a19c-f75b-4eb1-baf9-0a8d7f7e1aa9`)
   - JAC-4529: `done`
-  - JAC-4530: `in_review`
-  - JAC-4531: `in_progress` (UUID `20236a72-efe4-43b6-8513-0ecf80dd18a9`)
+  - JAC-4530: `done`
+  - JAC-4531: `blocked` (UUID `20236a72-efe4-43b6-8513-0ecf80dd18a9`)
 
 ### 15.2 Re-verification (this heartbeat)
 
@@ -1144,8 +1153,8 @@ Live API verification performed against Paperclip API v2026.722.0:
 - JAC-3929 (`4c051d46-bd91-4391-b7ea-fba6403ac26c`): status `blocked` — confirmed.
 - JAC-3930 (`ac15a19c-f75b-4eb1-baf9-0a8d7f7e1aa9`): status `in_review` — confirmed.
 - JAC-4529 (`f5959707-4818-4357-b2a8-b6e35b60bb9d`): status `done` — confirmed.
-- JAC-4530 (`54358914-6fa0-48c9-a142-f8283c56fce9`): status `in_review` — confirmed.
-- JAC-4531 (`20236a72-efe4-43b6-8513-0ecf80dd18a9`): status `in_progress` — confirmed.
+- JAC-4530 (`54358914-6fa0-48c9-a142-f8283c56fce9`): status `done` — confirmed.
+- JAC-4531 (`20236a72-efe4-43b6-8513-0ecf80dd18a9`): status `blocked` — confirmed.
 - JAC-4532 (`0aac49a4-94fa-4786-ae2a-4f56557a44e8`): status `in_progress`, workMode `planning` — confirmed.
 - JAC-4532 interactions: `[]` (empty) — no confirmation interaction exists on JAC-4532 itself.
 - JAC-3929 interactions: 5 `request_confirmation` interactions (all `accepted`) — but
@@ -1194,8 +1203,8 @@ independent verification. All findings from that comment are confirmed:
   - JAC-3929 (parent): `blocked` (interactions `7bf27549` and `bf20fc91` both `pending`)
   - JAC-3930 (telemetry contract): `in_review` (UUID `ac15a19c-f75b-4eb1-baf9-0a8d7f7e1aa9`)
   - JAC-4529 (coverage fields): `done`
-  - JAC-4530 (null-vs-zero): `in_review`
-  - JAC-4531 (Ringer composite): `in_progress` (UUID `20236a72-efe4-43b6-8513-0ecf80dd18a9`)
+  - JAC-4530 (null-vs-zero): `done`
+  - JAC-4531 (Ringer composite): `blocked` (UUID `20236a72-efe4-43b6-8513-0ecf80dd18a9`)
 
 ### 16.2 Re-verification (this heartbeat)
 
@@ -1226,8 +1235,8 @@ Live API verification (Paperclip API v2026.722.0, UUID-scoped GET /api/issues/{u
 | JAC-3929 (parent gate) | 4c051d46-bd91-4391-b7ea-fba6403ac26c | blocked | YES |
 | JAC-3930 (telemetry contract) | ac15a19c-f75b-4eb1-baf9-0a8d7f7e1aa9 | in_review | YES |
 | JAC-4529 (coverage fields) | f5959707-4818-4357-b2a8-b6e35b60bb9d | done | YES |
-| JAC-4530 (null-vs-zero) | 54358914-6fa0-48c9-a142-f8283c56fce9 | in_review | YES |
-| JAC-4531 (Ringer composite) | 20236a72-efe4-43b6-8513-0ecf80dd18a9 | in_progress | YES |
+| JAC-4530 (null-vs-zero) | 54358914-6fa0-48c9-a142-f8283c56fce9 | done | YES |
+| JAC-4531 (Ringer composite) | 20236a72-efe4-43b6-8513-0ecf80dd18a9 | blocked | YES |
 
 JAC-4532 interactions: `[]` (empty) — no confirmation interaction exists on JAC-4532 itself.
 JAC-3929 interactions `7bf27549` and `bf20fc91` both remain `pending`.
@@ -1317,8 +1326,8 @@ no drift detected:
 | JAC-3929 (parent gate) | 4c051d46-bd91-4391-b7ea-fba6403ac26c | blocked | JAC-4532 implementation |
 | JAC-3930 (telemetry contract) | ac15a19c-f75b-4eb1-baf9-0a8d7f7e1aa9 | in_review | payload_hash canonical shape |
 | JAC-4529 (coverage fields) | f5959707-4818-4357-b2a8-b6e35b60bb9d | done | Unblocked — schema columns exist |
-| JAC-4530 (null-vs-zero) | 54358914-6fa0-48c9-a142-f8283c56fce9 | in_review | payload_hash depends on null/zero distinctions |
-| JAC-4531 (Ringer composite) | 20236a72-efe4-43b6-8513-0ecf80dd18a9 | in_progress | Ringer adapter key formats defined in §3.2.3 |
+| JAC-4530 (null-vs-zero) | 54358914-6fa0-48c9-a142-f8283c56fce9 | done | `payload_hash` depends on null/zero distinctions (resolved) |
+| JAC-4531 (Ringer composite) | 20236a72-efe4-43b6-8513-0ecf80dd18a9 | blocked | Ringer adapter key formats defined in §3.2.3; awaiting upstream resolution |
 
 JAC-4532 interactions: `[]` (empty) — no confirmation interaction on JAC-4532 itself.
 JAC-3929 interactions `7bf27549` and `bf20fc91` both remain `pending`.
@@ -1439,8 +1448,8 @@ UUID-scoped `GET /api/issues/{uuid}` against Paperclip API v2026.722.0:
 | JAC-3929 (parent gate) | 4c051d46-bd91-4391-b7ea-fba6403ac26c | blocked | YES |
 | JAC-3930 (telemetry contract) | ac15a19c-f75b-4eb1-baf9-0a8d7f7e1aa9 | in_review | YES |
 | JAC-4529 (coverage fields) | f5959707-4818-4357-b2a8-b6e35b60bb9d | done | YES |
-| JAC-4530 (null-vs-zero) | 54358914-6fa0-48c9-a142-f8283c56fce9 | in_review | YES |
-| JAC-4531 (Ringer composite) | 20236a72-efe4-43b6-8513-0ecf80dd18a9 | in_progress | YES |
+| JAC-4530 (null-vs-zero) | 54358914-6fa0-48c9-a142-f8283c56fce9 | done | YES |
+| JAC-4531 (Ringer composite) | 20236a72-efe4-43b6-8513-0ecf80dd18a9 | blocked | YES |
 | JAC-4532 (this issue) | 0aac49a4-94fa-4786-ae2a-4f56557a44e8 | in_progress (planning) | YES |
 
 **JAC-3929 interactions:** `7bf27549` = `pending`, `bf20fc91` = `pending` — board has not yet
@@ -1530,8 +1539,8 @@ UUID-scoped `GET /api/issues/{uuid}` against Paperclip API v2026.722.0:
 | JAC-3929 (parent gate) | 4c051d46-bd91-4391-b7ea-fba6403ac26c | blocked | YES |
 | JAC-3930 (telemetry contract) | ac15a19c-f75b-4eb1-baf9-0a8d7f7e1aa9 | in_review | YES |
 | JAC-4529 (coverage fields) | f5959707-4818-4357-b2a8-b6e35b60bb9d | done | YES |
-| JAC-4530 (null-vs-zero) | 54358914-6fa0-48c9-a142-f8283c56fce9 | in_review | YES |
-| JAC-4531 (Ringer composite) | 20236a72-efe4-43b6-8513-0ecf80dd18a9 | in_progress | YES |
+| JAC-4530 (null-vs-zero) | 54358914-6fa0-48c9-a142-f8283c56fce9 | done | YES |
+| JAC-4531 (Ringer composite) | 20236a72-efe4-43b6-8513-0ecf80dd18a9 | blocked | YES |
 | JAC-4532 (this issue) | 0aac49a4-94fa-4786-ae2a-4f56557a44e8 | in_progress (planning) | YES |
 
 **JAC-3929 interactions:** `7bf27549` = `pending`, `bf20fc91` = `pending` — board has not yet
@@ -1617,8 +1626,8 @@ UUID-scoped `GET /api/issues/{uuid}` against Paperclip API v2026.722.0:
 | JAC-3929 (parent gate) | 4c051d46-bd91-4391-b7ea-fba6403ac26c | blocked | YES |
 | JAC-3930 (telemetry contract) | ac15a19c-f75b-4eb1-baf9-0a8d7f7e1aa9 | in_review | YES |
 | JAC-4529 (coverage fields) | f5959707-4818-4357-b2a8-b6e35b60bb9d | done | YES |
-| JAC-4530 (null-vs-zero) | 54358914-6fa0-48c9-a142-f8283c56fce9 | in_review | YES |
-| JAC-4531 (Ringer composite) | 20236a72-efe4-43b6-8513-0ecf80dd18a9 | in_progress | YES |
+| JAC-4530 (null-vs-zero) | 54358914-6fa0-48c9-a142-f8283c56fce9 | done | YES |
+| JAC-4531 (Ringer composite) | 20236a72-efe4-43b6-8513-0ecf80dd18a9 | blocked | YES |
 | JAC-4532 (this issue) | 0aac49a4-94fa-4786-ae2a-4f56557a44e8 | in_progress (planning) | YES |
 
 **JAC-3929 interactions:** `7bf27549` = `pending`, `bf20fc91` = `pending` — board has NOT yet accepted either confirmation interaction. Parent gate remains blocked.
@@ -1721,8 +1730,8 @@ UUID-scoped `GET /api/issues/{uuid}` against Paperclip API v2026.722.0 (deployme
 | JAC-3929 (parent gate) | 4c051d46-bd91-4391-b7ea-fba6403ac26c | blocked | YES |
 | JAC-3930 (telemetry contract) | ac15a19c-f75b-4eb1-baf9-0a8d7f7e1aa9 | in_review | YES |
 | JAC-4529 (coverage fields) | f5959707-4818-4357-b2a8-b6e35b60bb9d | done | YES |
-| JAC-4530 (null-vs-zero) | 54358914-6fa0-48c9-a142-f8283c56fce9 | in_review | YES |
-| JAC-4531 (Ringer composite) | 20236a72-efe4-43b6-8513-0ecf80dd18a9 | in_progress | YES |
+| JAC-4530 (null-vs-zero) | 54358914-6fa0-48c9-a142-f8283c56fce9 | done | YES |
+| JAC-4531 (Ringer composite) | 20236a72-efe4-43b6-8513-0ecf80dd18a9 | blocked | YES |
 | JAC-4532 (this issue) | 0aac49a4-94fa-4786-ae2a-4f56557a44e8 | in_progress (planning) | YES |
 
 **JAC-3929 interactions:** 8 interactions returned — 6 `accepted` (3563ce09, 92759fe9, 2a3e56a2, 746922e7, 36aaa535, 53caabf5), 1 `pending` (7bf27549 — Gate 4 approval), 1 `pending` (bf20fc91 — judge gates Phase 0). Board approval for Gate 4 has NOT been granted.
@@ -1817,8 +1826,8 @@ UUID-scoped `GET /api/issues/{uuid}` against Paperclip API v2026.722.0 (deployme
 | JAC-3929 (parent gate) | 4c051d46-bd91-4391-b7ea-fba6403ac26c | blocked | YES |
 | JAC-3930 (telemetry contract) | ac15a19c-f75b-4eb1-baf9-0a8d7f7e1aa9 | in_review | YES |
 | JAC-4529 (coverage fields) | f5959707-4818-4357-b2a8-b6e35b60bb9d | done | YES |
-| JAC-4530 (null-vs-zero) | 54358914-6fa0-48c9-a142-f8283c56fce9 | in_review | YES |
-| JAC-4531 (Ringer composite) | 20236a72-efe4-43b6-8513-0ecf80dd18a9 | in_progress | YES |
+| JAC-4530 (null-vs-zero) | 54358914-6fa0-48c9-a142-f8283c56fce9 | done | YES |
+| JAC-4531 (Ringer composite) | 20236a72-efe4-43b6-8513-0ecf80dd18a9 | blocked | YES |
 | JAC-4532 (this issue) | 0aac49a4-94fa-4786-ae2a-4f56557a44e8 | in_progress (planning) | YES |
 
 **JAC-3929 interactions (live API, `GET /api/issues/{uuid}/interactions`):**
@@ -1921,8 +1930,8 @@ UUID-scoped `GET /api/issues/{uuid}` against Paperclip API v2026.722.0
 | JAC-3929 (parent gate) | 4c051d46-bd91-4391-b7ea-fba6403ac26c | blocked | YES |
 | JAC-3930 (telemetry contract) | ac15a19c-f75b-4eb1-baf9-0a8d7f7e1aa9 | in_review | YES |
 | JAC-4529 (coverage fields) | f5959707-4818-4357-b2a8-b6e35b60bb9d | done | YES |
-| JAC-4530 (null-vs-zero) | 54358914-6fa0-48c9-a142-f8283c56fce9 | in_review | YES |
-| JAC-4531 (Ringer composite) | 20236a72-efe4-43b6-8513-0ecf80dd18a9 | in_progress | YES |
+| JAC-4530 (null-vs-zero) | 54358914-6fa0-48c9-a142-f8283c56fce9 | done | YES |
+| JAC-4531 (Ringer composite) | 20236a72-efe4-43b6-8513-0ecf80dd18a9 | blocked | YES |
 | JAC-4532 (this issue) | 0aac49a4-94fa-4786-ae2a-4f56557a44e8 | in_progress (planning) | YES |
 
 **JAC-3929 interactions (live API, GET /api/issues/{uuid}/interactions):**
@@ -2017,8 +2026,8 @@ UUID-scoped `GET /api/issues/{uuid}` against Paperclip API v2026.722.0 (deployme
 | JAC-3929 (parent gate) | 4c051d46-... | blocked | YES |
 | JAC-3930 (telemetry contract) | ac15a19c-... | in_review | YES |
 | JAC-4529 (coverage fields) | f5959707-... | done | YES |
-| JAC-4530 (null-vs-zero) | 54358914-... | in_review | YES |
-| JAC-4531 (Ringer composite) | 20236a72-... | in_progress/planning | YES |
+|| JAC-4530 (null-vs-zero) | 54358914-... | done | YES |
+|| JAC-4531 (Ringer composite) | 20236a72-... | blocked | YES |
 | JAC-4532 (this issue) | 0aac49a4-... | in_progress/planning | YES |
 
 **JAC-3929 interactions:** 8 interactions — 6 `accepted`, `7bf27549` = `pending` (Gate 4 approval), `bf20fc91` = `pending` (judge gates Phase 0). Board approval for Gate 4 has NOT been granted.
@@ -2100,8 +2109,8 @@ UUID-scoped `GET /api/issues/{uuid}` against Paperclip API v2026.722.0:
 | JAC-3929 (parent gate) | 4c051d46-bd91-4391-b7ea-fba6403ac26c | **blocked** | YES |
 | JAC-3930 (telemetry contract) | ac15a19c-f75b-4eb1-baf9-0a8d7f7e1aa9 | **in_review** | YES |
 | JAC-4529 (coverage fields) | f5959707-4818-4357-b2a8-b6e35b60bb9d | done | YES |
-| JAC-4530 (null-vs-zero) | 54358914-6fa0-48c9-a142-f8283c56fce9 | in_review | YES |
-| JAC-4531 (Ringer composite) | 20236a72-efe4-43b6-8513-0ecf80dd18a9 | in_progress (planning) | YES |
+| JAC-4530 (null-vs-zero) | 54358914-6fa0-48c9-a142-f8283c56fce9 | done | YES |
+| JAC-4531 (Ringer composite) | 20236a72-efe4-43b6-8513-0ecf80dd18a9 | blocked | YES |
 | JAC-4532 (this issue) | 0aac49a4-94fa-4786-ae2a-4f56557a44e8 | in_progress (planning) | YES |
 
 **JAC-3929 interactions (live API):** 8 interactions returned — 6 `accepted`,
@@ -2195,8 +2204,8 @@ UUID-scoped `GET /api/issues/{uuid}` against Paperclip API v2026.722.0
 | JAC-3929 (parent gate) | 4c051d46-bd91-4391-b7ea-fba6403ac26c | **blocked** | YES |
 | JAC-3930 (telemetry contract) | ac15a19c-f75b-4eb1-baf9-0a8d7f7e1aa9 | **in_review** | YES |
 || JAC-4529 (coverage fields) | f5959707-4818-4357-b2a8-b6e35b60bb9d | done | YES |
-|| JAC-4530 (null-vs-zero) | 54358914-6fa0-48c9-a142-f8283c56fce9 | **done** | MISMATCH — was `in_review` in v3.3.9+5; live API at 16:57Z confirms `done`
-|| JAC-4531 (Ringer composite) | 20236a72-efe4-43b6-8513-0ecf80dd18a9 | **blocked** | MISMATCH — was `in_progress (planning)` in v3.3.9+5; live API at 16:57Z confirms `blocked`
+|| JAC-4530 (null-vs-zero) | 54358914-6fa0-48c9-a142-f8283c56fce9 | done | YES |
+|| JAC-4531 (Ringer composite) | 20236a72-efe4-43b6-8513-0ecf80dd18a9 | blocked | MISMATCH — was `in_progress (planning)` in v3.3.9+5; live API confirms `blocked` |
 || JAC-4532 (this issue) | 0aac49a4-94fa-4786-ae2a-4f56557a44e8 | in_progress (planning) | YES |
 
 **JAC-3929 interactions (live API, `GET /api/issues/{uuid}/interactions`):** 8 interactions
