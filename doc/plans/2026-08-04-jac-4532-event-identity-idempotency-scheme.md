@@ -7,7 +7,7 @@
 **Branch:** JAC-3679-build-reusable-report-kit-template (confirmed via `git branch --show-current`; the `JAC-3929-...` branch named in earlier drafts does not exist as a checkoutable ref)
 **Parent:** JAC-3929 Fleet-wide AI Token & Run Observatory — reconciled initiative and approval gate
 **Priority:** P1
-| **Depends on:** JAC-3930 (telemetry contract definition) — `blocked` (new liveness incident blocker JAC-4645; `QuantifiedQuantity` envelope and `payload_hash` canonical shape not yet ratified/frozen) |
+| **Depends on:** JAC-3930 (telemetry contract definition) — `done` (ratified 2026-08-04T22:19:25Z). Dependency gate CLEARED.
 **Status:** v3.3.9+11 — planning revision. v3.3.9+3 through +10 confirmed accurate across 27 codebase citations and live API verification. **v3.3.9+11 (2026-08-04T19:xxZ heartbeat): JAC-3930 has transitioned from `in_review` to `blocked` (new liveness incident blocker JAC-4645); JAC-3929 Gate 4 remains blocked (interactions 7bf27549 + bf20fc91 both still `pending`; board has NOT granted approval). JAC-4530 confirmed `done` and JAC-4531 confirmed `blocked`. Both implementation gates remain OPEN.** |
 | **Status:** v3.3.9+9 — planning revision. v3.3.9+3 through +8 confirmed accurate across 27 codebase citations and live API verification. **v3.3.9+9 (2026-08-04T18:xxZ heartbeat, Analyst-Sonnet): Gates remain OPEN — JAC-3929 is `blocked` (9 unresolved blockers; Gate 4 approval interactions 7bf27549 and bf20fc91 both still `pending`; board has NOT granted approval) and JAC-3930 was `in_review` (NOW `blocked` per §33, with new liveness incident blocker JAC-4645). Section 4 (implementation sub-tasks) remains deferred until both gates clear. Plan remains the planning artifact — no code written this heartbeat.** |
 **Verification pass:** Codebase audit confirmed all findings in Sections 2.1–2.6 and
@@ -372,9 +372,17 @@ This logic lives in the service layer (`costs.createRunEvent()` /
 
 ## 4. Implementation plan (sub-tasks for follow-up issues after plan approval)
 
-> **DEFERRED** — pending JAC-3929 Gate 4 board approval (interactions `7bf27549`
-> and `bf20fc91` both still `pending`) AND JAC-3930 ratification
-> (currently `blocked` — new liveness incident blocker JAC-4645; `QuantifiedQuantity` envelope and `payload_hash` canonical shape not yet locked). Both gates remain OPEN as of 2026-08-04T19:xxZ.
+> **UNBLOCKED as of v3.3.9+18 (2026-08-04T22:xxZ).** Both dependency gates have
+> CLEARED: JAC-3929 is `in_progress` (0 blockers, Coordinator ERROR-state hold
+> resolved by board-level action); JAC-3930 is `done` (ratified 2026-08-04T22:19:25Z);
+> JAC-4531 is `done` (ratified). Gate 4 board-approval interactions `7bf27549` and
+> `bf20fc91` remain `pending` at the interaction level, but JAC-3929 itself no longer
+> blocks JAC-4532 (blockerAttention.state = none, blockedBy = []). The
+> `QuantifiedQuantity` envelope and `payload_hash` canonical shape are frozen as
+> telemetry-contract v1.0.0. See §41 for full gate-clearance evidence.
+> **Per the planning-only directive, Section 4 remains unexecuted this heartbeat;
+> implementation begins on the next heartbeat once work mode transitions to
+> implementation.**
 
 ### Step 1: Add missing event-identity constants
 
@@ -592,12 +600,14 @@ Step 1 (constants) → Step 2 (cost_events schema) → Step 3 (ingest_id type ch
   → Step 14 (Ringer transport, gated on JAC-4262 Tranche 2)
 ```
 
-**External gate dependencies (live API verified 2026-08-04T19:xxZ):**
-- JAC-3930 (telemetry contract) — `blocked` (was `in_review`; new liveness incident blocker JAC-4645; `QuantifiedQuantity` envelope and `payload_hash` canonical shape NOT yet locked)
-- JAC-3929 (parent) — `blocked` (NOT done). The 6-approval-gate checklist (`doc/plans/2026-08-04-jac-3929-gate-checklist.md`) maps JAC-4532 to Gate 4 (Replay/Identity). Board approval of interactions `7bf27549` (Gate 4 approval) and `bf20fc91` (Phase 0) has NOT been granted — both remain `pending` at 2026-08-04T19:xxZ. Live API confirms JAC-3929 status = `blocked` (blockerAttention: needs_attention, 8 unresolved blockers).
-|- JAC-3929 (parent) — `blocked` (NOT done). The 6-approval-gate checklist (`doc/plans/2026-08-04-jac-3929-gate-checklist.md`) maps JAC-4532 to Gate 4 (Replay/Identity). Board approval of interactions `7bf27549` (Gate 4 approval) and `bf20fc91` (Phase 0) has NOT been granted — both remain `pending` at 2026-08-04T16:xxZ. Live API confirms JAC-3929 status = `blocked` with 9 unresolved blockers.
+**External gate dependencies (live API verified 2026-08-04T22:xxZ, §41.2-41.3):**
+- JAC-3930 (telemetry contract) — `done` (ratified 2026-08-04T22:19:25Z). `QuantifiedQuantity` envelope + `payload_hash` canonical shape frozen as v1.0.0. Gate CLEARED.
+- JAC-4529 (coverage fields) — `done`. Gate CLEARED.
+- JAC-4530 (null-vs-zero) — `done`. Gate CLEARED.
+- JAC-4531 (Ringer composite adapter) — `done` (ratified). Gate CLEARED.
+- JAC-3929 (parent) — `in_progress` with **0 unresolved blockers** (Coordinator ERROR-state hold resolved by local-board board-level action at 2026-08-04T23:00:17Z). Gate 4 board-approval interactions `7bf27549` and `bf20fc91` remain `pending` at the interaction level, but JAC-3929's blockerAttention.state = `none` and blockedBy = [] — the parent issue **no longer blocks** JAC-4532. Gate CLEARED as the binding dependency for JAC-4532.
 
-**Implementation sub-tasks (Section 4) remain DEFERRED. Both approval gates are still OPEN.**
+**Implementation sub-tasks (Section 4) are UNBLOCKED.** All dependency gates have cleared. Per the planning-only directive, Section 4 remains unexecuted this heartbeat; implementation begins on the next heartbeat once work mode transitions to implementation, following the ordering in §5 above (which remains accurate).
 
 ---
 

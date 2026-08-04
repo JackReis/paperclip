@@ -7,6 +7,7 @@ import { and, asc, desc, eq, getTableColumns, gt, gte, inArray, isNull, lt, lte,
 import type { Db } from "@paperclipai/db";
 import {
   AGENT_DEFAULT_MAX_CONCURRENT_RUNS,
+  MAX_AGENT_ERROR_REASON_CHARS,
   ISSUE_CONTINUATION_SUMMARY_DOCUMENT_KEY,
   MODEL_PROFILE_KEYS,
   PROVIDER_QUOTA_MONITOR_SERVICE_NAME,
@@ -12796,7 +12797,9 @@ export function heartbeatService(db: Db, options: HeartbeatServiceOptions = {}) 
     if (!reason) return null;
     const trimmed = reason.trim();
     if (!trimmed) return null;
-    return trimmed.length > 500 ? `${trimmed.slice(0, 499)}…` : trimmed;
+    return trimmed.length > MAX_AGENT_ERROR_REASON_CHARS
+      ? `${trimmed.slice(0, MAX_AGENT_ERROR_REASON_CHARS - 1)}…`
+      : trimmed;
   }
 
   async function finalizeAgentStatus(

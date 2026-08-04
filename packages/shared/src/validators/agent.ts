@@ -121,6 +121,7 @@ export const updateAgentSchema = createAgentSchema
     replaceAdapterConfig: z.boolean().optional(),
     status: z.enum(AGENT_STATUSES).optional(),
     spentMonthlyCents: z.number().int().nonnegative().optional(),
+    errorReason: z.string().nullable().optional(),
   });
 
 export type UpdateAgent = z.infer<typeof updateAgentSchema>;

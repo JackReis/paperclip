@@ -76,6 +76,20 @@ export const AGENT_ROLE_LABELS: Record<AgentRole, string> = {
 };
 
 export const AGENT_DEFAULT_MAX_CONCURRENT_RUNS = 20;
+
+/**
+ * Maximum character length for agent `errorReason` when persisted to the
+ * `agents` table.  The previous 500-char limit (set in
+ * `server/src/services/heartbeat.ts`) truncated Hermes CLI tracebacks well
+ * before the actual exception was visible — e.g. the `cli.py:18468` crash
+ * site in the JAC-4575/4565 incident.  Bumping to 2000 chars ensures the
+ * relevant traceback frames are not elided, which is critical for diagnosing
+ * hermes_local runtime failures from the Paperclip API alone.
+ *
+ * See: doc/plans/hermes_local-recovery-playbook.md (Proposal 2)
+ */
+export const MAX_AGENT_ERROR_REASON_CHARS = 2000;
+
 export const WORKSPACE_BRANCH_ROUTINE_VARIABLE = "workspaceBranch";
 
 // Config keys owned by Paperclip/company state rather than one concrete adapter.
