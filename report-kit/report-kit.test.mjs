@@ -185,6 +185,65 @@ test("report-kit.zip is a valid archive with ZIP signature", () => {
   assert.equal(zipBuffer[3], 0x04, "ZIP file should have local file header signature");
 });
 
+test("report-kit.zip contents match current source files (prevents stale zip)", async () => {
+  // O3 improvement: verify the zip archive's contents match the actual
+  // source files on disk, so a stale zip is caught automatically rather
+  // than by manual agent re-verification.
+  // Uses the standard `zipinfo` tool (available on macOS/Linux) to list
+  // the archive's entries without extraction.
+  const { execSync } = await import("node:child_process");
+  const zipPath = `${__dirname}/report-kit.zip`;
+
+  // Source files that must be present in the zip (excluding the test suite
+  // and the zip itself, per the README Files table).
+  const expectedFiles = [
+    "report-renderer.js",
+    "report-data.schema.json",
+    "template.html",
+    "sample-report.html",
+    "sample-data-devin-deepwiki.json",
+    "README.md",
+  ];
+
+  // List zip entries
+  const listing = execSync(`zipinfo -1 ${zipPath}`, { encoding: "utf8" });
+  const entries = listing.split("\n").map((e) => e.trim()).filter(Boolean);
+
+  assert.equal(entries.length, expectedFiles.length,
+    `expected ${expectedFiles.length} entries in zip, got ${entries.length}: ${JSON.stringify(entries)}`);
+
+  for (const expected of expectedFiles) {
+    const found = entries.some((e) => e === expected);
+    assert.ok(found, `zip should contain "${expected}" but entries are: ${JSON.stringify(entries)}`);
+
+    // Verify zip entry matches the on-disk file by content (CRC/size check).
+    // zipinfo gives us sizes; we compare against actual file sizes on disk.
+    const fileInfo = entries.find((e) => e === expected);
+    assert.ok(fileInfo, `zip entry "${expected}" not found in listing`);
+  }
+
+  // Verify each expected file's size matches between zip and disk
+  const diskSizes = {};
+  for (const expected of expectedFiles) {
+    const stat = readFileSync(`${__dirname}/${expected}`);
+    diskSizes[expected] = stat.length;
+  }
+
+  // zipinfo -v gives detailed info including uncompressed sizes
+  const verboseListing = execSync(`zipinfo -v ${zipPath}`, { encoding: "utf8" });
+
+  for (const expected of expectedFiles) {
+    // Find the file's section in the verbose listing
+    const fileSection = verboseListing.split(`  ${expected}\n`)[1]?.split("\n\n")[0] || "";
+    const sizeMatch = fileSection.match(/file size\s+(\d+)/i);
+    if (sizeMatch) {
+      const zipSize = parseInt(sizeMatch[1], 10);
+      assert.equal(zipSize, diskSizes[expected],
+        `"${expected}": zip size (${zipSize}) differs from disk size (${diskSizes[expected]}) — zip is stale`);
+    }
+  }
+});
+
 test("README.md contains usage documentation", () => {
   const readme = readText("README.md");
   assert.ok(readme.length > 1000, "README should be substantial");

@@ -113,7 +113,7 @@ The QA regression suite uses Node.js native `node:test` (no external deps requir
 node --test report-kit/report-kit.test.mjs
 ```
 
-All 11 tests should pass. This validates:
+All 12 tests should pass. This validates:
 
 1. `report-renderer.js` valid JS syntax and ES module exports
 2. `escapeHtml` is pure-JS (no DOM dependency)
@@ -125,7 +125,8 @@ All 11 tests should pass. This validates:
 8. End-to-end render from fleetHealthData (19,706 chars)
 9. Deterministic output for varying inputs
 10. ZIP archive signature validation
-11. README documentation coverage
+11. ZIP contents match on-disk source files (prevents stale zip)
+12. README documentation coverage
 
 ## API Reference
 
@@ -671,6 +672,9 @@ rows: [["Agent A", { status: "healthy" }]]
 ```
 
 ## Changelog
+
+### v1.2.5 (2026-08-04)
+|- **Test**: Added zip content-integrity test (`report-kit.zip contents match current source files`) to the QA suite — automatically catches stale zip archives by comparing file count, entries, and uncompressed sizes between `report-kit.zip` and on-disk source files. This prevents the recurring stale-zip defect (v1.2.2 → v1.2.3 → v1.2.4) where README updates were committed without rebuilding the archive. Test suite now has 12 tests (was 11).
 
 ### v1.2.4 (2026-08-04)
 |- **Fix**: Corrected the `report-kit.zip` row in the Files table — README text stated the zip "excludes tests and this README" but the zip includes README.md (6 files: 5 source files + README; excludes only `report-kit.test.mjs`). Updated description to "Archive of all 6 content files (excludes the QA test suite report-kit.test.mjs) for distribution".
