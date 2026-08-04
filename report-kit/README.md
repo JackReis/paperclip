@@ -671,6 +671,35 @@ rows: [["Agent A", { value: "OK", status: "healthy" }]]
 rows: [["Agent A", { status: "healthy" }]]
 ```
 
+## Verification
+
+### Verification Battery
+
+Report Kit ships a standard verification battery that agents can source for
+independent re-verification:
+
+```sh
+./scripts/verify-report-kit.sh
+```
+
+This script performs six deterministic checks:
+1. Git diff is clean for `report-kit/`
+2. `report-renderer.js` passes `node --check` (syntax validation)
+3. QA test suite passes (`node --test report-kit/report-kit.test.mjs`)
+4. `report-kit.zip` integrity via `unzip -t`
+5. SHA-256 match between `report-kit.zip` on disk and `git show HEAD`
+6. End-to-end render from `sample-data-devin-deepwiki.json` (smoke test)
+
+### CI Checks
+
+The following checks run in the PR workflow (`.github/workflows/pr.yml` →
+policy job):
+
+| Check | Script | Purpose |
+|-------|--------|---------|
+| Report-kit zip freshness (O3) | `scripts/check-report-kit-zip.mjs` | Fails if `report-kit.zip` contents differ from on-disk source files |
+| Hermes adapter config lint (O6) | `scripts/check-hermes-adapter-config.mjs` | Rejects `hermes_local` agents with empty `adapterConfig` or `model="auto"` |
+
 ## Changelog
 
 ### v1.2.5 (2026-08-04)
