@@ -190,6 +190,7 @@ function sampleOutput(
     summary: null,
     publicationApprovalId: null,
     createdByRunId: null,
+    publicationApprovalId: null,
     createdAt: new Date(opts.createdAt),
     updatedAt: new Date(opts.createdAt),
     metadata: {
