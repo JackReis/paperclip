@@ -1,6 +1,6 @@
 # JAC-3929 — 6 Ringer Judge Approval Gates Checklist
 
-**Status:** Awaiting board approval (interaction 7bf27549) — parent gate remains `blocked` with `needs_attention`; 10 unresolved blockers. JAC-3930 ratification complete (see Gate 1 note); JAC-4532 still deferred pending Gate 4 board approval.
+**Status:** Awaiting board approval (interaction 7bf27549, pending). Parent issue JAC-3929 is `in_progress`. Coordinator (dc2ca597) is **running** — the "Process lost" ERROR that caused the JAC-4663 escalation has been resolved (recovery tracked in JAC-4657, in_progress). JAC-3929-Gate-1-4 child issues JAC-3930/JAC-3931/JAC-3932/JAC-3933 are all `done` (ratified); JAC-4529/JAC-4530/JAC-4531/JAC-4534/JAC-4535/JAC-4536/JAC-4538 are all `done`; JAC-4532 is `in_progress`; JAC-4533 is `in_review` (implementation verified complete, Gap S9a addressed by commit 35d3d4037); JAC-3935 is `in_review`. JAC-4663 (escalation to Wings) should be closed as resolved — Coordinator is running and JAC-3930 is ratified.
 **Judge report:** `/Users/hermes/.ringer/artifacts/deliverables/fleet-spend-observatory-independent-judge-20260729-20260729T202530Z-p58409/independent-judge/report.md`
 **Report SHA-256:** `a24277b3`
 
@@ -8,12 +8,12 @@
 |- [x] Quantity/null semantics: `{value|null, unit, reported_state, source_field, observed_at, confidence}` — implemented as nullable columns with fail-closed coverage resolution (null=not_reported, 0=explicitly zero). Full `QuantifiedQuantity` envelope per-quantity is planned in JAC-4530 §3.1 (Path B preferred for V1).
 |- [x] Add `reasoning_tokens`, `tool_call_tokens` fields — already on both `cost_events` and `run_events` (migration 0187/0188)
 |- [x] Add `currency`, `pricing_version_ref`, `cost_confidence` fields — `currency` and `pricing_version_ref` on `cost_events`; `currency` on `run_events`. **`cost_confidence` is still MISSING** (only generic `confidence` exists). `price_basis` is also MISSING. See JAC-4530 plan §2.2.
-| - [~] Event identity algorithm: `source_system` + `source_event_id` + `source_event_version` + `event_kind` + `attempt_index` + `observed_sequence` — columns exist; `sourceEventId` + `payloadHash` not yet populated (JAC-4532, in_progress/planning — plan complete at doc/plans/2026-08-04-jac-4532-event-identity-idempotency-scheme.md, JAC-3930 ratified `done` 2026-08-04; JAC-3929 Gate 4 board approval interaction `7bf27549` still `pending`)
-| - [ ] Lineage edge vocabulary: parent, child, handoff, retry, fan-out group, aggregation boundary
-| - [x] Confidence levels defined and applied — `CONFIDENCE_LEVELS` = ["high", "medium", "low"], applied in fail-closed resolution
-| - **Child issues:** JAC-4530 (done), JAC-4532 (in_progress), JAC-4531 (done), JAC-4533 (in_review), JAC-4538 (blocked)
+- [~] Event identity algorithm: `source_system` + `source_event_id` + `source_event_version` + `event_kind` + `attempt_index` + `observed_sequence` — columns exist; `sourceEventId` + `payloadHash` not yet populated (JAC-4532, in_progress — actively implementing the idempotency scheme; plan complete at doc/plans/2026-08-04-jac-4532-event-identity-idempotency-scheme.md, JAC-3930 ratified `done` 2026-08-04, JAC-3929 Gate 4 board approval interaction `7bf27549` still `pending`)
+- [ ] Lineage edge vocabulary: parent, child, handoff, retry, fan-out group, aggregation boundary
+- [x] Confidence levels defined and applied — `CONFIDENCE_LEVELS` = ["high", "medium", "low"], applied in fail-closed resolution
+- **Child issues:** JAC-4530 (done ✅), JAC-4532 (in_progress), JAC-4531 (done ✅), JAC-4533 (in_review — implementation verified complete), JAC-4538 (done ✅)
 |
-|>|**JAC-3930 ratification (updated 2026-08-04T22:xxZ):** Independent review verdict: PASS. Reviewer stated "looks done to me." Machine validation: 10/10 valid pass, 7/7 invalid rejected. Board confirmations `1cadc298` (resolved 2026-08-01T01:02:30Z) and `f08cdbc4` (resolved 2026-08-01T01:02:38Z) both accepted. **JAC-3930 is now `done` (ratified).** Liveness incident JAC-4645 cleared (`done`, 2026-08-04). JAC-3929 Gate 4 board approval (interaction `7bf27549`) remains `pending` — parent gate still `blocked`. JAC-4532 implementation remains DEFERRED pending Gate 4 acceptance.
+|>|**JAC-3930 ratification (updated 2026-08-04T22:xxZ):** Independent review verdict: PASS. Reviewer stated "looks done to me." Machine validation: 10/10 valid pass, 7/7 invalid rejected. Board confirmations `1cadc298` (resolved 2026-08-01T01:02:30Z) and `f08cdbc4` (resolved 2026-08-01T01:02:38Z) both accepted. **JAC-3930 is now `done` (ratified).** Liveness incident JAC-4645 cleared (`done`, 2026-08-04). JAC-3929 Gate 4 board approval (interaction `7bf27549`) remains `pending`. JAC-4532 is actively `in_progress` (not deferred — the Gate 4 board approval gates the *ratification/adoption* of the scheme, but the implementation work itself is proceeding).
 
 ## Gate 2 — Privacy Gate [P1]
 <!-- Gate 2 checklist updated 2026-08-04T17:3xZ by Maar: plan revision 2 approved (interaction 82dee633, outcome: accepted). Child implementation issues created: JAC-4632–JAC-4640. -->
@@ -79,17 +79,17 @@ All 9 child implementation issues (JAC-4632–JAC-4640) are marked `done` in Pap
 |   - Map manifests to run-graph nodes, task attempts to spend-bearing legs, checks to verdict events
 |   - Receipts to provenance events, preserve failed/degraded attempts
 |   - Missing per-agent spend = `unknown`, not evenly allocated
-|   - **(JAC-4531 plan complete, in_progress/planning — awaiting JAC-3930 ratification for approval + implementation)**
-| - [ ] Explicit proof of NO provider/telemetry/alert/service/credential/runtime mutation
-| - **Child issues:** JAC-4529 (done), JAC-4531 (in_progress/planning — plan complete, awaiting ratification)
+- **(JAC-4531 — plan complete, approved/ratified 2026-08-04; implementation deferred pending Gate 4 board approval)**
+- [ ] Explicit proof of NO provider/telemetry/alert/service/credential/runtime mutation
+- **Child issues:** JAC-4529 (done ✅), JAC-4531 (done ✅ — plan complete, ratified)
 
 ## Gate 4 — Replay/Identity Gate [P1]
-|- [x] Deterministic event keys: `ringer:<receipt_id>:<event>:<emitted_at>:<payload_hash>`, `paperclip:<run_id>:<usage_updated_at>:<payload_hash>` — specified in JAC-4532 plan §3.2 (verified 2026-08-04)
-|- [ ] Pointer/hash-only replay (no raw payload re-emission)
-|- [ ] Raw payload retention boundaries defined
-|- [ ] Checker-output hashing for verdict integrity
-|- [x] Idempotent re-ingest: no-op unless source version or hash changes — specified in JAC-4532 plan §3.3 with ON CONFLICT + attempt_index increment (verified 2026-08-04)
-|- **Child issues:** JAC-4532 (event identity/idempotency scheme)
+- [~] Deterministic event keys: `ringer:<receipt_id>:<event>:<emitted_at>:<payload_hash>`, `paperclip:<run_id>:<usage_updated_at>:<payload_hash>` — specified in JAC-4532 plan §3.2 (verified 2026-08-04); implementation in progress
+- [ ] Pointer/hash-only replay (no raw payload re-emission)
+- [ ] Raw payload retention boundaries defined
+- [ ] Checker-output hashing for verdict integrity
+- [x] Idempotent re-ingest: no-op unless source version or hash changes — specified in JAC-4532 plan §3.3 with ON CONFLICT + attempt_index increment (verified 2026-08-04)
+- **Child issues:** JAC-4532 (in_progress — actively implementing idempotency scheme; Gate 4 board approval needed for ratification/adoption)
 
 ## Gate 5 — Guardrail Gate [P1/P2]
 - [ ] Staged detector: informational → stronger review → proposed pause → automation (separate approval)
@@ -111,7 +111,7 @@ All 9 child implementation issues (JAC-4632–JAC-4640) are marked `done` in Pap
   - Dashboard publication can revert to previous versioned artifact
   - Alerting and pause controls have independent kill switches
   - Cost recomputation from immutable source pointers is tested
-| - **Child issues:** JAC-4538 (publication contract — plan complete, blocked), JAC-4535 (done)
+ - **Child issues:** JAC-4538 (done ✅ — publication contract plan complete and ratified), JAC-4535 (done ✅)
 
 ## What acceptance authorizes
 Planning-only follow-up: adapter-discovery child issues + schema-validation spike. NO provider-account changes, telemetry re-configuration, or dashboard external publication.
