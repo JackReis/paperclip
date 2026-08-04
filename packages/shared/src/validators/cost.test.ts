@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   createCostEventSchema,
+  createRunEventSchema,
   resolveCoverageState,
   resolveSafeStatus,
 } from "./cost.js";
@@ -126,5 +127,156 @@ describe("createCostEventSchema fail-closed transform", () => {
   it("defaults currency to USD", () => {
     const result = createCostEventSchema.parse(base);
     expect(result.currency).toBe("USD");
+  });
+});
+
+describe("JAC-4533 privacy/retention field defaults", () => {
+  const base = {
+    agentId: "00000000-0000-0000-0000-000000000001",
+    provider: "test",
+    model: "test-model",
+    inputTokens: 0,
+    cachedInputTokens: 0,
+    outputTokens: 0,
+    costCents: 0,
+    occurredAt: "2026-08-04T00:00:00.000Z",
+  };
+
+  describe("createCostEventSchema", () => {
+    it("defaults to fail-closed values when privacy fields are omitted", () => {
+      const result = createCostEventSchema.parse(base);
+      expect(result.visibilityClass).toBe("internal");
+      expect(result.retentionClass).toBe("standard");
+      expect(result.redactionState).toBe("unredacted");
+      expect(result.sourcePermissionRef).toBeUndefined();
+      expect(result.tenantRefHash).toBeUndefined();
+      expect(result.subjectRefHashes).toBeUndefined();
+      expect(result.sourceDeletedAt).toBeUndefined();
+      expect(result.tombstoneRef).toBeUndefined();
+      expect(result.policyVersion).toBeUndefined();
+    });
+
+    it("accepts explicitly provided privacy fields", () => {
+      const result = createCostEventSchema.parse({
+        ...base,
+        visibilityClass: "private",
+        retentionClass: "long_term",
+        redactionState: "partially_redacted",
+        sourcePermissionRef: "agent:abc:scope:usage.read",
+        tenantRefHash: "a".repeat(64),
+        subjectRefHashes: ["b".repeat(64), "c".repeat(64)],
+        sourceDeletedAt: "2026-08-04T12:00:00.000Z",
+        tombstoneRef: "tombstone:company:event:20260804",
+        policyVersion: "privacy-v1.2",
+      });
+      expect(result.visibilityClass).toBe("private");
+      expect(result.retentionClass).toBe("long_term");
+      expect(result.redactionState).toBe("partially_redacted");
+      expect(result.sourcePermissionRef).toBe("agent:abc:scope:usage.read");
+      expect(result.tenantRefHash).toBe("a".repeat(64));
+      expect(result.subjectRefHashes).toHaveLength(2);
+      expect(result.sourceDeletedAt).toBe("2026-08-04T12:00:00.000Z");
+      expect(result.tombstoneRef).toBe("tombstone:company:event:20260804");
+      expect(result.policyVersion).toBe("privacy-v1.2");
+    });
+
+    it("rejects invalid visibilityClass enum values", () => {
+      expect(() =>
+        createCostEventSchema.parse({ ...base, visibilityClass: "supersecret" }),
+      ).toThrow();
+    });
+
+    it("rejects invalid retentionClass enum values", () => {
+      expect(() =>
+        createCostEventSchema.parse({ ...base, retentionClass: "forever" }),
+      ).toThrow();
+    });
+
+    it("rejects invalid redactionState enum values", () => {
+      expect(() =>
+        createCostEventSchema.parse({ ...base, redactionState: "stripped" }),
+      ).toThrow();
+    });
+
+    it("rejects tenantRefHash that is not a 64-char SHA-256 hex digest", () => {
+      expect(() =>
+        createCostEventSchema.parse({ ...base, tenantRefHash: "not-a-hash" }),
+      ).toThrow();
+    });
+
+    it("rejects tenantRefHash with uppercase hex", () => {
+      expect(() =>
+        createCostEventSchema.parse({ ...base, tenantRefHash: "A".repeat(64) }),
+      ).toThrow();
+    });
+
+    it("rejects subjectRefHashes element that is not a 64-char hex digest", () => {
+      expect(() =>
+        createCostEventSchema.parse({
+          ...base,
+          subjectRefHashes: ["bad", "b".repeat(64)],
+        }),
+      ).toThrow();
+    });
+
+    it("accepts null for nullable privacy fields", () => {
+      const result = createCostEventSchema.parse({
+        ...base,
+        sourcePermissionRef: null,
+        tenantRefHash: null,
+        subjectRefHashes: null,
+        sourceDeletedAt: null,
+        tombstoneRef: null,
+        policyVersion: null,
+      });
+      expect(result.sourcePermissionRef).toBeNull();
+      expect(result.tenantRefHash).toBeNull();
+      expect(result.subjectRefHashes).toBeNull();
+      expect(result.sourceDeletedAt).toBeNull();
+      expect(result.tombstoneRef).toBeNull();
+      expect(result.policyVersion).toBeNull();
+    });
+  });
+
+  describe("createRunEventSchema", () => {
+    const runEventBase = {
+      runId: "00000000-0000-0000-0000-000000000001",
+      adapterType: "hermes_local",
+      model: "gpt-5",
+      provider: "openai",
+      status: "success",
+      inputTokens: null,
+      outputTokens: null,
+      costCents: null,
+      occurredAt: "2026-08-04T00:00:00.000Z",
+      usageReportedState: "not_reported",
+      priceBasis: "not_reported",
+      costConfidence: "low",
+    };
+
+    it("defaults to fail-closed values when privacy fields are omitted", () => {
+      const result = createRunEventSchema.parse({ ...runEventBase });
+      expect(result.visibilityClass).toBe("internal");
+      expect(result.retentionClass).toBe("standard");
+      expect(result.redactionState).toBe("unredacted");
+    });
+
+    it("rejects invalid visibilityClass enum values", () => {
+      expect(() =>
+        createRunEventSchema.parse({
+          ...runEventBase,
+          visibilityClass: "supersecret",
+        }),
+      ).toThrow();
+    });
+
+    it("rejects tenantRefHash that is not a 64-char SHA-256 hex digest", () => {
+      expect(() =>
+        createRunEventSchema.parse({
+          ...runEventBase,
+          tenantRefHash: "short",
+        }),
+      ).toThrow();
+    });
   });
 });

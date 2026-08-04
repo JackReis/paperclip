@@ -57,6 +57,7 @@ export const VALID_PROVIDERS = [
   "minimax-cn",
   "kilocode",
   "ollama-launch",
+  "ollama-cloud",
 ] as const;
 
 /**
@@ -93,6 +94,8 @@ export const MODEL_PREFIX_PROVIDER_HINTS: [string, string][] = [
   ["llama", "auto"],
   // Qwen
   ["qwen", "auto"],
+  // Ollama Cloud (Ollama Cloud provider — distinct from local ollama-launch)
+  ["ollama-cloud/", "ollama-cloud"],
   // Mistral
   ["mistral", "auto"],
   // HuggingFace models (org/model format)
@@ -114,3 +117,43 @@ export const TOOL_OUTPUT_PREFIX = "┊";
 
 /** Prefix for Hermes thinking blocks. */
 export const THINKING_PREFIX = "💭";
+
+// ---------------------------------------------------------------------------
+// Ollama Cloud admission semaphore (hermes-04ps.1.3.1)
+// ---------------------------------------------------------------------------
+
+/**
+ * Provider name for Ollama Cloud — the metered concurrent-model ceiling
+ * (Max plan = 10 concurrent). When this provider is resolved, the adapter
+ * may wrap the Hermes invocation with the cloud admission semaphore if the
+ * state directory is configured.
+ */
+export const OLLAMA_CLOUD_PROVIDER = "ollama-cloud";
+
+/**
+ * Environment variable pointing to the cloud admission semaphore state dir.
+ * When set, the adapter wraps `ollama-cloud` routed Hermes commands with
+ * `ollama_cloud_admission.py run cloud_ollama ...` to cap concurrency.
+ */
+export const OLLAMA_CLOUD_ADMISSION_STATE_DIR_ENV = "PAPERCLIP_OLLAMA_CLOUD_ADMISSION_STATE_DIR";
+
+/**
+ * Environment variable pointing to the cloud admission policy file.
+ * Optional; defaults to the policy bundled in the agentic-os repo.
+ */
+export const OLLAMA_CLOUD_ADMISSION_POLICY_ENV = "PAPERCLIP_OLLAMA_CLOUD_ADMISSION_POLICY";
+
+/**
+ * Environment variable for the cloud admission wrapper path.
+ * Optional; defaults to the canonical agentic-os path.
+ */
+export const OLLAMA_CLOUD_ADMISSION_WRAPPER_ENV = "PAPERCLIP_OLLAMA_CLOUD_ADMISSION_WRAPPER";
+
+/**
+ * Default path to the cloud admission wrapper script.
+ * Resolves relative to the Paperclip repo root.
+ */
+export const DEFAULT_CLOUD_ADMISSION_WRAPPER = "/Users/hermes/Projects/agentic-os/ops/ollama-cloud-admission/ollama_cloud_admission.py";
+
+/** How the cloud admission wrapper is invoked. */
+export const CLOUD_ADMISSION_ROUTE_CLASS = "cloud_ollama";

@@ -1189,4 +1189,251 @@ describeEmbeddedPostgres("cost and finance aggregate overflow handling", () => {
     expect(byKindRow?.debitCents).toBe(4_000_000_000);
     expect(byKindRow?.netCents).toBe(4_000_000_000);
   });
+
+  it("persists privacy/retention fields with fail-closed defaults on cost_events", async () => {
+    const companyId = randomUUID();
+    const agentId = randomUUID();
+
+    await db.insert(companies).values({
+      id: companyId,
+      name: "Paperclip",
+      issuePrefix: `T${companyId.replace(/-/g, "").slice(0, 6).toUpperCase()}`,
+      requireBoardApprovalForNewAgents: false,
+    });
+    await db.insert(agents).values({
+      id: agentId,
+      companyId,
+      name: "CLI Agent",
+      role: "engineer",
+      status: "active",
+      adapterType: "codex_local",
+      adapterConfig: {},
+      runtimeConfig: {},
+      permissions: {},
+    });
+
+    const event = await costs.createEvent(companyId, {
+      agentId,
+      provider: "openai",
+      biller: "openai",
+      billingType: "metered_api",
+      costStatus: "reported",
+      model: "gpt-5",
+      inputTokens: 500,
+      cachedInputTokens: 0,
+      outputTokens: 200,
+      costCents: 15,
+      currency: "USD",
+      coverageState: "covered",
+      sourceStatus: "available",
+      safeStatus: "available",
+      confidence: "high",
+      occurredAt: new Date("2026-08-04T12:00:00.000Z"),
+    });
+
+    // Fail-closed defaults applied by the service layer.
+    expect(event.visibilityClass).toBe("internal");
+    expect(event.retentionClass).toBe("standard");
+    expect(event.redactionState).toBe("unredacted");
+    expect(event.sourcePermissionRef).toBeNull();
+    expect(event.tenantRefHash).toBeNull();
+    expect(event.tombstoneRef).toBeNull();
+    expect(event.policyVersion).toBeNull();
+  });
+
+  it("persists explicitly provided privacy/retention fields on cost_events", async () => {
+    const companyId = randomUUID();
+    const agentId = randomUUID();
+
+    await db.insert(companies).values({
+      id: companyId,
+      name: "Paperclip",
+      issuePrefix: `T${companyId.replace(/-/g, "").slice(0, 6).toUpperCase()}`,
+      requireBoardApprovalForNewAgents: false,
+    });
+    await db.insert(agents).values({
+      id: agentId,
+      companyId,
+      name: "CLI Agent",
+      role: "engineer",
+      status: "active",
+      adapterType: "codex_local",
+      adapterConfig: {},
+      runtimeConfig: {},
+      permissions: {},
+    });
+
+    const event = await costs.createEvent(companyId, {
+      agentId,
+      provider: "openai",
+      biller: "openai",
+      billingType: "metered_api",
+      costStatus: "reported",
+      model: "gpt-5",
+      inputTokens: 500,
+      cachedInputTokens: 0,
+      outputTokens: 200,
+      costCents: 15,
+      currency: "USD",
+      coverageState: "covered",
+      sourceStatus: "available",
+      safeStatus: "available",
+      confidence: "high",
+      occurredAt: new Date("2026-08-04T12:00:00.000Z"),
+      visibilityClass: "private",
+      retentionClass: "long_term",
+      redactionState: "partially_redacted",
+      sourcePermissionRef: "agent:abc:scope:usage.read",
+      tenantRefHash: "a".repeat(64),
+      tombstoneRef: "tombstone:company:event:20260804",
+      policyVersion: "privacy-v1.2",
+    });
+
+    expect(event.visibilityClass).toBe("private");
+    expect(event.retentionClass).toBe("long_term");
+    expect(event.redactionState).toBe("partially_redacted");
+    expect(event.sourcePermissionRef).toBe("agent:abc:scope:usage.read");
+    expect(event.tenantRefHash).toBe("a".repeat(64));
+    expect(event.tombstoneRef).toBe("tombstone:company:event:20260804");
+    expect(event.policyVersion).toBe("privacy-v1.2");
+  });
+
+  it("persists privacy/retention fields with fail-closed defaults on run_events", async () => {
+    const companyId = randomUUID();
+    const agentId = randomUUID();
+
+    await db.insert(companies).values({
+      id: companyId,
+      name: "Paperclip",
+      issuePrefix: `T${companyId.replace(/-/g, "").slice(0, 6).toUpperCase()}`,
+      requireBoardApprovalForNewAgents: false,
+    });
+    await db.insert(agents).values({
+      id: agentId,
+      companyId,
+      name: "CLI Agent",
+      role: "engineer",
+      status: "active",
+      adapterType: "codex_local",
+      adapterConfig: {},
+      runtimeConfig: {},
+      permissions: {},
+    });
+
+    const run = await db.insert(heartbeatRuns).values({
+      id: randomUUID(),
+      companyId,
+      agentId,
+      status: "succeeded",
+      startedAt: new Date("2026-08-04T12:00:00.000Z"),
+      completedAt: new Date("2026-08-04T12:01:00.000Z"),
+      issueId: null,
+    }).returning().then(r => r[0]);
+
+    const event = await costs.createRunEvent(companyId, {
+      agentId: agent.id,
+      issueId: null,
+      runId: run.id,
+      adapterType: "codex_local",
+      model: "gpt-5",
+      provider: "openai",
+      status: "success",
+      occurredAt: new Date("2026-08-04T12:00:00.000Z"),
+      coverage: {
+        usageReportedState: "not_reported",
+        inputTokens: null,
+        outputTokens: null,
+        cachedInputTokens: null,
+        reasoningTokens: null,
+        toolCallTokens: null,
+        costCents: null,
+        priceBasis: "not_reported",
+        costConfidence: "low",
+        nativeTotalTokens: null,
+        recomputedTotalTokens: null,
+        isSubscriptionIncluded: false,
+        coverageState: "unknown",
+        sourceStatus: "unavailable",
+        safeStatus: "unavailable",
+        confidence: "low",
+      },
+    });
+
+    // Fail-closed defaults applied by the service layer (Step 7: heartbeat callers
+    // now pass these explicitly, but the service also defaults when absent).
+    expect(event.visibilityClass).toBe("internal");
+    expect(event.retentionClass).toBe("standard");
+    expect(event.redactionState).toBe("unredacted");
+  });
+
+  it("persists explicitly provided privacy/retention fields on run_events", async () => {
+    const companyId = randomUUID();
+    const agentId = randomUUID();
+
+    await db.insert(companies).values({
+      id: companyId,
+      name: "Paperclip",
+      issuePrefix: `T${companyId.replace(/-/g, "").slice(0, 6).toUpperCase()}`,
+      requireBoardApprovalForNewAgents: false,
+    });
+    await db.insert(agents).values({
+      id: agentId,
+      companyId,
+      name: "CLI Agent",
+      role: "engineer",
+      status: "active",
+      adapterType: "codex_local",
+      adapterConfig: {},
+      runtimeConfig: {},
+      permissions: {},
+    });
+
+    const run = await db.insert(heartbeatRuns).values({
+      id: randomUUID(),
+      companyId,
+      agentId,
+      status: "succeeded",
+      startedAt: new Date("2026-08-04T12:00:00.000Z"),
+      completedAt: new Date("2026-08-04T12:01:00.000Z"),
+      issueId: null,
+    }).returning().then(r => r[0]);
+
+    const event = await costs.createRunEvent(companyId, {
+      agentId: agent.id,
+      issueId: null,
+      runId: run.id,
+      adapterType: "codex_local",
+      model: "gpt-5",
+      provider: "openai",
+      status: "success",
+      occurredAt: new Date("2026-08-04T12:00:00.000Z"),
+      coverage: {
+        usageReportedState: "not_reported",
+        inputTokens: null,
+        outputTokens: null,
+        cachedInputTokens: null,
+        reasoningTokens: null,
+        toolCallTokens: null,
+        costCents: null,
+        priceBasis: "not_reported",
+        costConfidence: "low",
+        nativeTotalTokens: null,
+        recomputedTotalTokens: null,
+        isSubscriptionIncluded: false,
+        coverageState: "unknown",
+        sourceStatus: "unavailable",
+        safeStatus: "unavailable",
+        confidence: "low",
+      },
+      sourcePermissionRef: "agent:abc:scope:usage.report",
+      tenantRefHash: "b".repeat(64),
+      visibilityClass: "private",
+    });
+
+    expect(event.visibilityClass).toBe("private");
+    expect(event.sourcePermissionRef).toBe("agent:abc:scope:usage.report");
+    expect(event.tenantRefHash).toBe("b".repeat(64));
+    expect(event.retentionClass).toBe("standard");
+    expect(event.redactionState).toBe("unredacted");
+  });
 });

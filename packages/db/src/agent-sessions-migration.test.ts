@@ -262,10 +262,10 @@ describe("agent sessions migration artifacts", () => {
     ) as { entries: Array<{ idx: number; tag: string }> };
 
     expect(journal.entries.slice(-4)).toEqual([
-      { idx: 185, version: "7", when: 1783025824120, tag: "0185_environment_custom_image_templates_reconciliation", breakpoints: true },
-      { idx: 186, version: "7", when: 1783025924120, tag: "0186_agent_sessions", breakpoints: true },
-      { idx: 187, version: "7", when: 1775500000000, tag: "0187_cost_events_coverage_fields", breakpoints: true },
-      { idx: 188, version: "7", when: 1784592001000, tag: "0188_run_events_coverage", breakpoints: true },
+      { idx: 189, version: "7", when: 1784592001000, tag: "0189_productivity_review_trigger_snooze", breakpoints: true },
+      { idx: 190, version: "7", when: 1784592002000, tag: "0190_cost_events_price_basis", breakpoints: true },
+      { idx: 191, version: "7", when: 1784592003000, tag: "0191_run_events_extended_fields", breakpoints: true },
+      { idx: 192, version: "7", when: 1784592004000, tag: "0192_cost_events_privacy_index", breakpoints: true },
     ]);
     await expect(fs.promises.access(new URL("./migrations/0125_agent_sessions.sql", import.meta.url))).rejects.toThrow();
     await expect(migrationContent(RECONCILIATION_MIGRATION)).resolves.toContain("CREATE TABLE IF NOT EXISTS");

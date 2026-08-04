@@ -45,6 +45,12 @@ import {
   DEFAULT_GRACE_SEC,
   DEFAULT_MODEL,
   VALID_PROVIDERS,
+  OLLAMA_CLOUD_PROVIDER,
+  OLLAMA_CLOUD_ADMISSION_STATE_DIR_ENV,
+  OLLAMA_CLOUD_ADMISSION_POLICY_ENV,
+  OLLAMA_CLOUD_ADMISSION_WRAPPER_ENV,
+  DEFAULT_CLOUD_ADMISSION_WRAPPER,
+  CLOUD_ADMISSION_ROUTE_CLASS,
 } from "../shared/constants.js";
 
 import {
@@ -213,19 +219,19 @@ export function buildPrompt(
 // ---------------------------------------------------------------------------
 
 /** Regex to extract session ID from Hermes quiet-mode output: "session_id: <id>" */
-const SESSION_ID_REGEX = /^session_id:\s*(\S+)/m;
+export const SESSION_ID_REGEX = /^session_id:\s*(\S+)/m;
 
 /** Regex for legacy session output format */
-const SESSION_ID_REGEX_LEGACY = /session[_ ](?:id|saved)[:\s]+([a-zA-Z0-9_-]+)/i;
+export const SESSION_ID_REGEX_LEGACY = /session[_ ](?:id|saved)[:\\s]+([a-zA-Z0-9_-]+)/i;
 
 /** Regex to extract token usage from Hermes output. */
-const TOKEN_USAGE_REGEX =
-  /tokens?[:\s]+(\d+)\s*(?:input|in)\b.*?(\d+)\s*(?:output|out)\b/i;
+export const TOKEN_USAGE_REGEX =
+  /tokens?[:\\s]+(\d+)\s*(?:input|in)\\b.*?(\d+)\s*(?:output|out)\\b/i;
 
 /** Regex to extract cost from Hermes output. */
-const COST_REGEX = /(?:cost|spent)[:\s]*\$?([\d.]+)/i;
+export const COST_REGEX = /(?:cost|spent)[:\\s]*\$?([\d.]+)/i;
 
-interface ParsedOutput {
+export interface ParsedOutput {
   sessionId?: string;
   response?: string;
   usage?: UsageSummary;
@@ -326,81 +332,77 @@ function extractErrorSummary(stderr: string): string | null {
 // Output parsing
 // ---------------------------------------------------------------------------
 
+/**
+ * Parse Hermes quiet-mode output into structured fields.
+ *
+ * Quiet mode (-Q) emits a `session_id: <id>` metadata line alongside the
+ * model response.  In Hermes 0.18.2 the ordering is not guaranteed —
+ * session_id may appear on stdout before or after the response, and
+ * cancelled sessions emit session_id on stderr.  The parser must:
+ *
+ * 1. Accept either ordering (session_id-first or response-first).
+ * 2. Normalise CRLF / lone-CR line endings before any slicing.
+ * 3. Strip only metadata lines (session_id, timestamps, [hermes], etc.).
+ * 4. Preserve the response even when it lives on stderr (cancelled sessions).
+ * 5. Retain false-green / provider-exhaustion / traceback error behaviour.
+ *
+ * The search for session_id spans stdout + stderr (combined), but the
+ * response is extracted from whichever stream actually carries prose
+ * content — not blindly from stdout alone.
+ */
 function parseHermesOutput(stdout: string, stderr: string): ParsedOutput {
-  const combined = stdout + "\n" + stderr;
+  // Normalise CRLF early so all downstream slicing is byte-accurate.
+  const normStdout = stdout.replace(/\r\n/g, "\n").replace(/\r/g, "\n");
+  const normStderr = stderr.replace(/\r\n/g, "\n").replace(/\r/g, "\n");
+  const combined = normStdout + "\n" + normStderr;
   const result: ParsedOutput = {};
 
-  // Handle the case where session_id may appear first or last in quiet mode
-  // Look through the entire combined output for session_id lines to find what's valid
-  let sessionIdLine = "";
-  let responseText = stdout;
-
-  // First, see if there's any session ID line 
+  // ── Extract session ID from combined output ──────────────────────────
   const sessionIdMatch = combined.match(SESSION_ID_REGEX);
-  
-  // If we found a session_id and there are multiple lines with it, parse carefully
   if (sessionIdMatch?.[1]) {
-    result.sessionId = sessionIdMatch?.[1] ?? null;
-    
-    // In quiet mode with Hermes 0.18.2, there's an edge case where session_id 
-    // might appear at the start of stdout before response text.
-    // We need to scan through all lines to determine proper structure:
-    const lines = stdout.split("\n");
-    let foundSessionLineIndex = -1;
-    
-    // Find line containing session_id  
-    for (let i = 0; i < lines.length; i++) {
-      if (lines[i].startsWith("session_id:")) {
-        foundSessionLineIndex = i;
-        sessionIdLine = lines[i];
-        break;
-      }
-    }
-    
-    // If we found a session line, determine if it's at the start or end
-    if (foundSessionLineIndex >= 0) {
-      // Build properly structured response from content before/after 
-      let actualResponseLines: string[] = [];
-      
-      if (foundSessionLineIndex === 0) {
-        // Session ID comes first - response is what comes after, but 
-        // we need to find where the actual text begins (after session id line)
-        const sessionLineEnd = stdout.indexOf(sessionIdLine) + sessionIdLine.length;
-        const remaining = stdout.slice(sessionLineEnd).trim();
-        if (remaining) {
-          result.response = cleanResponse(remaining);
-        }
-      } else {
-        // Session ID comes after response - this is the regular case
-        const responseBeforeSession = lines.slice(0, foundSessionLineIndex).join("\n");
-        result.response = cleanResponse(responseBeforeSession);  
-      }
-    } else {
-      // Regular case - session line exists but wasn't detected properly in line parsing
-      const sessionLineIdx = stdout.lastIndexOf("\nsession_id:");
-      if (sessionLineIdx > 0) {
-        result.response = cleanResponse(stdout.slice(0, sessionLineIdx));
-      } else {
-        // If no session line or not found properly, treat the whole stdout as response  
-        result.response = cleanResponse(stdout);
-      }
-    }
-    
-  } else {
-    // Legacy format (non-quiet mode)
-    const legacyMatch = combined.match(SESSION_ID_REGEX_LEGACY);
-    if (legacyMatch?.[1]) {
-      result.sessionId = legacyMatch?.[1] ?? null;
-    }
-    // In non-quiet mode, extract clean response from stdout by
-    // filtering out tool lines, system messages, and noise
-    const cleaned = cleanResponse(stdout);
+    result.sessionId = sessionIdMatch[1];
+  }
+
+  // ── Extract response ──────────────────────────────────────────────────
+  //
+  // Strategy: find the session_id line boundaries across the combined
+  // normalised output, then take the prose that is NOT a metadata line
+  // from whichever stream(s) carry it.
+  //
+  // We search in combined (stdout + stderr) so that cancelled sessions
+  // where session_id is on stderr but the response is on stdout (or vice
+  // versa) are handled correctly.
+
+  // Remove all session_id lines from combined before extracting the response.
+  // This handles both orderings and both streams.
+  const responseCandidates: string[] = [];
+
+  // stdout is the primary source of the response
+  if (normStdout.trim()) {
+    responseCandidates.push(normStdout);
+  }
+  // stderr may contain the response too (e.g. cancelled sessions where
+  // the model output was written to stderr before the session_id line)
+  if (normStderr.trim()) {
+    responseCandidates.push(normStderr);
+  }
+
+  for (const candidate of responseCandidates) {
+    // Strip the session_id line from this candidate so it doesn't
+    // pollute the response text.
+    const withoutSessionId = candidate.replace(/^session_id:.*$/gm, "");
+    const cleaned = cleanResponse(withoutSessionId);
     if (cleaned.length > 0) {
-      result.response = cleaned;
+      // Use the first non-empty cleaned response.  If stdout already
+      // gave us a response, we keep that (primary).  Only fall through
+      // to stderr if stdout had no usable response.
+      if (result.response === undefined) {
+        result.response = cleaned;
+      }
     }
   }
 
-  // Extract token usage
+  // ── Extract token usage ──────────────────────────────────────────────
   const usageMatch = combined.match(TOKEN_USAGE_REGEX);
   if (usageMatch) {
     result.usage = {
@@ -409,18 +411,18 @@ function parseHermesOutput(stdout: string, stderr: string): ParsedOutput {
     };
   }
 
-  // Extract cost
+  // ── Extract cost ─────────────────────────────────────────────────────
   const costMatch = combined.match(COST_REGEX);
   if (costMatch?.[1]) {
     result.costUsd = parseFloat(costMatch[1]);
   }
 
-  // Check for error patterns in stderr.
+  // ── Extract error summary from stderr ────────────────────────────────
   // Extract full traceback blocks rather than only keyword-matching lines,
   // so that traceback context (File "...", line N, raise/return statements)
   // is preserved alongside the exception line.
-  if (stderr.trim()) {
-    const extracted = extractErrorSummary(stderr);
+  if (normStderr.trim()) {
+    const extracted = extractErrorSummary(normStderr);
     if (extracted !== null) {
       result.errorMessage = extracted;
     }

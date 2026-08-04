@@ -101,6 +101,21 @@ export const createCostEventSchema = z.object({
   coverageWarning: z.string().optional().nullable(),
   priceBasis: z.enum(PRICE_BASIS).optional().default(DEFAULT_PRICE_BASIS),
   costConfidence: z.enum(COST_CONFIDENCE_LEVELS).optional().default(DEFAULT_COST_CONFIDENCE),
+  /** Privacy / retention fields (JAC-4533). Fail-closed defaults applied below. */
+  visibilityClass: z.enum(VISIBILITY_CLASSES).optional().default(DEFAULT_VISIBILITY_CLASS),
+  retentionClass: z.enum(RETENTION_CLASSES).optional().default(DEFAULT_RETENTION_CLASS),
+  redactionState: z.enum(REDACTION_STATES).optional().default(DEFAULT_REDACTION_STATE),
+  sourcePermissionRef: z.string().optional().nullable(),
+  /** SHA-256 hex digest for tenant isolation (JAC-4533). */
+  tenantRefHash: z.string().optional().nullable().refine(
+    (val) => val === null || val === undefined || /^[a-f0-9]{64}$/.test(val),
+    { message: "tenantRefHash must be a 64-char lowercase hex SHA-256 digest or null" },
+  ),
+  /** Array of SHA-256 hex digests for subject attribution (JAC-4533). */
+  subjectRefHashes: z.array(z.string().regex(/^[a-f0-9]{64}$/)).optional().nullable(),
+  sourceDeletedAt: z.string().datetime().optional().nullable(),
+  tombstoneRef: z.string().optional().nullable(),
+  policyVersion: z.string().optional().nullable(),
   occurredAt: z.string().datetime(),
 }).transform((value) => {
   const resolvedCoverageState = resolveCoverageState(value.coverageState, value.sourceStatus);
@@ -459,6 +474,21 @@ export const createRunEventSchema = z.object({
   nativeTotalTokens: z.number().int().nonnegative().optional().nullable(),
   recomputedTotalTokens: z.number().int().nonnegative().optional().nullable(),
   isSubscriptionIncluded: z.boolean().optional().default(false),
+  /** Privacy / retention fields (JAC-4533). Fail-closed defaults applied below. */
+  visibilityClass: z.enum(VISIBILITY_CLASSES).optional().default(DEFAULT_VISIBILITY_CLASS),
+  retentionClass: z.enum(RETENTION_CLASSES).optional().default(DEFAULT_RETENTION_CLASS),
+  redactionState: z.enum(REDACTION_STATES).optional().default(DEFAULT_REDACTION_STATE),
+  sourcePermissionRef: z.string().optional().nullable(),
+  /** SHA-256 hex digest for tenant isolation (JAC-4533). */
+  tenantRefHash: z.string().optional().nullable().refine(
+    (val) => val === null || val === undefined || /^[a-f0-9]{64}$/.test(val),
+    { message: "tenantRefHash must be a 64-char lowercase hex SHA-256 digest or null" },
+  ),
+  /** Array of SHA-256 hex digests for subject attribution (JAC-4533). */
+  subjectRefHashes: z.array(z.string().regex(/^[a-f0-9]{64}$/)).optional().nullable(),
+  sourceDeletedAt: z.string().datetime().optional().nullable(),
+  tombstoneRef: z.string().optional().nullable(),
+  policyVersion: z.string().optional().nullable(),
   occurredAt: z.string().datetime(),
 }).transform((value) => {
   // Fail-closed: coverage fields are derived from usageReportedState + token values,

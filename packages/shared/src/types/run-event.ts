@@ -158,25 +158,3 @@ export interface CoverageByAgent {
   partialRuns: number;
   safeStatus: SafeStatus;
 }
-
-/**
- * Input for creating a run event (from adapter execution results).
- * All coverage/action-safety fields are derived via fail-closed transforms.
- */
-export interface CreateRunEventInput {
-  runId: string;
-  adapterType: string;
-  model?: string;
-  provider?: string;
-  status?: "success" | "error" | "timeout" | "canceled";
-  inputTokens?: number | null;
-  outputTokens?: number | null;
-  cachedInputTokens?: number | null;
-  reasoningTokens?: number | null;
-  toolCallTokens?: number | null;
-  costCents?: number | null;
-  currency?: string;
-  usageReportedState?: UsageReportedState;
-  usageSourceField?: string | null;
-  occurredAt: string;
-}

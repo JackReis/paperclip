@@ -33,6 +33,9 @@ import {
   resolveLedgerCoverageForRun,
   resolveRunCoverageForError,
   type RunCoverageResolution,
+  DEFAULT_VISIBILITY_CLASS,
+  DEFAULT_RETENTION_CLASS,
+  DEFAULT_REDACTION_STATE,
 } from "@paperclipai/shared";
 import {
   agents,
@@ -11778,6 +11781,14 @@ export function heartbeatService(db: Db, options: HeartbeatServiceOptions = {}) 
       status: run.status === "succeeded" ? "success" : "error",
       occurredAt: new Date(),
       coverage: runCoverage,
+      // JAC-4533: pass privacy/retention fields from agent context.
+      // sourcePermissionRef is derived from the agent's Paperclip adapter type
+      // and company scope — this is an opaque pointer, never a credential.
+      sourcePermissionRef: `agent:${agent.id}:scope:usage.report`,
+      // Fail-closed defaults for the remaining privacy fields (V1 single-tenant).
+      visibilityClass: DEFAULT_VISIBILITY_CLASS,
+      retentionClass: DEFAULT_RETENTION_CLASS,
+      redactionState: DEFAULT_REDACTION_STATE,
     });
   }
 
@@ -14328,6 +14339,14 @@ export function heartbeatService(db: Db, options: HeartbeatServiceOptions = {}) 
               occurredAt: new Date(),
               coverage: setupFailureRunCoverage,
               eventKind: "lifecycle",
+              // JAC-4533: fail-closed privacy/retention defaults for pre-execution
+              // failure events. sourcePermissionRef derived from agent context.
+              sourcePermissionRef: setupFailureAgent
+                ? `agent:${setupFailureAgent.id}:scope:usage.report`
+                : null,
+              visibilityClass: DEFAULT_VISIBILITY_CLASS,
+              retentionClass: DEFAULT_RETENTION_CLASS,
+              redactionState: DEFAULT_REDACTION_STATE,
             }).catch(() => undefined);
 
             const livenessRun = await classifyAndPersistRunLiveness(failedRun).catch(() => failedRun);

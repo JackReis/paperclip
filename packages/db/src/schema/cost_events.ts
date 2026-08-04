@@ -101,5 +101,11 @@ export const costEvents = pgTable(
       table.coverageState,
       table.occurredAt,
     ),
+    companyPrivacyIdx: index("cost_events_company_privacy_idx").on(
+      table.companyId,
+      table.visibilityClass,
+      table.retentionClass,
+      table.redactionState,
+    ),
   }),
 );

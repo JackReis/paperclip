@@ -7,7 +7,8 @@ import { budgetService, type BudgetServiceHooks } from "./budgets.js";
 import { visibleIssueCondition } from "./issue-visibility.js";
 import { resolveCoverageState, resolveSafeStatus, resolveLedgerCoverageForRun, resolveRunCoverageForError, computeCoverageWarning } from "@paperclipai/shared";
 import type { CostStatus, CoverageState, SafeStatus, SourceStatus, CoverageTotals, CoverageWarning, CoverageByAdapterRow, CoverageWarningsResponse, CoverageByAgent } from "@paperclipai/shared";
-import type { CreateRunEventInput, RunCoverageResolution } from "@paperclipai/shared";
+import type { RunCoverageResolution } from "@paperclipai/shared";
+import { DEFAULT_VISIBILITY_CLASS, DEFAULT_RETENTION_CLASS, DEFAULT_REDACTION_STATE } from "@paperclipai/shared";
 
 export interface CostDateRange {
   from?: Date;
@@ -90,6 +91,11 @@ export function costService(db: Db, budgetHooks: BudgetServiceHooks = {}) {
           coverageState: resolvedCoverageState,
           safeStatus: resolvedSafeStatus,
           coverageWarning: data.coverageWarning ?? null,
+          // JAC-4533: fail-closed privacy/retention defaults.
+          // External adapters cannot escalate visibility_class to "public".
+          visibilityClass: data.visibilityClass ?? DEFAULT_VISIBILITY_CLASS,
+          retentionClass: data.retentionClass ?? DEFAULT_RETENTION_CLASS,
+          redactionState: data.redactionState ?? DEFAULT_REDACTION_STATE,
         })
         .returning()
         .then((rows) => rows[0]);
@@ -147,6 +153,16 @@ export function costService(db: Db, budgetHooks: BudgetServiceHooks = {}) {
         payloadHash?: string | null;
         /** Optional pricing-version reference for cost provenance (JAC-4530). */
         pricingVersionRef?: string | null;
+        /** Privacy / retention fields (JAC-4533). Fail-closed defaults when not provided. */
+        visibilityClass?: "public" | "internal" | "private" | "redacted";
+        retentionClass?: "short_lived" | "standard" | "long_term" | "permanent";
+        redactionState?: "unredacted" | "partially_redacted" | "fully_redacted";
+        sourcePermissionRef?: string | null;
+        tenantRefHash?: string | null;
+        subjectRefHashes?: string[] | null;
+        sourceDeletedAt?: Date | null;
+        tombstoneRef?: string | null;
+        policyVersion?: string | null;
       },
     ) => {
       const agent = await db
@@ -205,9 +221,15 @@ export function costService(db: Db, budgetHooks: BudgetServiceHooks = {}) {
           nativeTotalTokens: data.coverage.nativeTotalTokens ?? null,
           recomputedTotalTokens: data.coverage.recomputedTotalTokens ?? null,
           isSubscriptionIncluded: data.coverage.isSubscriptionIncluded,
-          visibilityClass: "internal",
-          retentionClass: "standard",
-          redactionState: "unredacted",
+          visibilityClass: data.visibilityClass ?? DEFAULT_VISIBILITY_CLASS,
+          retentionClass: data.retentionClass ?? DEFAULT_RETENTION_CLASS,
+          redactionState: data.redactionState ?? DEFAULT_REDACTION_STATE,
+          sourcePermissionRef: data.sourcePermissionRef ?? null,
+          tenantRefHash: data.tenantRefHash ?? null,
+          subjectRefHashes: data.subjectRefHashes ?? null,
+          sourceDeletedAt: data.sourceDeletedAt ?? null,
+          tombstoneRef: data.tombstoneRef ?? null,
+          policyVersion: data.policyVersion ?? null,
           sourceSystem: data.sourceSystem ?? "paperclip",
           eventKind: data.eventKind ?? "adapter_execution",
           attemptIndex: 0,

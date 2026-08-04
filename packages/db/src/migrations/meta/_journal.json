@@ -1331,6 +1331,13 @@
       "when": 1784592003000,
       "tag": "0191_run_events_extended_fields",
       "breakpoints": true
+    },
+    {
+      "idx": 192,
+      "version": "7",
+      "when": 1784592004000,
+      "tag": "0192_cost_events_privacy_index",
+      "breakpoints": true
     }
   ]
 }

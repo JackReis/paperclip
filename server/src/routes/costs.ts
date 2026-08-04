@@ -25,6 +25,7 @@ import {
   logActivity,
 } from "../services/index.js";
 import { assertBoard, assertCompanyAccess, getAccessibleResource, getActorInfo } from "./authz.js";
+import { DEFAULT_VISIBILITY_CLASS } from "@paperclipai/shared";
 import { fetchAllQuotaWindows } from "../services/quota-windows.js";
 import { badRequest } from "../errors.js";
 import type { PluginWorkerManager } from "../services/plugin-worker-manager.js";
@@ -124,6 +125,12 @@ export function costRoutes(
       return;
     }
 
+    // JAC-4533: fail-closed enforcement — external (non-board) actors cannot
+    // escalate visibility_class to "public". Clamp to the internal default.
+    if (req.actor.type !== "board" && req.body.visibilityClass === "public") {
+      req.body.visibilityClass = DEFAULT_VISIBILITY_CLASS;
+    }
+
     const event = await costs.createEvent(companyId, {
       ...req.body,
       occurredAt: new Date(req.body.occurredAt),
@@ -179,6 +186,12 @@ export function costRoutes(
         return;
       }
 
+      // JAC-4533: fail-closed enforcement — external (non-board) actors cannot
+      // escalate visibility_class to "public". Clamp to the internal default.
+      if (req.actor.type !== "board" && req.body.visibilityClass === "public") {
+        req.body.visibilityClass = DEFAULT_VISIBILITY_CLASS;
+      }
+
       const runIssueId =
         req.body.issueId ?? (runRow.contextSnapshot?.issueId as string | undefined);
 
@@ -219,6 +232,18 @@ export function costRoutes(
         occurredAt: new Date(req.body.occurredAt),
         coverage: coverage,
         pricingVersionRef: req.body.pricingVersionRef ?? null,
+        // JAC-4533: forward privacy/retention fields from validated request body.
+        // The Zod schema already applied fail-closed defaults; the visibility_class
+        // public-clamp above ensures non-board actors cannot escalate.
+        visibilityClass: req.body.visibilityClass,
+        retentionClass: req.body.retentionClass,
+        redactionState: req.body.redactionState,
+        sourcePermissionRef: req.body.sourcePermissionRef,
+        tenantRefHash: req.body.tenantRefHash,
+        subjectRefHashes: req.body.subjectRefHashes,
+        sourceDeletedAt: req.body.sourceDeletedAt ? new Date(req.body.sourceDeletedAt) : null,
+        tombstoneRef: req.body.tombstoneRef,
+        policyVersion: req.body.policyVersion,
       });
 
       const actor = getActorInfo(req);
