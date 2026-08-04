@@ -234,6 +234,23 @@ Re-ran all verification against branch `JAC-3679-build-reusable-report-kit-templ
 - `unzip -l report-kit/report-kit.zip` — 6 files, 72,145 bytes uncompressed, SHA-256 `b2cb3dd16d84307c33e37b58668b8ddc56a53d1e400d918012bcc87ec9e95a29` (matches git HEAD exactly)
 - Template tokens: 9 total occurrences across 8 unique tokens in template.html
 - End-to-end render via dynamic ES module import: **11/11 node:test pass**, output 16,581 chars, 9 SVG icons, 4 metric cards, div tag balance OK, no placeholder tokens, no `[object Object]`
-- Zip integrity: `unzip -t report-kit.zip` — No errors detected in compressed data
+|- Zip integrity: `unzip -t report-kit.zip` — No errors detected in compressed data
 
 All findings confirmed. Issue JAC-3679 remains `done` — all deliverables are git-tracked, clean, and independently verified.
+
+### Press independent re-verification (waking heartbeat, 2026-08-04T14:45Z, this run)
+
+Woken by the local-board wake comment (id 85a0dd56) claiming JAC-3679 is "verified complete" but Paperclip API still reports status `in_progress`. Independently re-ran the full verification battery against the live worktree on branch `JAC-3679-build-reusable-report-kit-template` (HEAD `d36d01123`, tip commit `2026-08-04T14:38Z`):
+
+- `git ls-files report-kit/` — all 7 files tracked (README.md, report-data.schema.json, report-kit.zip, report-renderer.js, report-kit.test.mjs, sample-data-devin-deepwiki.json, sample-report.html, template.html)
+- `git diff report-kit/` — CLEAN, no uncommitted changes
+- `node --check report-kit/report-renderer.js` — exits 0 (valid ES module, pure-JS escapeHtml, no DOM dependency)
+- JSON validity: both `report-data.schema.json` and `sample-data-devin-deepwiki.json` parse correctly via `jq empty`
+- Manual schema validation: sample data validates against schema (all required fields present, status/Section enums valid, ISO 8601 dates)
+- `unzip -t report-kit/report-kit.zip` — No errors detected in compressed data
+- SHA-256: `b2cb3dd16d84307c33e37b58668b8ddc56a53d1e400d918012bcc87ec9e95a29` (matches git HEAD `d36d01123` exactly — byte-for-byte identical on disk and in git)
+- Template tokens: 9 total occurrences across 8 unique tokens (`TITLE`, `SUBTITLE`, `GENERATED_BY`, `SOURCE`, `CHECKSUM`, `GUARDRAIL_VERSION`, `ENVIRONMENT`, `NOTES`)
+- End-to-end render via dynamic ES module import of `renderReport(sample-data-devin-deepwiki.json)`: 16,581 chars, 4 metric cards (matching 4 data metrics), div tag balance 30/30, no placeholder tokens, no `[object]` artifacts
+- Test suite: `node --test report-kit/report-kit.test.mjs` — **11/11 pass**
+
+**Conclusion:** All deliverables verified and consistent. The Paperclip API status of `in_progress` was inadvertently left stale — this re-verification confirms the issue is complete and ready for `done` disposition.
