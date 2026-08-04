@@ -140,6 +140,42 @@ test("resolveProvider handles mixed-case provider prefix in model name", () => {
   });
 });
 
+test("resolveProvider resolves ollama-launch/qwen3-coder:30b even when Hermes config has a different model+provider (JAC-4608)", () => {
+  // JAC-4608: When NOUS_API_KEY is absent, the Hermes config may have
+  // model.default=poolside/laguna-s-2.1:free with provider=openrouter.
+  // The adapter uses DEFAULT_MODEL="ollama-launch/qwen3-coder:30b".
+  // Since the config model doesn't match the requested model, resolveProvider
+  // must NOT use the config's openrouter provider. Instead it should infer
+  // "ollama-launch" from the model-name prefix, routing to local Ollama :11434
+  // instead of hitting OpenRouter (404).
+  expect(resolveProvider({
+    explicitProvider: undefined,
+    detectedProvider: "openrouter",
+    detectedModel: "poolside/laguna-s-2.1:free",
+    model: "ollama-launch/qwen3-coder:30b",
+  })).toEqual({
+    provider: "ollama-launch",
+    resolvedFrom: "modelInference",
+  });
+});
+
+test("resolveProvider prefers ollama-launch prefix over a matching Hermes config provider", () => {
+  // Even when the config model matches, if the requested model name
+  // contains an explicit ollama-launch provider prefix AND the config
+  // provider is openrouter, the prefix should win to avoid OpenRouter 404s.
+  // This tests that the model name with ollama-launch prefix is distinct
+  // from a config that has the same base model under openrouter.
+  expect(resolveProvider({
+    explicitProvider: undefined,
+    detectedProvider: "openrouter",
+    detectedModel: "openrouter/qwen3-coder:30b",
+    model: "ollama-launch/qwen3-coder:30b",
+  })).toEqual({
+    provider: "ollama-launch",
+    resolvedFrom: "modelInference",
+  });
+});
+
 async function withHermesHomeConfig(
   configLines: string[],
   fn: (hermesCommand: string) => Promise<void>,
