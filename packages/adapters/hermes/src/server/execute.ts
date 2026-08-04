@@ -51,6 +51,11 @@ import {
   detectModel,
   resolveProvider,
 } from "./detect-model.js";
+import {
+  parseCurrentResultFooter,
+  authenticateModel,
+  type ModelCatalogEntry,
+} from "../shared/footer.js";
 
 // ---------------------------------------------------------------------------
 // Config helpers
@@ -584,10 +589,55 @@ export async function execute(
   const stdout = result.stdout || "";
   const stderr = result.stderr || "";
   const parsed = parseHermesOutput(stdout, stderr);
+  const combinedOutput = `${stdout}\n${stderr}`;
+
+  // ── Verify current-result footer for cataloged models ──────────────────
+  //
+  // When the configured model is an exact catalog entry (e.g. "gemini-3.1-pro-preview"),
+  // the adapter requires a structured current-result footer in the Hermes output
+  // that proves the exact model was used.  This is the model-catalog authentication
+  // gate: the footer's model field must EXACTLY match the catalog entry — never
+  // a substring match.
+  //
+  // When the model is "auto" or not in the catalog, footer verification is skipped
+  // (Hermes resolves the model at runtime and there is no catalog entry to authenticate).
+  let footerModelVerified: ModelCatalogEntry | null = null;
+  let footerAuthError: string | null = null;
+  const catalogEntry = authenticateModel(model);
+  if (catalogEntry !== null) {
+    const footerResult = parseCurrentResultFooter(combinedOutput);
+
+    if (footerResult.malformed) {
+      await ctx.onLog(
+        "stderr",
+        `[hermes] Model catalog gate FAILED: malformed current-result footer. ${footerResult.error}\n`,
+      );
+      // Surface as an error condition but don't override a successful exit code
+      // — the footer gate is an authentication signal, not an execution failure.
+      footerAuthError = footerResult.error ?? "Malformed footer.";
+    } else if (footerResult.footer === null) {
+      await ctx.onLog(
+        "stderr",
+        `[hermes] Model catalog gate WARNING: no current-result footer found for cataloged model "${model}". Model not proven by footer authentication.\n`,
+      );
+      footerAuthError = `No current-result footer found for cataloged model "${model}".`;
+    } else if (!footerResult.footer.authenticated) {
+      await ctx.onLog(
+        "stderr",
+        `[hermes] Model catalog gate FAILED: footer model "${footerResult.footer.model}" did not match catalog entry "${catalogEntry.id}". ${footerResult.error}\n`,
+      );
+      footerAuthError = footerResult.error ?? "Footer model authentication failed.";
+    } else {
+      footerModelVerified = footerResult.footer.catalogEntry;
+      await ctx.onLog(
+        "stdout",
+        `[hermes] Model catalog gate PASSED: footer proves exact model "${footerResult.footer.model}" (provider=${footerResult.footer.provider ?? "unset"}, tier=${catalogEntry.tier ?? "default"}).\n`,
+      );
+    }
+  }
 
   // Older Hermes releases can return 0 after exhausting every provider. Require
   // the complete terminal envelope so ordinary HTTP-error prose stays successful.
-  const combinedOutput = `${stdout}\n${stderr}`;
   const terminalProviderExhaustion =
     /API call failed \(attempt \d+\/\d+\)/i.test(combinedOutput) &&
     /model [\s\x27"]*auto[\s\x27"]* is not supported[^\n]*Codex provider/i.test(combinedOutput) &&
@@ -619,6 +669,12 @@ export async function execute(
   if (parsed.errorMessage) {
     executionResult.errorMessage = parsed.errorMessage;
   }
+  if (footerAuthError) {
+    // Append footer auth failure to any existing error message
+    executionResult.errorMessage = executionResult.errorMessage
+      ? `${executionResult.errorMessage}; Footer auth: ${footerAuthError}`
+      : `Footer auth: ${footerAuthError}`;
+  }
 
   if (parsed.usage) {
     executionResult.usage = parsed.usage;
@@ -639,6 +695,8 @@ export async function execute(
     session_id: parsed.sessionId || null,
     usage: parsed.usage || null,
     cost_usd: parsed.costUsd ?? null,
+    footer_error: footerAuthError,
+    footer_model_verified: footerModelVerified ? footerModelVerified.id : null,
   };
 
   // Store session ID for next run
