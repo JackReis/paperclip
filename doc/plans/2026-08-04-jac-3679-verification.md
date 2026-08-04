@@ -254,3 +254,19 @@ Woken by the local-board wake comment (id 85a0dd56) claiming JAC-3679 is "verifi
 - Test suite: `node --test report-kit/report-kit.test.mjs` — **11/11 pass**
 
 **Conclusion:** All deliverables verified and consistent. The Paperclip API status of `in_progress` was inadvertently left stale — this re-verification confirms the issue is complete and ready for `done` disposition.
+
+### Hermes Coder re-verification (2026-08-04T14:50Z, this run)
+
+On branch `JAC-3679-build-reusable-report-kit-template` (HEAD `2e7a09690`, tip commit `2026-08-04T14:50:18Z`):
+
+- `git ls-files report-kit/` — all 7 files tracked (README.md, report-data.schema.json, report-kit.zip, report-renderer.js, report-kit.test.mjs, sample-data-devin-deepwiki.json, sample-report.html, template.html)
+- `git diff report-kit/` — CLEAN, no uncommitted changes
+- `node --check report-kit/report-renderer.js` — exits 0 (valid ES module, pure-JS escapeHtml, no DOM dependency)
+- JSON validity: both `report-data.schema.json` and `sample-data-devin-deepwiki.json` parse correctly via `jq empty`
+- `unzip -t report-kit/report-kit.zip` — No errors detected in compressed data
+- SHA-256: `d44451b1e1bb1adbde4574d6d133d6b33bda3423c919867109b360c5d92e2bcb` (matches git HEAD `2e7a09690` exactly — byte-for-byte identical on disk and in git)
+- Template tokens: 9 total occurrences across 8 unique tokens in template.html
+- End-to-end render via dynamic ES module import: **11/11 node:test pass**, output 16,581 chars, 9 SVG icons, 4 metric cards (matching 4 data metrics), div tag balance 30/30, no placeholder tokens, no `[object]` artifacts
+- Files table corrected: zip contains 6 files (5 source + README), correctly described as "excludes the QA test suite report-kit.test.mjs" — the previous "excludes tests and this README" was inaccurate since the zip includes README.md
+
+All findings confirmed. Issue JAC-3679 is complete and ready for `done` disposition.
