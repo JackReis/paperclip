@@ -21,7 +21,7 @@ function ControlButton({
           type="button"
           variant="ghost"
           size="icon-sm"
-          className="size-8 text-muted-foreground hover:text-foreground"
+          className="size-11 text-muted-foreground hover:text-foreground"
           aria-label={label}
           onClick={() => void onClick()}
         >

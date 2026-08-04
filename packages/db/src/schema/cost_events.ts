@@ -25,7 +25,53 @@ export const costEvents = pgTable(
     inputTokens: integer("input_tokens").notNull().default(0),
     cachedInputTokens: integer("cached_input_tokens").notNull().default(0),
     outputTokens: integer("output_tokens").notNull().default(0),
+    reasoningTokens: integer("reasoning_tokens"),
+    toolCallTokens: integer("tool_call_tokens"),
     costCents: integer("cost_cents").notNull(),
+    currency: text("currency").notNull().default("USD"),
+    pricingVersionRef: text("pricing_version_ref"),
+    /** Coverage state of usage reporting. Fail-closed: absent/uncertain = "unknown". */
+    coverageState: text("coverage_state").notNull().default("unknown"),
+    /** Source system's ability to report usage. "unavailable" = source did not expose reporting. */
+    sourceStatus: text("source_status").notNull().default("unavailable"),
+    /** Whether usage data is safe to use for billing/computation. Fail-closed: derived from coverageState. */
+    safeStatus: text("safe_status").notNull().default("unavailable"),
+    /** Confidence level of the reported cost/usage data. */
+    confidence: text("confidence").notNull().default("low"),
+    /** Coverage warning surfaced separately from spend — explains why coverage is uncovered/partial. */
+    coverageWarning: text("coverage_warning"),
+    /** How the cost was determined (JAC-4530): per_1m_tokens, plan_billed, estimated, not_reported, unknown. */
+    priceBasis: text("price_basis").notNull().default("not_reported"),
+    /** Confidence in cost accuracy (JAC-4530): high, medium, low, unknown. Distinct from generic `confidence`. */
+    costConfidence: text("cost_confidence").notNull().default("low"),
+    /** Privacy/retention visibility classification (JAC-4533). */
+    visibilityClass: text("visibility_class").notNull().default("internal"),
+    /** Retention policy class for this event (JAC-4533). */
+    retentionClass: text("retention_class").notNull().default("standard"),
+    /** Redaction state — whether sensitive data was redacted (JAC-4533). */
+    redactionState: text("redaction_state").notNull().default("unredacted"),
+    /** Reference to the permission that authorized source data access (JAC-4533). */
+    sourcePermissionRef: text("source_permission_ref"),
+    /** Hash of the tenant boundary for cross-tenant correlation (JAC-4533). */
+    tenantRefHash: text("tenant_ref_hash"),
+    /** JSONB array of subject reference hashes (SHA-256) for multi-subject attribution (JAC-4533). */
+    subjectRefHashes: text("subject_ref_hashes").array(),
+    /** When the source data was deleted at the origin (JAC-4533). */
+    sourceDeletedAt: timestamp("source_deleted_at", { withTimezone: true }),
+    /** Tombstone reference for deleted/suppressed events (JAC-4533). */
+    tombstoneRef: text("tombstone_ref"),
+    /** Policy version that governed this event's retention/redaction (JAC-4533). */
+    policyVersion: text("policy_version"),
+    /** When the source system emitted this event (for idempotency, JAC-4532). */
+    sourceSystem: text("source_system").notNull().default("paperclip"),
+    /** Deterministic external event ID for idempotency (JAC-4532). */
+    sourceEventId: text("source_event_id"),
+    /** Version of the source event schema (JAC-4532). */
+    sourceEventVersion: text("source_event_version"),
+    /** Kind of event for idempotency keying (JAC-4532). */
+    eventKind: text("event_kind").notNull().default("cost_report"),
+    /** Retry/attempt index for re-ingest deduplication (JAC-4532). */
+    attemptIndex: integer("attempt_index").notNull().default(0),
     occurredAt: timestamp("occurred_at", { withTimezone: true }).notNull(),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   },
@@ -49,6 +95,11 @@ export const costEvents = pgTable(
     companyHeartbeatRunIdx: index("cost_events_company_heartbeat_run_idx").on(
       table.companyId,
       table.heartbeatRunId,
+    ),
+    companyCoverageIdx: index("cost_events_company_coverage_idx").on(
+      table.companyId,
+      table.coverageState,
+      table.occurredAt,
     ),
   }),
 );

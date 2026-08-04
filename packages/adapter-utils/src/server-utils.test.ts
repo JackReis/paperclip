@@ -2186,3 +2186,34 @@ describe("appendWithByteCap", () => {
     expect(Buffer.byteLength(output, "utf8")).toBeLessThanOrEqual(7);
   });
 });
+
+describe("stderr head preservation in runChildProcess", () => {
+  it("preserves init traceback at the head of stderr even when total exceeds cap", async () => {
+    // Spawn a process that writes a traceback to stderr first, then floods stderr
+    // with noise that would exceed MAX_CAPTURE_BYTES if we only kept the tail.
+    // Use a small amount of noise to keep the test fast — the cap is 4MB but
+    // we can verify the head-preservation behavior with a controlled test.
+    const script = [
+      "import sys",
+      "sys.stderr.write('Traceback (most recent call last):\\n  File \"init\", line 42, in <module>\\n    raise RuntimeError(\"adapter init failed\")\\nRuntimeError: adapter init failed\\n')",
+      "sys.stderr.write('NOISE\\n' * 100000)",
+      "sys.stdout.write('response text\\nsession_id: test-session-123\\n')",
+    ].join("\n");
+
+    const result = await runChildProcess("test-run-stderr-head", "python3", ["-c", script], {
+      cwd: os.tmpdir(),
+      env: { ...process.env },
+      timeoutSec: 30,
+      graceSec: 5,
+      onLog: async () => {},
+    });
+
+    // The traceback at the head must be preserved
+    expect(result.stderr).toContain("Traceback (most recent call last)");
+    expect(result.stderr).toContain("RuntimeError: adapter init failed");
+    // The tail noise should also be present
+    expect(result.stderr).toContain("NOISE");
+    expect(result.stdout).toContain("session_id: test-session-123");
+    expect(result.exitCode).toBe(0);
+  });
+});

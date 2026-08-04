@@ -102,6 +102,8 @@ export function signalRunningProcess(
 export const runningProcesses = new Map<string, RunningProcess>();
 export const MAX_CAPTURE_BYTES = 4 * 1024 * 1024;
 export const MAX_EXCERPT_BYTES = 32 * 1024;
+/** Preserve the first N bytes of captured stderr so init tracebacks are never truncated. */
+export const MAX_STDERR_HEAD_BYTES = 256 * 1024;
 const TERMINAL_RESULT_SCAN_OVERLAP_CHARS = 64 * 1024;
 const DEFAULT_PAPERCLIP_INSTANCE_ID = "default";
 const PATH_SEGMENT_RE = /^[a-zA-Z0-9_-]+$/;
@@ -380,6 +382,34 @@ export function parseJson(value: string): Record<string, unknown> | null {
 export function appendWithCap(prev: string, chunk: string, cap = MAX_CAPTURE_BYTES) {
   const combined = prev + chunk;
   return combined.length > cap ? combined.slice(combined.length - cap) : combined;
+}
+
+/**
+ * Append with dual capture strategy for stderr:
+ * Preserves the **head** (first `headBytes`, default 256KB) so that init
+ * tracebacks are never truncated, while also keeping the **tail** (up to
+ * `cap` bytes) for recent output.  When the combined output fits within
+ * `cap`, both strategies are equivalent (no split needed).
+ *
+ * This addresses the root cause of truncated adapter init tracebacks:
+ * previously `appendWithCap` kept only the last `cap` bytes, discarding
+ * any traceback that appeared before large volumes of MCP-init stderr noise.
+ */
+export function appendWithDualCap(
+  prev: string,
+  chunk: string,
+  cap = MAX_CAPTURE_BYTES,
+  headBytes = MAX_STDERR_HEAD_BYTES,
+): { head: string; tail: string } {
+  const combined = prev + chunk;
+  const combinedLen = combined.length;
+  if (combinedLen <= cap) {
+    return { head: combined, tail: combined };
+  }
+  // Keep the first headBytes for init tracebacks, plus the last cap bytes for recent output
+  const head = combined.slice(0, Math.min(headBytes, combinedLen));
+  const tail = combined.slice(combinedLen - cap);
+  return { head, tail };
 }
 
 export function appendWithByteCap(prev: string, chunk: string, cap = MAX_CAPTURE_BYTES) {
@@ -1839,7 +1869,7 @@ export function buildPaperclipEnv(agent: { id: string; companyId: string }): Rec
   const runtimeHost = resolveHostForUrl(
     process.env.PAPERCLIP_LISTEN_HOST ?? process.env.HOST ?? "localhost",
   );
-  const runtimePort = process.env.PAPERCLIP_LISTEN_PORT ?? process.env.PORT ?? "3100";
+  const runtimePort = process.env.PAPERCLIP_LISTEN_PORT ?? process.env.PORT ?? "3101";
   const apiUrl =
     process.env.PAPERCLIP_RUNTIME_API_URL ??
     process.env.PAPERCLIP_API_URL ??
@@ -3172,12 +3202,18 @@ export async function runChildProcess(
             });
         });
 
+        let stderrHead = "";
+        const STDERR_HEAD_CAP = MAX_STDERR_HEAD_BYTES;
         child.stderr?.on("data", (chunk: unknown) => {
           const readable = child.stderr;
           if (!readable) return;
           readable.pause();
           const text = String(chunk);
           stderr = appendWithCap(stderr, text);
+          // Preserve the head of stderr for init tracebacks (capped separately)
+          if (stderrHead.length < STDERR_HEAD_CAP) {
+            stderrHead = (stderrHead + text).slice(0, STDERR_HEAD_CAP);
+          }
           maybeArmTerminalResultCleanup();
           logChain = logChain
             .then(() => opts.onLog("stderr", text))
@@ -3228,7 +3264,9 @@ export async function runChildProcess(
                 signal,
                 timedOut,
                 stdout,
-                stderr,
+                // Merge stderr head (init tracebacks) + tail (recent output) so
+                // tracebacks at the beginning are never lost to truncation.
+                stderr: stderrHead ? `${stderrHead}\n[--- stderr tail (truncated head preserved) ---]\n${stderr}` : stderr,
                 pid: child.pid ?? null,
                 startedAt,
                 terminalResultCleanup: terminalCleanupStarted

@@ -622,8 +622,16 @@ export {
 
 export {
   createCostEventSchema,
+  resolveCoverageState,
+  resolveSafeStatus,
+  resolveLedgerCoverageForRun,
+  resolveRunCoverageForError,
+  computeCoverageWarning,
+  createRunEventSchema,
   updateBudgetSchema,
   type CreateCostEvent,
+  type RunCoverageResolution,
+  type CreateRunEventInput,
   type UpdateBudget,
 } from "./cost.js";
 

@@ -623,6 +623,7 @@ export const APPROVAL_TYPES = [
   "approve_ceo_strategy",
   "budget_override_required",
   "request_board_approval",
+  "publish_full_artifact",
 ] as const;
 export type ApprovalType = (typeof APPROVAL_TYPES)[number];
 
@@ -767,6 +768,156 @@ export type BillingType = (typeof BILLING_TYPES)[number];
 
 export const COST_STATUSES = ["reported", "unpriced"] as const;
 export type CostStatus = (typeof COST_STATUSES)[number];
+
+/**
+ * Coverage state of usage reporting for a cost event.
+ * Fail-closed: when the Paperclip adapter cannot confirm token/cost data
+ * was reported by the source adapter, coverage_state is "unknown" — never
+ * promoted to "covered" without evidence.
+ */
+export const COVERAGE_STATES = ["covered", "partial", "uncovered", "unknown"] as const;
+export type CoverageState = (typeof COVERAGE_STATES)[number];
+
+/** Default coverage state when source reporting is absent or uncertain. */
+export const DEFAULT_COVERAGE_STATE: CoverageState = "unknown";
+
+/**
+ * The source system's ability to report usage data for this event.
+ * "unavailable" means the source adapter did not expose usage reporting at all.
+ */
+export const SOURCE_STATUSES = ["available", "unavailable"] as const;
+export type SourceStatus = (typeof SOURCE_STATUSES)[number];
+
+/**
+ * Whether the reported usage data is safe to use for billing/computation.
+ * Fail-closed: "unknown" coverage_state maps to "unavailable" here.
+ */
+export const SAFE_STATUSES = ["available", "unavailable"] as const;
+export type SafeStatus = (typeof SAFE_STATUSES)[number];
+
+/**
+ * Confidence level of the cost/usage data as reported by the source adapter.
+ * Used by the Paperclip shadow adapter to signal when token/cost numbers
+ * are estimates, partial, or missing.
+ */
+export const CONFIDENCE_LEVELS = ["high", "medium", "low"] as const;
+export type ConfidenceLevel = (typeof CONFIDENCE_LEVELS)[number];
+
+/**
+ * How token/cost usage was reported by the source adapter.
+ * - "not_reported": adapter did not expose usage reporting at all
+ * - "reported": adapter reported actual usage counts
+ * - "estimated": adapter returned estimates (e.g. usage_is_estimated flag)
+ * - "redacted": usage was redacted by privacy policy
+ */
+export const USAGE_REPORTED_STATES = ["not_reported", "reported", "estimated", "redacted"] as const;
+export type UsageReportedState = (typeof USAGE_REPORTED_STATES)[number];
+
+/**
+ * How the cost for a run was determined (JAC-4530).
+ * - "per_1m_tokens": per-token metering
+ * - "plan_billed": cost is bundled into a subscription/plan
+ * - "estimated": cost was interpolated, not directly metered
+ * - "not_reported": source payload had no cost field
+ * - "unknown": adapter cannot determine price basis
+ */
+export const PRICE_BASIS = [
+  "per_1m_tokens",
+  "plan_billed",
+  "estimated",
+  "not_reported",
+  "unknown",
+] as const;
+export type PriceBasis = (typeof PRICE_BASIS)[number];
+
+/** Default price basis when cost data is absent. */
+export const DEFAULT_PRICE_BASIS: PriceBasis = "not_reported";
+
+/**
+ * Confidence level specific to cost accuracy (JAC-4530).
+ * Distinct from the generic `confidence` field which covers overall data confidence.
+ * - "high" = cost confirmed from metered API response
+ * - "medium" = cost estimated from token counts + published rates
+ * - "low" = cost absent or cannot be determined
+ * - "unknown" = adapter could not determine cost confidence
+ */
+export const COST_CONFIDENCE_LEVELS = ["high", "medium", "low", "unknown"] as const;
+export type CostConfidenceLevel = (typeof COST_CONFIDENCE_LEVELS)[number];
+
+/** Default cost confidence when cost data is absent. */
+export const DEFAULT_COST_CONFIDENCE: CostConfidenceLevel = "low";
+
+/** Status of a run event — mirrors heartbeat run lifecycle outcomes. */
+export const RUN_EVENT_STATUSES = ["success", "error", "timeout", "canceled"] as const;
+export type RunEventStatus = (typeof RUN_EVENT_STATUSES)[number];
+
+/**
+ * Source system that emitted a run event.
+ * Used for idempotent event identity (JAC-4532).
+ */
+export const RUN_EVENT_SOURCE_SYSTEMS = ["paperclip", "adapter", "provider", "external"] as const;
+export type RunEventSourceSystem = (typeof RUN_EVENT_SOURCE_SYSTEMS)[number];
+
+/**
+ * Kind of run event for idempotency keying.
+ */
+export const RUN_EVENT_KINDS = ["adapter_execution", "cost_report", "usage_report", "lifecycle"] as const;
+export type RunEventKind = (typeof RUN_EVENT_KINDS)[number];
+
+/**
+ * Privacy/retention visibility classification for telemetry events (JAC-4533).
+ */
+export const VISIBILITY_CLASSES = ["public", "internal", "private", "redacted"] as const;
+export type VisibilityClass = (typeof VISIBILITY_CLASSES)[number];
+export const DEFAULT_VISIBILITY_CLASS: VisibilityClass = "internal";
+
+/**
+ * Retention policy class for telemetry events (JAC-4533).
+ */
+export const RETENTION_CLASSES = ["short_lived", "standard", "long_term", "permanent"] as const;
+export type RetentionClass = (typeof RETENTION_CLASSES)[number];
+export const DEFAULT_RETENTION_CLASS: RetentionClass = "standard";
+
+/**
+ * Redaction state of an event (JAC-4533).
+ */
+export const REDACTION_STATES = ["unredacted", "partially_redacted", "fully_redacted"] as const;
+export type RedactionState = (typeof REDACTION_STATES)[number];
+export const DEFAULT_REDACTION_STATE: RedactionState = "unredacted";
+
+/**
+ * Action-safety status for agent/routing/quota (JAC-4534).
+ * Fail-closed: unknown state = NOT routable.
+ */
+export const ROUTING_STATUSES = ["routable", "unroutable", "unknown"] as const;
+export type RoutingStatus = (typeof ROUTING_STATUSES)[number];
+
+export const QUOTA_STATUSES = ["available", "exhausted", "suspended", "unknown"] as const;
+export type QuotaStatus = (typeof QUOTA_STATUSES)[number];
+
+export const PUBLICATION_STATUSES = ["published", "pending", "blocked", "unknown"] as const;
+export type PublicationStatus = (typeof PUBLICATION_STATUSES)[number];
+
+export const WORK_STATE_CONFIDENCE = ["high", "medium", "low", "unknown"] as const;
+export type WorkStateConfidence = (typeof WORK_STATE_CONFIDENCE)[number];
+
+export const PAUSE_ELIGIBLE_SCOPES = ["self", "company", "tenant", "none"] as const;
+export type PauseEligibleScope = (typeof PAUSE_ELIGIBLE_SCOPES)[number];
+
+/**
+ * Freshness split for external objects (JAC-4535).
+ * - signal_freshness: when the last fresh signal (health/response) was observed.
+ * - route_freshness: when the routing/address of the external object was last verified.
+ * - publication_freshness: when the object's published metadata was last confirmed.
+ */
+export const EXTERNAL_OBJECT_FRESHNESS_STATES = [
+  "fresh",
+  "stale",
+  "expired",
+  "unknown",
+] as const;
+export type ExternalObjectFreshnessState =
+  (typeof EXTERNAL_OBJECT_FRESHNESS_STATES)[number];
 
 export const FINANCE_EVENT_KINDS = [
   "inference_charge",

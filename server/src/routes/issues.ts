@@ -385,6 +385,84 @@ function requiresPaperclipAttachmentMetadata(input: {
   return type === "artifact" && provider === "paperclip";
 }
 
+/**
+ * Publication contract (JAC-4538): determines whether a work product creation
+ * requires a publish_full_artifact approval. Attachment-backed artifacts
+ * (type="artifact", provider="paperclip") store full file content and require
+ * explicit board approval. Pointer-only references (workspace_file resourceRef)
+ * do not require approval.
+ */
+function requiresFullContentPublicationApproval(input: {
+  type?: unknown;
+  provider?: unknown;
+  metadata?: unknown;
+}): boolean {
+  const type = typeof input.type === "string" ? input.type : null;
+  const provider = typeof input.provider === "string" ? input.provider : null;
+  if (type !== "artifact" || provider !== "paperclip") return false;
+  // workspace_file references are pointers — they do NOT require approval
+  const metadata = input.metadata;
+  if (metadata && typeof metadata === "object" && "resourceRef" in metadata) {
+    return false;
+  }
+  return true;
+}
+
+/**
+ * Content types that represent full-content documents (reports, transcripts,
+ * private payloads) rather than lightweight artifacts (images, screenshots).
+ * These require a publish_full_artifact approval before upload.
+ */
+const FULL_CONTENT_ATTACHMENT_CONTENT_TYPES: readonly string[] = [
+  "text/markdown",
+  "text/plain",
+  "text/csv",
+  "application/json",
+  "application/pdf",
+  "application/msword",
+  "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+  "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+  "application/vnd.openxmlformats-officedocument.presentationml.presentation",
+  "application/vnd.ms-excel",
+  "application/vnd.ms-powerpoint",
+];
+
+function isFullContentAttachmentType(contentType: string): boolean {
+  const ct = contentType.toLowerCase();
+  return FULL_CONTENT_ATTACHMENT_CONTENT_TYPES.some(
+    (t) => ct === t || ct.startsWith("text/"),
+  );
+}
+
+/**
+ * Publication contract (JAC-4538): checks whether the issue has at least one
+ * approved publish_full_artifact approval.
+ */
+async function assertHasApprovedPublishFullArtifactApproval(
+  issueApprovalsSvc: ReturnType<typeof issueApprovalService>,
+  issueId: string,
+): Promise<boolean> {
+  const approvalsList = await issueApprovalsSvc.listApprovalsForIssue(issueId);
+  return approvalsList.some(
+    (a) => a.type === "publish_full_artifact" && a.status === "approved",
+  );
+}
+
+/**
+ * Publication contract (JAC-4538): returns the ID of the first approved
+ * publish_full_artifact approval on the issue, or null if none exists.
+ */
+async function findApprovedPublishFullArtifactApprovalId(
+  issueApprovalsSvc: ReturnType<typeof issueApprovalService>,
+  issueId: string,
+): Promise<string | null> {
+  const approvalsList = await issueApprovalsSvc.listApprovalsForIssue(issueId);
+  const found = approvalsList.find(
+    (a) => a.type === "publish_full_artifact" && a.status === "approved",
+  );
+  return found?.id ?? null;
+}
+
 const attachmentArtifactMetadataInputSchema = z.object({
   attachmentId: z.string().uuid(),
 }).passthrough();
@@ -6444,6 +6522,28 @@ export function issueRoutes(
         metadata: req.body.metadata ?? null,
       });
     }
+    // Publication contract (JAC-4538): attachment-backed artifact work products
+    // store full file content and require an approved publish_full_artifact
+    // approval. Pointer-only references (workspace_file) are exempt.
+    if (requiresFullContentPublicationApproval(createInput)) {
+      const hasApproval = await assertHasApprovedPublishFullArtifactApproval(
+        issueApprovalsSvc,
+        issue.id,
+      );
+      if (!hasApproval) {
+        res.status(403).json({
+          error:
+            "Full-content artifact publication requires an approved 'publish_full_artifact' approval on this issue. Use a workspace_file pointer reference instead, or obtain board approval.",
+          code: "publish_full_artifact_approval_required",
+        });
+        return;
+      }
+      const approvalId = await findApprovedPublishFullArtifactApprovalId(
+        issueApprovalsSvc,
+        issue.id,
+      );
+      createInput.publicationApprovalId = approvalId ?? null;
+    }
     const product = await workProductsSvc.createForIssue(issue.id, issue.companyId, createInput);
     if (!product) {
       res.status(422).json({ error: "Invalid work product payload" });
@@ -10445,6 +10545,24 @@ export function issueRoutes(
       contentType: file.mimetype,
       originalFilename: file.originalname,
     });
+    // Publication contract (JAC-4538): full-content attachments (reports,
+    // transcripts, private payloads) require an approved publish_full_artifact
+    // approval before upload. Lightweight artifacts (images, zip, video) are
+    // exempt.
+    if (isFullContentAttachmentType(contentType)) {
+      const hasApproval = await assertHasApprovedPublishFullArtifactApproval(
+        issueApprovalsSvc,
+        issueId,
+      );
+      if (!hasApproval) {
+        res.status(403).json({
+          error:
+            "Full-content attachment upload requires an approved 'publish_full_artifact' approval on this issue.",
+          code: "publish_full_artifact_approval_required",
+        });
+        return;
+      }
+    }
     if (file.buffer.length <= 0) {
       res.status(422).json({ error: "Attachment is empty" });
       return;

@@ -1,10 +1,13 @@
 import { and, desc, eq, gte, isNotNull, isNull, lt, lte, sql } from "drizzle-orm";
 import { alias } from "drizzle-orm/pg-core";
 import type { Db } from "@paperclipai/db";
-import { activityLog, agents, companies, costEvents, heartbeatRuns, issues, projects } from "@paperclipai/db";
+import { activityLog, agents, companies, costEvents, heartbeatRuns, issues, projects, runEvents } from "@paperclipai/db";
 import { notFound, unprocessable } from "../errors.js";
 import { budgetService, type BudgetServiceHooks } from "./budgets.js";
 import { visibleIssueCondition } from "./issue-visibility.js";
+import { resolveCoverageState, resolveSafeStatus, resolveLedgerCoverageForRun, resolveRunCoverageForError, computeCoverageWarning } from "@paperclipai/shared";
+import type { CostStatus, CoverageState, SafeStatus, SourceStatus, CoverageTotals, CoverageWarning, CoverageByAdapterRow, CoverageWarningsResponse, CoverageByAgent } from "@paperclipai/shared";
+import type { CreateRunEventInput, RunCoverageResolution } from "@paperclipai/shared";
 
 export interface CostDateRange {
   from?: Date;
@@ -64,6 +67,17 @@ export function costService(db: Db, budgetHooks: BudgetServiceHooks = {}) {
         throw unprocessable("Agent does not belong to company");
       }
 
+      // Apply fail-closed resolution for coverage-aware fields, mirroring the
+      // Zod schema transform in shared/validators/cost.ts. When the adapter did
+      // not expose usage reporting (source_status defaults to "unavailable"),
+      // coverage_state resolves to "uncovered" and safe_status to "unavailable".
+      const sourceStatus = (data.sourceStatus ?? "unavailable") as SourceStatus;
+      const resolvedCoverageState = resolveCoverageState(
+        (data.coverageState ?? "unknown") as CoverageState,
+        sourceStatus,
+      );
+      const resolvedSafeStatus: SafeStatus = resolveSafeStatus(resolvedCoverageState);
+
       const event = await db
         .insert(costEvents)
         .values({
@@ -72,6 +86,10 @@ export function costService(db: Db, budgetHooks: BudgetServiceHooks = {}) {
           biller: data.biller ?? data.provider,
           billingType: data.billingType ?? "unknown",
           cachedInputTokens: data.cachedInputTokens ?? 0,
+          sourceStatus,
+          coverageState: resolvedCoverageState,
+          safeStatus: resolvedSafeStatus,
+          coverageWarning: data.coverageWarning ?? null,
         })
         .returning()
         .then((rows) => rows[0]);
@@ -98,6 +116,102 @@ export function costService(db: Db, budgetHooks: BudgetServiceHooks = {}) {
         .where(eq(companies.id, companyId));
 
       await budgets.evaluateCostEvent(event);
+
+      return event;
+    },
+
+    /**
+     * Emit a normalized run event into the run_events table.
+     *
+     * Unlike createEvent (which writes cost_events tied to spend), this writes
+     * a coverage-aware run event for EVERY heartbeat run — including zero-spend
+     * runs (process/http adapters) and pre-execution failures. Coverage fields
+     * are resolved via fail-closed semantics from the UsageReportedState and
+     * token values, so callers cannot override coverageState/safeStatus.
+     */
+    createRunEvent: async (
+      companyId: string,
+      data: {
+        agentId: string;
+        issueId?: string | null;
+        runId: string;
+        adapterType: string;
+        model?: string;
+        provider?: string;
+        status: "success" | "error" | "timeout" | "canceled";
+        occurredAt: Date;
+        coverage: RunCoverageResolution;
+        eventKind?: "adapter_execution" | "cost_report" | "usage_report" | "lifecycle";
+        sourceSystem?: "paperclip" | "adapter" | "provider" | "external";
+        usageReportedState?: string;
+        payloadHash?: string | null;
+      },
+    ) => {
+      const agent = await db
+        .select()
+        .from(agents)
+        .where(eq(agents.id, data.agentId))
+        .then((rows) => rows[0] ?? null);
+
+      if (!agent) throw notFound("Agent not found");
+      if (agent.companyId !== companyId) {
+        throw unprocessable("Agent does not belong to company");
+      }
+
+      const usageReportedState = (data.usageReportedState ??
+        data.coverage.usageReportedState) as RunCoverageResolution["usageReportedState"];
+
+      const costStatus: CostStatus =
+        data.coverage.costCents != null ? "reported" : "unpriced";
+
+      const coverageWarning = computeCoverageWarning(
+        usageReportedState,
+        data.coverage.coverageState,
+        data.coverage.sourceStatus,
+        costStatus,
+      );
+
+      const event = await db
+        .insert(runEvents)
+        .values({
+          companyId,
+          agentId: data.agentId,
+          issueId: data.issueId ?? null,
+          runId: data.runId,
+          adapterType: data.adapterType,
+          model: data.model ?? "unknown",
+          provider: data.provider ?? "unknown",
+          status: data.status,
+          inputTokens: data.coverage.inputTokens ?? null,
+          outputTokens: data.coverage.outputTokens ?? null,
+          cachedInputTokens: data.coverage.cachedInputTokens ?? null,
+          reasoningTokens: data.coverage.reasoningTokens ?? null,
+          toolCallTokens: data.coverage.toolCallTokens ?? null,
+          costCents: data.coverage.costCents ?? null,
+          currency: "USD",
+          usageReportedState,
+          usageSourceField: data.coverage.usageReportedState === "not_reported" ? null : "usage",
+          coverageState: data.coverage.coverageState,
+          sourceStatus: data.coverage.sourceStatus,
+          safeStatus: data.coverage.safeStatus,
+          confidence: data.coverage.confidence,
+          visibilityClass: "internal",
+          retentionClass: "standard",
+          redactionState: "unredacted",
+          sourceSystem: data.sourceSystem ?? "paperclip",
+          eventKind: data.eventKind ?? "adapter_execution",
+          attemptIndex: 0,
+          observedAt: data.occurredAt,
+          payloadHash: data.payloadHash ?? null,
+          routingStatus: data.coverage.safeStatus === "available" ? "routable" : "unroutable",
+          quotaStatus: "unknown",
+          publicationStatus: "published",
+          workStateConfidence: data.coverage.confidence,
+          pauseEligibleScope: "none",
+          operatorDecisionRequired: false,
+        })
+        .returning()
+        .then((rows) => rows[0]);
 
       return event;
     },
@@ -506,6 +620,133 @@ export function costService(db: Db, budgetHooks: BudgetServiceHooks = {}) {
         .where(and(...conditions, sql`${effectiveProjectId} is not null`))
         .groupBy(effectiveProjectId, projects.name)
         .orderBy(desc(costCentsExpr));
+    },
+
+    /** Aggregate coverage totals and warnings for a company over a time window.
+     * Fail-closed: runs with no adapter usage reporting are counted as uncovered. */
+    async coverageSummary(companyId: string, range: CostDateRange = {}): Promise<CoverageWarningsResponse> {
+      const conditions = [eq(costEvents.companyId, companyId)];
+      if (range.from) conditions.push(gte(costEvents.occurredAt, range.from));
+      if (range.to) conditions.push(lte(costEvents.occurredAt, range.to));
+
+      const rows = await db
+        .select({
+          coverageState: costEvents.coverageState,
+          runCount: sql<number>`count(*)::integer`,
+        })
+        .from(costEvents)
+        .where(and(...conditions))
+        .groupBy(costEvents.coverageState);
+
+      const totals: CoverageTotals = {
+        totalRuns: 0,
+        coveredRuns: 0,
+        uncoveredRuns: 0,
+        partialCoverageRuns: 0,
+        unknownRuns: 0,
+      };
+      const byAdapterMap = new Map<string, CoverageByAdapterRow>();
+      const warnings: CoverageWarning[] = [];
+
+      for (const row of rows) {
+        totals.totalRuns += Number(row.runCount);
+        if (row.coverageState === "covered") totals.coveredRuns += Number(row.runCount);
+        else if (row.coverageState === "uncovered") totals.uncoveredRuns += Number(row.runCount);
+        else if (row.coverageState === "partial") totals.partialCoverageRuns += Number(row.runCount);
+        else totals.unknownRuns += Number(row.runCount);
+      }
+
+      // Per-adapter coverage breakdown
+      const adapterRows = await db
+        .select({
+          adapterType: costEvents.biller,
+          coverageState: costEvents.coverageState,
+          runCount: sql<number>`count(*)::integer`,
+        })
+        .from(costEvents)
+        .where(and(...conditions))
+        .groupBy(costEvents.biller, costEvents.coverageState);
+
+      for (const row of adapterRows) {
+        const key = `${row.adapterType}:${row.coverageState}`;
+        byAdapterMap.set(key, {
+          adapterType: row.adapterType,
+          sourceStatus: row.coverageState === "covered" ? "available" : "unavailable",
+          coverageState: row.coverageState as CoverageState,
+          safeStatus: row.coverageState === "covered" ? "available" : "unavailable",
+          runCount: Number(row.runCount),
+        });
+      }
+
+      // Build coverage warnings from uncovered/partial runs with coverage_warning text
+      const warningRows = await db
+        .select({
+          coverageWarning: costEvents.coverageWarning,
+          runCount: sql<number>`count(*)::integer`,
+          safeStatus: costEvents.safeStatus,
+        })
+        .from(costEvents)
+        .where(
+          and(
+            ...conditions,
+            isNotNull(costEvents.coverageWarning),
+            sql`${costEvents.coverageState} IN ('uncovered', 'partial')`,
+          ),
+        )
+        .groupBy(costEvents.coverageWarning, costEvents.safeStatus);
+
+      for (const row of warningRows) {
+        warnings.push({
+          severity: row.coverageWarning ? "warning" : "info",
+          adapterType: "unknown",
+          reason: row.coverageWarning ?? "no usage reported",
+          runCount: Number(row.runCount),
+          safeStatus: row.safeStatus as SafeStatus,
+        });
+      }
+
+      return {
+        companyId,
+        generatedAt: new Date(),
+        totals,
+        byAdapter: Array.from(byAdapterMap.values()),
+        warnings,
+      };
+    },
+
+    /** Coverage augmentation for cost-by-agent results when include_coverage=true. */
+    async coverageByAgent(companyId: string, range: CostDateRange = {}): Promise<CoverageByAgent[]> {
+      const conditions = [eq(costEvents.companyId, companyId)];
+      if (range.from) conditions.push(gte(costEvents.occurredAt, range.from));
+      if (range.to) conditions.push(lte(costEvents.occurredAt, range.to));
+
+      const rows = await db
+        .select({
+          agentId: costEvents.agentId,
+          coverageState: costEvents.coverageState,
+          runCount: sql<number>`count(*)::integer`,
+        })
+        .from(costEvents)
+        .where(and(...conditions))
+        .groupBy(costEvents.agentId, costEvents.coverageState);
+
+      const result = new Map<string, CoverageByAgent>();
+      for (const row of rows) {
+        const existing = result.get(row.agentId);
+        if (existing) {
+          if (row.coverageState === "covered") existing.coveredRuns += Number(row.runCount);
+          else if (row.coverageState === "uncovered") existing.uncoveredRuns += Number(row.runCount);
+          else if (row.coverageState === "partial") existing.partialRuns += Number(row.runCount);
+        } else {
+          result.set(row.agentId, {
+            coveredRuns: row.coverageState === "covered" ? Number(row.runCount) : 0,
+            uncoveredRuns: row.coverageState === "uncovered" ? Number(row.runCount) : 0,
+            partialRuns: row.coverageState === "partial" ? Number(row.runCount) : 0,
+            safeStatus: row.coverageState === "covered" ? "available" : "unavailable",
+          });
+        }
+      }
+      return Array.from(result.values());
     },
   };
 }

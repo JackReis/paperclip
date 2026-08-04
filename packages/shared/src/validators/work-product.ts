@@ -93,6 +93,7 @@ export const createIssueWorkProductSchema = z.object({
   summary: z.string().optional().nullable(),
   metadata: issueWorkProductMetadataSchema.optional().nullable(),
   createdByRunId: z.string().uuid().optional().nullable(),
+  publicationApprovalId: z.string().uuid().optional().nullable(),
 });
 
 export type CreateIssueWorkProduct = z.infer<typeof createIssueWorkProductSchema>;

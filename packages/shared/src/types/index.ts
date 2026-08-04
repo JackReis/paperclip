@@ -734,6 +734,7 @@ export type {
   RoutineListItem,
 } from "./routine.js";
 export type { CostEvent, CostSummary, IssueCostSummary, CostByAgent, CostByProviderModel, CostByBiller, CostByAgentModel, CostWindowSpendRow, CostByProject } from "./cost.js";
+export type { RunEvent, CoverageTotals, CoverageWarning, CoverageByAdapterRow, CoverageWarningsResponse, CoverageByAgent } from "./run-event.js";
 export type { FinanceEvent, FinanceSummary, FinanceByBiller, FinanceByKind } from "./finance.js";
 export type {
   AgentWakeupResponse,
@@ -885,3 +886,8 @@ export type {
 export * from "./app-definition.js";
 export * from "./sync-metadata.js";
 export * from "./memory-plane-event.js";
+export type {
+  ProductivityReviewTrigger,
+  ProductivityReviewTriggerSnooze,
+  ProductivityReviewOverride,
+} from "./productivity-review.js";

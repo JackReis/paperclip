@@ -59,6 +59,10 @@ export function issueApprovalService(db: Db) {
           decidedAt: approvals.decidedAt,
           createdAt: approvals.createdAt,
           updatedAt: approvals.updatedAt,
+          artifactKind: approvals.artifactKind,
+          artifactPointer: approvals.artifactPointer,
+          artifactSha256: approvals.artifactSha256,
+          redactionState: approvals.redactionState,
         })
         .from(issueApprovals)
         .innerJoin(approvals, eq(issueApprovals.approvalId, approvals.id))

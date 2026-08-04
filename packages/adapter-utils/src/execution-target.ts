@@ -177,8 +177,8 @@ function resolveDefaultPaperclipApiUrl(): string {
   const runtimeHost = resolveHostForUrl(
     process.env.PAPERCLIP_LISTEN_HOST ?? process.env.HOST ?? "localhost",
   );
-  // 3100 matches the default Paperclip dev server port when the runtime does not provide one.
-  const runtimePort = process.env.PAPERCLIP_LISTEN_PORT ?? process.env.PORT ?? "3100";
+  // 3101 matches the default Paperclip dev server port when the runtime does not provide one.
+  const runtimePort = process.env.PAPERCLIP_LISTEN_PORT ?? process.env.PORT ?? "3101";
   return `http://${runtimeHost}:${runtimePort}`;
 }
 

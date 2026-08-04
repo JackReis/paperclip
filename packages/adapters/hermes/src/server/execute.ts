@@ -158,7 +158,7 @@ export function buildPrompt(
   let paperclipApiUrl =
     cfgString(config.paperclipApiUrl) ||
     process.env.PAPERCLIP_API_URL ||
-    "http://127.0.0.1:3100/api";
+    "http://127.0.0.1:3101/api";
   // Ensure /api suffix
   if (!paperclipApiUrl.endsWith("/api")) {
     paperclipApiUrl = paperclipApiUrl.replace(/\/+$/, "") + "/api";

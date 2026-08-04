@@ -13,7 +13,9 @@ import {
   envBindingSchema,
   isEnvironmentDriverSupportedForAdapter,
   type BillingType,
+  type ConfidenceLevel,
   type CostStatus,
+  type CoverageState,
   type EnvironmentLeaseStatus,
   type ExecutionWorkspace,
   type ExecutionWorkspaceConfig,
@@ -25,7 +27,12 @@ import {
   type RequestConfirmationResult,
   type RoutineRevisionSnapshotV1,
   type RunLivenessState,
+  type SafeStatus,
+  type SourceStatus,
   type SourceTrustMetadata,
+  resolveLedgerCoverageForRun,
+  resolveRunCoverageForError,
+  type RunCoverageResolution,
 } from "@paperclipai/shared";
 import {
   agents,
@@ -61,12 +68,14 @@ import {
   routineRevisions,
   routineRuns,
   routines,
+  runEvents,
   toolMcpGateways,
   toolMcpGatewayTokens,
   toolConnections,
   toolProfiles,
   workspaceOperations,
 } from "@paperclipai/db";
+
 import { conflict, HttpError, notFound } from "../errors.js";
 import { logger } from "../middleware/logger.js";
 import { publishLiveEvent } from "./live-events.js";
@@ -84,7 +93,7 @@ import type {
   UsageSummary,
 } from "../adapters/index.js";
 import { createLocalAgentJwt } from "../agent-auth-jwt.js";
-import { parseObject, asBoolean, asNumber, appendWithByteCap, MAX_EXCERPT_BYTES } from "../adapters/utils.js";
+import { parseObject, asBoolean, asNumber, asString, appendWithByteCap, MAX_EXCERPT_BYTES } from "../adapters/utils.js";
 import { costService } from "./costs.js";
 import { trackAgentFirstHeartbeat } from "@paperclipai/shared/telemetry";
 import { getTelemetryClient } from "../telemetry.js";
@@ -2672,6 +2681,73 @@ export function resolveLedgerCostStatus(input: {
 }): CostStatus {
   const hasTokenUsage = input.inputTokens > 0 || input.cachedInputTokens > 0 || input.outputTokens > 0;
   return input.costUsd == null && hasTokenUsage ? "unpriced" : "reported";
+}
+
+/**
+ * Resolve coverage-aware fields for a cost event from adapter execution results.
+ *
+ * Fail-closed semantics:
+ * - When the adapter did not expose usage reporting at all (no `result.usage` object),
+ *   source_status is "unavailable" and coverage_state is "uncovered".
+ * - When the adapter reported usage but token counts are all zero, coverage is "partial"
+ *   (the source reported, but no tokens were captured).
+ * - When the adapter reported usage with non-zero token counts, coverage is "covered".
+ * - safeStatus is derived from coverageState: only "covered" maps to "available";
+ *   everything else (partial, uncovered, unknown) maps to "unavailable".
+ * - confidence is "high" when cost and tokens are both present, "medium" when only
+ *   tokens are present, "low" when coverage is partial or uncached.
+ */
+type CoverageResolution = {
+  coverageState: CoverageState;
+  sourceStatus: SourceStatus;
+  safeStatus: SafeStatus;
+  confidence: ConfidenceLevel;
+};
+
+export function resolveLedgerCoverage(
+  result: Pick<AdapterExecutionResult, "usage" | "costUsd">,
+  usage: { inputTokens: number; cachedInputTokens: number; outputTokens: number } | null,
+): CoverageResolution {
+  const hasUsageObject = result.usage != null;
+  const hasTokenUsage =
+    usage != null &&
+    (usage.inputTokens > 0 || usage.cachedInputTokens > 0 || usage.outputTokens > 0);
+  const hasCost = result.costUsd != null && Number.isFinite(result.costUsd) && result.costUsd > 0;
+
+  if (!hasUsageObject) {
+    return {
+      coverageState: "uncovered",
+      sourceStatus: "unavailable",
+      safeStatus: "unavailable",
+      confidence: "low",
+    };
+  }
+
+  if (hasTokenUsage && hasCost) {
+    return {
+      coverageState: "covered",
+      sourceStatus: "available",
+      safeStatus: "available",
+      confidence: "high",
+    };
+  }
+
+  if (hasTokenUsage) {
+    return {
+      coverageState: "covered",
+      sourceStatus: "available",
+      safeStatus: "available",
+      confidence: "medium",
+    };
+  }
+
+  // Adapter reported a usage object but no tokens were captured.
+  return {
+    coverageState: "partial",
+    sourceStatus: "available",
+    safeStatus: "unavailable",
+    confidence: "low",
+  };
 }
 
 export async function resolveLedgerScopeForRun(
@@ -11630,12 +11706,14 @@ export function heartbeatService(db: Db, options: HeartbeatServiceOptions = {}) 
     const billingType = normalizeLedgerBillingType(result.billingType);
     const additionalCostCents = normalizeBilledCostCents(result.costUsd, billingType);
     const hasTokenUsage = inputTokens > 0 || outputTokens > 0 || cachedInputTokens > 0;
+    const hasUsageObject = result.usage != null;
     const costStatus = resolveLedgerCostStatus({
       costUsd: result.costUsd,
       inputTokens,
       cachedInputTokens,
       outputTokens,
     });
+    const coverage = resolveLedgerCoverage(result, usage);
     const provider = result.provider ?? "unknown";
     const biller = resolveLedgerBiller(result);
     const ledgerScope = await resolveLedgerScopeForRun(db, agent.companyId, run);
@@ -11656,26 +11734,51 @@ export function heartbeatService(db: Db, options: HeartbeatServiceOptions = {}) 
       })
       .where(eq(agentRuntimeState.agentId, agent.id));
 
-    if (additionalCostCents > 0 || hasTokenUsage) {
-      const costs = costService(db, budgetHooks);
-      await costs.createEvent(agent.companyId, {
-        heartbeatRunId: run.id,
-        agentId: agent.id,
-        issueId: ledgerScope.issueId,
-        projectId: ledgerScope.projectId,
-        billingCode: ledgerScope.billingCode,
-        provider,
-        biller,
-        billingType,
-        costStatus,
-        model: result.model ?? "unknown",
-        inputTokens,
-        cachedInputTokens,
-        outputTokens,
-        costCents: additionalCostCents,
-        occurredAt: new Date(),
-      });
-    }
+    // Emit a cost event for every run regardless of whether it produced spend.
+    // Fail-closed coverage fields (coverage_state, source_status, safe_status)
+    // are always resolved so zero-spend runs are still tracked for coverage auditing.
+    const costs = costService(db, budgetHooks);
+    const coverageWarning =
+      coverage.coverageState === "uncovered"
+        ? "adapter did not expose usage reporting; coverage fail-closed to uncovered"
+        : coverage.coverageState === "partial"
+          ? "adapter reported usage but no tokens were captured"
+          : null;
+    await costs.createEvent(agent.companyId, {
+      heartbeatRunId: run.id,
+      agentId: agent.id,
+      issueId: ledgerScope.issueId,
+      projectId: ledgerScope.projectId,
+      billingCode: ledgerScope.billingCode,
+      provider,
+      biller,
+      billingType,
+      costStatus,
+      model: result.model ?? "unknown",
+      inputTokens,
+      cachedInputTokens,
+      outputTokens,
+      costCents: additionalCostCents,
+      occurredAt: new Date(),
+      ...coverage,
+      coverageWarning,
+    });
+
+    // Emit a normalized run event for every run (JAC-4529). Unlike cost_events,
+    // run_events are always written — including zero-spend runs (process/http
+    // adapters) — so coverage auditing is fail-closed for all runs.
+    const runCoverage = resolveLedgerCoverageForRun(result, usage);
+    await costs.createRunEvent(agent.companyId, {
+      agentId: agent.id,
+      issueId: ledgerScope.issueId ?? null,
+      runId: run.id,
+      adapterType: agent.adapterType,
+      model: result.model ?? "unknown",
+      provider,
+      status: run.status === "succeeded" ? "success" : "error",
+      occurredAt: new Date(),
+      coverage: runCoverage,
+    });
   }
 
   async function startNextQueuedRunForAgent(agentId: string) {
@@ -13811,6 +13914,7 @@ export function heartbeatService(db: Db, options: HeartbeatServiceOptions = {}) 
                 outputTokens: normalizedUsage?.outputTokens ?? 0,
               }),
               billingType: normalizeLedgerBillingType(adapterResult.billingType),
+              ...resolveLedgerCoverage(adapterResult, normalizedUsage),
             } as Record<string, unknown>)
           : null;
 
@@ -14205,8 +14309,28 @@ export function heartbeatService(db: Db, options: HeartbeatServiceOptions = {}) 
               level: "error",
               message,
             }).catch(() => undefined);
+
+            // Emit a normalized run_event with fail-closed coverage for the failed
+            // run (JAC-4529). These runs never reached updateRuntimeState (which
+            // emits run events for successful/executed runs), so we record them
+            // here to ensure coverage auditing covers pre-execution failures.
+            const setupFailureCosts = costService(db, budgetHooks);
+            const setupFailureIssueId = readNonEmptyString(parseObject(failedRun.contextSnapshot).issueId);
+            const setupFailureRunCoverage = resolveRunCoverageForError();
+            await setupFailureCosts.createRunEvent(run.companyId, {
+              agentId: run.agentId,
+              issueId: setupFailureIssueId ?? null,
+              runId: failedRun.id,
+              adapterType: setupFailureAgent?.adapterType ?? asString(parseObject(failedRun.resultJson).adapterType, "unknown"),
+              model: asString(parseObject(failedRun.resultJson).model, "unknown"),
+              provider: asString(parseObject(failedRun.resultJson).provider, "unknown"),
+              status: failedRun.errorCode === "timeout" ? "timeout" : "error",
+              occurredAt: new Date(),
+              coverage: setupFailureRunCoverage,
+              eventKind: "lifecycle",
+            }).catch(() => undefined);
+
             const livenessRun = await classifyAndPersistRunLiveness(failedRun).catch(() => failedRun);
-            const setupFailureIssueId = readNonEmptyString(parseObject(livenessRun.contextSnapshot).issueId);
             if (setupFailureIssueId) {
               await completeSkillTestRunForHeartbeatOutcome({
                 run: livenessRun,

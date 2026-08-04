@@ -476,6 +476,259 @@ describeEmbeddedPostgres("cost and finance aggregate overflow handling", () => {
     expect(agent?.spentMonthlyCents).toBe(0);
   });
 
+  it("applies fail-closed coverage semantics: omitted fields default to unknown/unavailable", async () => {
+    const companyId = randomUUID();
+    const agentId = randomUUID();
+
+    await db.insert(companies).values({
+      id: companyId,
+      name: "Paperclip",
+      issuePrefix: `T${companyId.replace(/-/g, "").slice(0, 6).toUpperCase()}`,
+      requireBoardApprovalForNewAgents: false,
+    });
+    await db.insert(agents).values({
+      id: agentId,
+      companyId,
+      name: "CLI Agent",
+      role: "engineer",
+      status: "active",
+      adapterType: "codex_local",
+      adapterConfig: {},
+      runtimeConfig: {},
+      permissions: {},
+    });
+
+    // When source_status is absent/default ("unavailable") and coverage_state
+    // defaults to "unknown", both are fail-closed: safe_status is always "unavailable".
+    // coverageState stays "unknown" (the fail-closed default — never promoted to covered).
+    const event = await costs.createEvent(companyId, {
+      agentId,
+      provider: "claude",
+      biller: "anthropic",
+      billingType: "metered_api",
+      costStatus: "reported",
+      model: "claude-3-5-sonnet",
+      inputTokens: 500,
+      cachedInputTokens: 0,
+      outputTokens: 200,
+      costCents: 15,
+      occurredAt: new Date("2026-08-04T12:00:00.000Z"),
+    });
+
+    // Fail-closed: source unavailable → safe unavailable (always)
+    expect(event.sourceStatus).toBe("unavailable");
+    expect(event.coverageState).toBe("unknown");
+    expect(event.safeStatus).toBe("unavailable");
+    expect(event.confidence).toBe("low");
+  });
+
+  it("forces uncovered when caller claims covered but source is unavailable", async () => {
+    const companyId = randomUUID();
+    const agentId = randomUUID();
+
+    await db.insert(companies).values({
+      id: companyId,
+      name: "Paperclip",
+      issuePrefix: `T${companyId.replace(/-/g, "").slice(0, 6).toUpperCase()}`,
+      requireBoardApprovalForNewAgents: false,
+    });
+    await db.insert(agents).values({
+      id: agentId,
+      companyId,
+      name: "CLI Agent",
+      role: "engineer",
+      status: "active",
+      adapterType: "codex_local",
+      adapterConfig: {},
+      runtimeConfig: {},
+      permissions: {},
+    });
+
+    // Caller claims "covered" but source_status is "unavailable" → forced to uncovered.
+    const event = await costs.createEvent(companyId, {
+      agentId,
+      provider: "claude",
+      biller: "anthropic",
+      billingType: "metered_api",
+      costStatus: "reported",
+      model: "claude-3-5-sonnet",
+      inputTokens: 500,
+      cachedInputTokens: 0,
+      outputTokens: 200,
+      costCents: 15,
+      coverageState: "covered",
+      sourceStatus: "unavailable",
+      occurredAt: new Date("2026-08-04T12:00:00.000Z"),
+    });
+
+    expect(event.sourceStatus).toBe("unavailable");
+    expect(event.coverageState).toBe("uncovered");
+    expect(event.safeStatus).toBe("unavailable");
+  });
+
+  it("persists coverageWarning when source is unavailable", async () => {
+    const companyId = randomUUID();
+    const agentId = randomUUID();
+
+    await db.insert(companies).values({
+      id: companyId,
+      name: "Paperclip",
+      issuePrefix: `T${companyId.replace(/-/g, "").slice(0, 6).toUpperCase()}`,
+      requireBoardApprovalForNewAgents: false,
+    });
+    await db.insert(agents).values({
+      id: agentId,
+      companyId,
+      name: "CLI Agent",
+      role: "engineer",
+      status: "active",
+      adapterType: "codex_local",
+      adapterConfig: {},
+      runtimeConfig: {},
+      permissions: {},
+    });
+
+    const event = await costs.createEvent(companyId, {
+      agentId,
+      provider: "openai",
+      biller: "chatgpt",
+      billingType: "metered_api",
+      costStatus: "reported",
+      model: "gpt-5",
+      inputTokens: 0,
+      cachedInputTokens: 0,
+      outputTokens: 0,
+      costCents: 0,
+      coverageState: "uncovered",
+      sourceStatus: "unavailable",
+      coverageWarning: "adapter did not expose usage reporting",
+      occurredAt: new Date("2026-08-04T12:00:00.000Z"),
+    });
+
+    expect(event.coverageWarning).toBe("adapter did not expose usage reporting");
+    expect(event.coverageState).toBe("uncovered");
+    expect(event.safeStatus).toBe("unavailable");
+  });
+
+  it("preserves explicit coverage fields when source is available", async () => {
+    const companyId = randomUUID();
+    const agentId = randomUUID();
+
+    await db.insert(companies).values({
+      id: companyId,
+      name: "Paperclip",
+      issuePrefix: `T${companyId.replace(/-/g, "").slice(0, 6).toUpperCase()}`,
+      requireBoardApprovalForNewAgents: false,
+    });
+    await db.insert(agents).values({
+      id: agentId,
+      companyId,
+      name: "CLI Agent",
+      role: "engineer",
+      status: "active",
+      adapterType: "codex_local",
+      adapterConfig: {},
+      runtimeConfig: {},
+      permissions: {},
+    });
+
+    // When source_status is "available" and coverage is "covered",
+    // safe_status should resolve to "available".
+    const event = await costs.createEvent(companyId, {
+      agentId,
+      provider: "openai",
+      biller: "openai",
+      billingType: "metered_api",
+      costStatus: "reported",
+      model: "gpt-5",
+      inputTokens: 1000,
+      cachedInputTokens: 200,
+      outputTokens: 500,
+      costCents: 30,
+      currency: "USD",
+      coverageState: "covered",
+      sourceStatus: "available",
+      safeStatus: "available",
+      confidence: "high",
+      occurredAt: new Date("2026-08-04T12:00:00.000Z"),
+    });
+
+    expect(event.sourceStatus).toBe("available");
+    expect(event.coverageState).toBe("covered");
+    expect(event.safeStatus).toBe("available");
+    expect(event.confidence).toBe("high");
+    expect(event.currency).toBe("USD");
+  });
+
+  it("coverageSummary aggregates coverage states and surfaces warnings", async () => {
+    const companyId = randomUUID();
+    const agentId = randomUUID();
+
+    await db.insert(companies).values({
+      id: companyId,
+      name: "Paperclip",
+      issuePrefix: `T${companyId.replace(/-/g, "").slice(0, 6).toUpperCase()}`,
+      requireBoardApprovalForNewAgents: false,
+    });
+    await db.insert(agents).values({
+      id: agentId,
+      companyId,
+      name: "CLI Agent",
+      role: "engineer",
+      status: "active",
+      adapterType: "codex_local",
+      adapterConfig: {},
+      runtimeConfig: {},
+      permissions: {},
+    });
+
+    // Insert events with different coverage states
+    await costs.createEvent(companyId, {
+      agentId,
+      provider: "openai",
+      biller: "openai",
+      billingType: "metered_api",
+      costStatus: "reported",
+      model: "gpt-5",
+      inputTokens: 100,
+      cachedInputTokens: 0,
+      outputTokens: 50,
+      costCents: 5,
+      coverageState: "covered",
+      sourceStatus: "available",
+      occurredAt: new Date("2026-08-04T12:00:00.000Z"),
+    });
+
+    await costs.createEvent(companyId, {
+      agentId,
+      provider: "openai",
+      biller: "openai",
+      billingType: "metered_api",
+      costStatus: "reported",
+      model: "gpt-5",
+      inputTokens: 0,
+      cachedInputTokens: 0,
+      outputTokens: 0,
+      costCents: 0,
+      coverageState: "uncovered",
+      sourceStatus: "unavailable",
+      coverageWarning: "adapter did not expose usage reporting",
+      occurredAt: new Date("2026-08-04T12:01:00.000Z"),
+    });
+
+    const range = {
+      from: new Date("2026-08-04T00:00:00.000Z"),
+      to: new Date("2026-08-05T00:00:00.000Z"),
+    };
+
+    const summary = await costs.coverageSummary(companyId, range);
+    expect(summary.totals.totalRuns).toBe(2);
+    expect(summary.totals.coveredRuns).toBe(1);
+    expect(summary.totals.uncoveredRuns).toBe(1);
+    expect(summary.warnings.length).toBeGreaterThan(0);
+    expect(summary.warnings[0].reason).toBe("adapter did not expose usage reporting");
+  });
+
   it("aggregates cost event sums above int32 without raising Postgres integer overflow", async () => {
     const companyId = randomUUID();
     const agentId = randomUUID();

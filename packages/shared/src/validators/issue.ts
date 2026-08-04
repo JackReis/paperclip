@@ -133,6 +133,22 @@ export const issueAssigneeAdapterOverridesSchema = z
   })
   .strict();
 
+export const issueProductivityReviewTriggerSnoozeSchema = z.object({
+  trigger: z.enum(["no_comment_streak", "long_active_duration", "high_churn"]),
+  snoozedUntil: z.string().datetime(),
+  reason: z.string().trim().min(1).max(500).optional().nullable(),
+}).strict();
+
+export const issueProductivityReviewOverrideSchema = z
+  .object({
+    triggerSnoozes: z
+      .array(issueProductivityReviewTriggerSnoozeSchema)
+      .max(10)
+      .optional()
+      .nullable(),
+  })
+  .strict();
+
 const issueExecutionStagePrincipalBaseSchema = z.object({
   type: z.enum(["agent", "user"]),
   agentId: z.string().uuid().optional().nullable(),
@@ -395,6 +411,7 @@ const createIssueBaseSchema = z.object({
   responsibleUserId: z.string().optional().nullable(),
   billingCode: z.string().optional().nullable(),
   assigneeAdapterOverrides: issueAssigneeAdapterOverridesSchema.optional().nullable(),
+  productivityReviewOverride: issueProductivityReviewOverrideSchema.optional().nullable(),
   executionPolicy: issueExecutionPolicySchema.optional().nullable(),
   executionWorkspaceId: z.string().uuid().optional().nullable(),
   executionWorkspacePreference: z.enum(ISSUE_EXECUTION_WORKSPACE_PREFERENCES).optional().nullable(),
