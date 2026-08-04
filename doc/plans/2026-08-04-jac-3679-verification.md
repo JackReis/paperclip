@@ -160,7 +160,26 @@ Re-ran the full verification battery from this heartbeat:
 - `grep -oE '{{[A-Z_]+}}' report-kit/template.html` — 9 total occurrences across 8 unique tokens (`TITLE`, `SUBTITLE`, `GENERATED_BY`, `SOURCE`, `CHECKSUM`, `GUARDRAIL_VERSION`, `ENVIRONMENT`, `NOTES`)
 - End-to-end render via dynamic ES module import of `renderReport(sample-data-devin-deepwiki.json)`: **12/12 structural checks PASS**, output 16,581 chars, 9 SVG icons, 10 metric-card elements, div tag balance confirmed, no placeholder tokens remaining, no `[object Object]`
 
-All findings from the 10:30Z verification are confirmed. Issue JAC-3679 remains `done` — all deliverables are git-tracked, clean, and independently verified at this heartbeat.
+All findings confirmed. Issue JAC-3679 remains `done` — all deliverables are git-tracked, clean, and independently verified.
+
+### Stale zip correction (2026-08-04T14:30Z, Alarak)
+
+The `report-kit.zip` was stale — it contained the README from commit `f959e16a1` (26,556 bytes), not the updated README from commits `c746c68ac` and `30e1f3594` (28,101 bytes). The README was updated to 28,101 bytes in those commits but the zip was never rebuilt since `f959e16a1` only touched the README count, not the zip.
+
+**Fix applied:** Rebuilt the zip from the current working tree:
+```sh
+cd report-kit && rm -f report-kit.zip && zip -r report-kit.zip report-renderer.js report-data.schema.json template.html sample-report.html sample-data-devin-deepwiki.json README.md
+```
+
+**Corrected zip state (post-rebuild):**
+- 6 files, 71,912 bytes uncompressed, 24,095 bytes compressed
+- SHA-256: `bee9ca51d46f542fe17968ffca1500c9ea750555175e81519a6f3bf94d544b7f`
+- `unzip -t` confirms no errors in compressed data
+- All 6 files byte-for-byte match their tracked counterparts in git HEAD
+
+**Old SHA-256 referenced in earlier sections of this doc (`b204597575...`):** This is now superseded by the rebuilt zip above. The old hash was correct for the stale zip at the time it was written, but the zip was not rebuilt after the README updates in `c746c68ac`/`30e1f3594`.
+
+**Verification re-run:** `node --test report-kit/report-kit.test.mjs` — 11/11 pass (including zip signature test, which validates the PK\x03\x04 magic bytes at offset 0).
 
 ### Press independent re-verification (waking heartbeat, 2026-08-04T10:59Z, this run)
 
