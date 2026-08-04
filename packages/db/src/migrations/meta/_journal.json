@@ -1441,63 +1441,63 @@
       "idx": 207,
       "version": "7",
       "when": 1784824200000,
-      "tag": "0184_routine_goal_sync_metadata",
+      "tag": "0207_routine_goal_sync_metadata",
       "breakpoints": true
     },
     {
       "idx": 208,
       "version": "7",
       "when": 1783025824120,
-      "tag": "0185_environment_custom_image_templates_reconciliation",
+      "tag": "0208_environment_custom_image_templates_reconciliation",
       "breakpoints": true
     },
     {
       "idx": 209,
       "version": "7",
       "when": 1783025924120,
-      "tag": "0186_agent_sessions",
+      "tag": "0209_agent_sessions",
       "breakpoints": true
     },
     {
       "idx": 210,
       "version": "7",
       "when": 1775500000000,
-      "tag": "0187_cost_events_coverage_fields",
+      "tag": "0210_cost_events_coverage_fields",
       "breakpoints": true
     },
     {
       "idx": 211,
       "version": "7",
       "when": 1784592001000,
-      "tag": "0188_run_events_coverage",
+      "tag": "0211_run_events_coverage",
       "breakpoints": true
     },
     {
       "idx": 212,
       "version": "7",
       "when": 1784592001000,
-      "tag": "0189_productivity_review_trigger_snooze",
+      "tag": "0212_productivity_review_trigger_snooze",
       "breakpoints": true
     },
     {
       "idx": 213,
       "version": "7",
       "when": 1784592002000,
-      "tag": "0190_cost_events_price_basis",
+      "tag": "0213_cost_events_price_basis",
       "breakpoints": true
     },
     {
       "idx": 214,
       "version": "7",
       "when": 1784592003000,
-      "tag": "0191_run_events_extended_fields",
+      "tag": "0214_run_events_extended_fields",
       "breakpoints": true
     },
     {
       "idx": 215,
       "version": "7",
       "when": 1784592004000,
-      "tag": "0192_cost_events_privacy_index",
+      "tag": "0215_cost_events_privacy_index",
       "breakpoints": true
     }
   ]
