@@ -21,9 +21,15 @@ export const DEFAULT_GRACE_SEC = 10;
  * Default model to use if none specified.
  *
  * Use "auto" so that Hermes resolves the model from the user's local
- * ~/.hermes/config.yaml — preventing the adapter from overriding a
- * user's configured default (e.g. MiniMax, OpenRouter, etc.) with a
- * hardcoded Anthropic model during Paperclip onboarding.
+ * Hermes config.yaml — preventing the adapter from overriding a
+ * user's configured default (e.g. MiniMax, OpenRouter, etc.) during
+ * Paperclip onboarding.
+ *
+ * Note: As of JAC-4603, all hermes_local agents have empty adapterConfig,
+ * so model resolution delegates to Hermes config.yaml. The Hermes config
+ * now defaults to qwen3-coder:30b via ollama-launch (local Ollama :11434)
+ * to avoid cloud provider rate limits (NOUS_API_KEY quota exhaustion,
+ * OpenRouter 429s, XAI 403s).
  */
 export const DEFAULT_MODEL = "auto";
 
@@ -45,6 +51,7 @@ export const VALID_PROVIDERS = [
   "minimax",
   "minimax-cn",
   "kilocode",
+  "ollama-launch",
 ] as const;
 
 /**

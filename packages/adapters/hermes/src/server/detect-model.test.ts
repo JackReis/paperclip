@@ -90,6 +90,56 @@ test("resolveProvider still infers from the requested model when Hermes config i
   });
 });
 
+test("resolveProvider extracts explicit provider prefix from model name (e.g. ollama-launch/qwen3-coder:30b)", () => {
+  // When the model name includes a recognized provider prefix like
+  // "ollama-launch/qwen3-coder:30b", the adapter should use that provider
+  // instead of stripping it and falling back to "auto" (which would route
+  // to Hermes's config-default provider — openrouter — and get a 404).
+  expect(resolveProvider({
+    explicitProvider: undefined,
+    detectedProvider: undefined,
+    detectedModel: undefined,
+    model: "ollama-launch/qwen3-coder:30b",
+  })).toEqual({
+    provider: "ollama-launch",
+    resolvedFrom: "modelInference",
+  });
+});
+
+test("resolveProvider extracts explicit provider prefix for huggingface models", () => {
+  expect(resolveProvider({
+    explicitProvider: undefined,
+    model: "huggingface/org/model-name",
+  })).toEqual({
+    provider: "huggingface",
+    resolvedFrom: "modelInference",
+  });
+});
+
+test("resolveProvider falls back to prefix inference for bare qwen model names", () => {
+  // A bare "qwen3-coder:30b" without a provider prefix resolves to "auto"
+  // via the qwen → auto hint. This preserves backward compatibility for
+  // cloud-hosted qwen models — the provider prefix must be explicit
+  // (e.g. "ollama-launch/qwen3-coder:30b") for local Ollama routing.
+  expect(resolveProvider({
+    explicitProvider: undefined,
+    model: "qwen3-coder:30b",
+  })).toEqual({
+    provider: "auto",
+    resolvedFrom: "modelInference",
+  });
+});
+
+test("resolveProvider handles mixed-case provider prefix in model name", () => {
+  expect(resolveProvider({
+    explicitProvider: undefined,
+    model: "Ollama-Launch/qwen3-coder:30b",
+  })).toEqual({
+    provider: "ollama-launch",
+    resolvedFrom: "modelInference",
+  });
+});
+
 async function withHermesHomeConfig(
   configLines: string[],
   fn: (hermesCommand: string) => Promise<void>,
