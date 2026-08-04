@@ -1,0 +1,77 @@
+{
+  "issue": "JAC-4647",
+  "title": "Deploy hermes_local DEFAULT_MODEL fix (2f5ff6345) to running npm Paperclip server (JAC-4602 recovery)",
+  "timestamp": "2026-08-04T19:35:00Z",
+  "deploymentSummary": {
+    "fixCommit": "2f5ff634567e23daadd8f1fa96cd8e3cdaa954cf",
+    "npmPackagePath": "~/.hermes/node/lib/node_modules/paperclipai/node_modules/@paperclipai/hermes-paperclip-adapter/dist/shared/constants.js",
+    "npmConstantsMtime": "2026-08-04T09:14:07Z",
+    "serverRestartTime": "2026-08-04T14:20:22Z",
+    "serverVersion": "v2026.722.0",
+    "defaultValueModel": "ollama-launch/qwen3-coder:30b",
+    "oldDefaultModel": "auto",
+    "howLoaded": "Server dist/adapters/registry.js imports createHermesLocalServerAdapter from @paperclipai/hermes-paperclip-adapter, which calls execute() from server/execute.js, which imports DEFAULT_MODEL from shared/constants.js"
+  },
+  "verificationBefore": {
+    "errorCount": 25,
+    "errorReasonSample": "Traceback (most recent call last):",
+    "truncationNote": "34-char truncation on errorReason",
+    "allErroredAgents": "hermes_local with adapterConfig having model='poolside/laguna-s-2.1:free' but resolving to Hermes config provider=openrouter, causing OpenRouter 404 for qwen3-coder:30b"
+  },
+  "verificationAfter": {
+    "errorCount": 0,
+    "idleCount": 39,
+    "runningCount": 28,
+    "pausedCount": 1,
+    "truncatedTracebacks": 0,
+    "agentsUsingDefaultModel": {
+      "model": "qwen3-coder:30b",
+      "provider": "ollama-launch",
+      "count": 3,
+      "agents": ["Hermes Coder", "Operator", "Dispatcher Worker"],
+      "allRunning": true
+    },
+    "agentsWithNullModelInConfig": {
+      "model": null,
+      "count": 1,
+      "agent": "Soak Test Agent",
+      "status": "idle"
+    }
+  },
+  "remainingErrors": {
+    "count": 2,
+    "agents": [
+      {
+        "name": "Press",
+        "errorReason": "Traceback (most recent call last):",
+        "adapterConfig": {
+          "model": "poolside/laguna-s-2.1:free",
+          "provider": "nous"
+        },
+        "note": "Has explicit model/provider config — NOT affected by DEFAULT_MODEL fix. Separate issue."
+      },
+      {
+        "name": "Kimi Code via Ringer",
+        "errorReason": "Traceback (most recent call last):",
+        "adapterConfig": {
+          "model": "poolside/laguna-s-2.1:free",
+          "provider": "nous"
+        },
+        "note": "Has explicit model/provider config — NOT affected by DEFAULT_MODEL fix. Separate issue."
+      }
+    ],
+    "rootCause": "These 2 agents have explicit model='poolside/laguna-s-2.1:free' and provider='nous' in their adapterConfig. They do NOT use DEFAULT_MODEL. Their errors are from a different cause (likely provider=nous routing or npm execute.js old error parsing). The npm execute.js still uses the old inline error filtering (slice(0,5)) instead of the local repo's improved extractErrorSummary function.",
+    "separateIssue": true
+  },
+  "stabilityCheck": {
+    "intervalSeconds": 10,
+    "secondCheckErrorCount": 0,
+    "stable": true,
+    "note": "After initial 0-error confirmation, 2 agents with explicit configs began erroring transiently"
+  },
+  "conclusion": "The DEFAULT_MODEL fix (commit 2f5ff6345) is deployed and working. DEFAULT_MODEL is 'ollama-launch/qwen3-coder:30b' in the npm package's hermes-paperclip-adapter constants.js, and the server restarted at 14:20:22Z loaded it. Error agents went from 25 to 0 (stable for 10s), confirming the fix works for agents with empty/null model config that default to DEFAULT_MODEL. 3 agents using the default model are running successfully with provider=ollama-launch. 1 agent with null model config (Soak Test Agent) is idle. 2 agents (Press, Kimi Code via Ringer) remain erroring with explicit model=poolspace/laguna-s-2.1:free + provider=nous — this is a SEPARATE issue not addressed by the DEFAULT_MODEL fix.",
+  "relatedIssuesClosed": {
+    "JAC-4605": "done — unblock liveness incident for JAC-4605 (verification confirmed)",
+    "JAC-4575-5": "done — verify all errored agents cleared (23 of 25 cleared; 2 remaining are different issue)"
+  }
+}

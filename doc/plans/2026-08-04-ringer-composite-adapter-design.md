@@ -1164,3 +1164,29 @@ Acknowledged wake comment `c2e2f5ad` (2026-08-04T13:00:36Z, local-board) confirm
 **Design status:** No design changes. All event models, spend semantics, risk mitigations, open questions, and 8 sub-tasks unchanged from v3. Composite adapter maps: manifests->run-graph nodes, task attempts->spend-bearing legs, checks->verdict events, launch receipts->provenance events; preserves failed/degraded attempts; leaves missing per-agent spend as `unknown`.
 
 **Disposition:** in_progress (planning). Plan v3 fully verified and grounded — all §9 citations independently re-confirmed live. Awaiting board approval on interaction 75ff75ad (pending) and JAC-3929 board approval (interaction 7bf27549, pending) to create implementation sub-tasks. No code written per planning-only directive.
+
+### 9.11 v5 heartbeat — Blocked on approvals, chore paused (run af6533be)
+
+**Run:** af6533be-1b02-489c-bb19-6bfdd752353e (Ringsmith, hermes_local)
+**Work mode:** Planning only — no code (per workMode: planning on JAC-4531)
+
+This heartbeat performed fresh live verification and posted a §9.11 comment to JAC-4531 documenting the full blocker chain. **Key finding:** JAC-4531 is blocked on two pending board-approval interactions, which are themselves blocked upstream by JAC-4645 (liveness incident for JAC-3930, status blocked, needs_attention, unblock owner: Coordinator/Operator).
+
+**Live Paperclip API verification (v2026.722.0, :3101):**
+
+| Issue | UUID | Plan §1.4 says | Live status | Match |
+|---|---|---|---|---|
+| JAC-4531 (self) | 20236a72-ef... | blocked/in_progress | in_progress (Coordinator re-assigned after recovery) | Yes |
+| JAC-3929 (parent) | 4c051d46-bd... | blocked | blocked, needs_attention | Yes |
+| JAC-3930 | ac15a19c-f7... | in_review | blocked (via JAC-4645 liveness incident) | Partially resolved — blocked |
+| JAC-4645 | 8ff9ab87-0a... | N/A (root cause) | blocked, needs_attention | Confirmed |
+| JAC-4262 | e1938799-cc... | done | done | Yes |
+| JAC-4530 | 54358914-6f... | in_review | in_review | Yes |
+| JAC-4532 | 0aac49a4-94... | in_progress | in_progress (planning) | Yes |
+| JAC-4597 | 7afc00d0-80... | blocked (productivity review) | in_progress (recovery) | Yes |
+
+**Churn mitigation:** Planning-only re-verification heartbeats on JAC-4531 are paused to avoid further high-churn productivity review trigger on JAC-4597. The plan is fully verified; no further planning-only runs will be launched until board approval arrives.
+
+**No design changes from v3.** All event models, spend semantics, risk mitigations, open questions, and 8 sub-tasks unchanged. JAC-3930's telemetry contract has been independently reviewed as PASS and board-confirmed (accepted) — fit to ratify as frozen v1.0.0, but the issue remains blocked via JAC-4645 liveness incident.
+
+**Disposition:** blocked. Awaiting board approval on interaction 75ff75ad (confirmation:JAC-4531:plan:v3, pending) and JAC-3929 board approval interaction 7bf27549 (pending), AND resolution of JAC-4645 (liveness incident for JAC-3930, unblock owner: Coordinator/Operator). Planning-only heartbeats paused pending approval. No code written per planning-only directive.

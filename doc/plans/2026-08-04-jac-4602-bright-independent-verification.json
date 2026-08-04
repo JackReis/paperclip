@@ -1,0 +1,88 @@
+{
+  "issue": "JAC-4602",
+  "title": "[JAC-4575-1] Diagnostic: Enumerate all 20 errored hermes_local agents",
+  "agent": "Bright (8b6ea7f8-781e-49ce-8c37-4f5564fc7481)",
+  "snapshot_time": "2026-08-04T17:22Z",
+  "source_of_truth": "Live Paperclip API GET /api/companies/87c32b8e-f131-4df8-ad8e-963d01b458e7/agents with bearer auth",
+  "summary": {
+    "total_agents": 83,
+    "status_error": 9,
+    "status_idle": 34,
+    "status_running": 39,
+    "status_paused": 1,
+    "non_empty_errorReason": 8,
+    "all_hermes_local_have_empty_adapterConfig": true,
+    "truncation_pattern": "34-char 'Traceback (most recent call last):' for 7 agents, null for 2"
+  },
+  "contradiction_vs_wake_comment": {
+    "comment_claims": {
+      "total_agents": 83,
+      "status_error": 0,
+      "status_idle": 52,
+      "status_paused": 1,
+      "status_running": 30,
+      "all_errored_agents_cleared": true,
+      "DEFAULT_MODEL_fix_deployed": true,
+      "27_agents_cycled_via_bearerless_pause_resume": true
+    },
+    "live_api_reality": {
+      "total_agents": 83,
+      "status_error": 9,
+      "status_idle": 34,
+      "status_paused": 1,
+      "status_running": 39,
+      "errored_agents_remaining": 9,
+      "DEFAULT_MODEL_fix_in_npm_package": false,
+      "npm_package_index_js_mtime": "2026-08-01T14:59:00Z",
+      "npm_package_version": "2026.722.0"
+    },
+    "verdict": "Wake comment claims are FALSE. 9 agents still in error status. DEFAULT_MODEL fix is in local repo constants.ts:39 but NOT in the running npm package (v2026.722.0, dist dated Aug 1, predating the fix commit 2f5ff6345). ErrorReason count is stable (27-29 agents carry truncated tracebacks) but true error status oscillates (3→0→26→27→26→9) as agents crash and recover on each heartbeat."
+  },
+  "errored_agents": [
+    {"id":"785cac12-fd63-4fe3-a54b-4d084652c385","name":"Researcher","errorReason":"Traceback (most recent call last):","errorReasonLength":34,"provider":null,"model":null,"adapterConfig":{},"executionLane":null,"errorReasonFull":true},
+    {"id":"a5d0eb09-5961-4952-b114-d1111180711a","name":"Operator","errorReason":"11:52:47 - agent.chat_completion_helpers - ERROR - Streaming failed before delivery: Connection error.\\nTraceback (most recent call last):\\n  File \\\"/Users/hermes/.hermes/hermes-agent/venv/lib/python3.11/site-packages/httpx/_transports/default.py\\\", line 101, in map_httpcore_exceptions\\n    raise RemoteProtocolError(msg)\\nhttpcore.RemoteProtocolError: Server disconnected without sending a response.","errorReasonLength":395,"provider":null,"model":null,"adapterConfig":{},"executionLane":null,"errorReasonFull":true},
+    {"id":"d8598eb7-6447-41f2-84b7-2cf25348779e","name":"Oracle-2","errorReason":null,"errorReasonLength":0,"provider":null,"model":null,"adapterConfig":{},"executionLane":null,"errorReasonFull":true},
+    {"id":"3c26711a-f8f5-4d5b-8704-83c0026ffe4b","name":"Ringsmith","errorReason":null,"errorReasonLength":0,"provider":null,"model":null,"adapterConfig":{},"executionLane":null,"errorReasonFull":true},
+    {"id":"f1ef5e14-d8d4-4030-9e37-7b4fc764ce3d","name":"Fable","errorReason":"Traceback (most recent call last):","errorReasonLength":34,"provider":null,"model":null,"adapterConfig":{},"executionLane":null,"errorReasonFull":true},
+    {"id":"a1e8cb0d-9132-4b3b-b7a3-8b53cdb10708","name":"Herald","errorReason":"Traceback (most recent call last):","errorReasonLength":34,"provider":null,"model":null,"adapterConfig":{},"executionLane":null,"errorReasonFull":true},
+    {"id":"eed387f6-0027-486a-a846-96df1e7e9c15","name":"Valeera","errorReason":"Traceback (most recent call last):","errorReasonLength":34,"provider":null,"model":null,"adapterConfig":{},"executionLane":null,"errorReasonFull":true},
+    {"id":"5b2bece1-e57b-4048-ab92-8587a37efbcf","name":"Paperclip Agent Auditor","errorReason":"Traceback (most recent call last):","errorReasonLength":34,"provider":null,"model":null,"adapterConfig":{},"executionLane":null,"errorReasonFull":true},
+    {"id":"072eada2-03d0-4b09-8955-b66391cd5a22","name":"Omnigent Router","errorReason":"Traceback (most recent call last):","errorReasonLength":34,"provider":null,"model":null,"adapterConfig":{},"executionLane":null,"errorReasonFull":true}
+  ],
+  "truncation_analysis": {
+    "truncated_count": 7,
+    "truncated_text": "Traceback (most recent call last):",
+    "truncated_length": 34,
+    "full_error_count": 1,
+    "null_error_count": 2,
+    "root_cause": "Paperclip truncates traceback storage to 34 chars. DEFAULT_MODEL=auto (not deployed in npm pkg) + empty adapterConfig → Hermes config falls through to OpenRouter → HTTP 404 for qwen3-coder:30b → Hermes CLI crashes with Python traceback → stored as 34-char truncation"
+  },
+  "adapterConfig_analysis": {
+    "all_83_agents_have_empty_adapterConfig": true,
+    "completeness": "0% — every agent has adapterConfig={}",
+    "impact": "Without explicit model in adapterConfig, resolution depends on DEFAULT_MODEL constant. Running npm package still has the pre-fix value that resolves to 'auto' → OpenRouter 404"
+  },
+  "key_verified_agents": {
+    "Bright": {"id":"8b6ea7f8-781e-49ce-8c37-4f5564fc7481","status":"running","errorReason":null,"adapterConfig":{}},
+    "Herald": {"id":"a1e8cb0d-9132-4b3b-b7a3-8b53cdb10708","status":"error","errorReason":"Traceback (most recent call last):","adapterConfig":{}},
+    "Operator": {"id":"a5d0eb09-5961-4952-b114-d1111511180711a","status":"error","errorReason":"395-char streaming RemoteProtocolError"},
+    "Aegis": {"id":"100915f9-41ab-478b-b2f5-ac30afa7ef89","status":"running","errorReason":null,"adapterConfig":{}}
+  },
+  "oscillation_observation": {
+    "description": "status=error count oscillates across snapshots: 3(15:17Z)→0(16:10Z)→26(16:30Z)→27(16:40Z)→26(16:52Z)→3(17:07Z)→9(17:22Z). errorReason (truncated traceback) count stable at 27-29. Agents crash+recover on each heartbeat cycle because the deployed fix is absent.",
+    "snapshots": [
+      {"time":"2026-08-04T15:17:00Z","status_error":3,"non_empty_errorReason":29,"source":"Bright bearer-token query"},
+      {"time":"2026-08-04T16:10:00Z","status_error":0,"source":"wake comment audit reference"},
+      {"time":"2026-08-04T16:30:00Z","status_error":26,"source":"wake comment audit reference"},
+      {"time":"2026-08-04T16:40:00Z","status_error":27,"source":"wake comment audit reference"},
+      {"time":"2026-08-04T16:52:20Z","status_error":26,"non_empty_errorReason":29,"source":"Bright bearer-token query"},
+      {"time":"2026-08-04T17:07:44Z","status_error":3,"non_empty_errorReason":29,"source":"Bright bearer-token query"},
+      {"time":"2026-08-04T17:22:00Z","status_error":9,"non_empty_errorReason":8,"source":"Bright bearer-token query (current)"}
+    ]
+  },
+  "root_cause": {
+    "deployed": "False — fix commit 2f5ff6345 is in local repo packages/adapters/hermes/src/shared/constants.ts:39 (DEFAULT_MODEL=\"ollama-launch/qwen3-coder:30b\") but NOT in the running npm package at ~/.hermes/node/lib/node_modules/paperclipai/dist/index.js (mtime: 2026-08-01T14:59Z, predates fix). npm package has 0 occurrences of DEFAULT_MODEL, ollama-launch, qwen3-coder:30b, or openai-codex.",
+    "consequence": "Running server still passes model='auto' to Hermes. Hermes config.yaml provider=openrouter. OpenRouter returns HTTP 404 for qwen3-coder:30b. Hermes CLI crashes. Paperclip stores 34-char truncated traceback."
+  },
+  "gate_verdict": "FAIL — The diagnostic enumeration objective is COMPLETE (9 errored agents enumerated with full fields), but the claimed fix deployment and agent-clearing are FALSE. JAC-4602 must NOT be marked done."
+}

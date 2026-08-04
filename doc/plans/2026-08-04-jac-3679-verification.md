@@ -292,3 +292,37 @@ On branch `JAC-3679-build-reusable-report-kit-template` (HEAD `5b50e75ac`, tip c
 - `report-kit.zip` rebuilt with updated README (SHA-256 `80e34b0b...`)
 
 **Status:** All deliverables verified. Issue JAC-3679 remains `done` — all 8 files git-tracked, clean diff, 12/12 tests pass, ZIP integrity confirmed with SHA-256 match.
+
+### Sentry QA Verification — final heartbeat (2026-08-04T19:46Z, this run)
+
+Woken by the Talaris Beads fast-lane dispatch (bypassing Wings, direct wakeup). Task: complete and verify JAC-3679 report-kit template deliverables on branch `JAC-3679-build-reusable-report-kit-template`.
+
+On branch `JAC-3679-build-reusable-report-kit-template` (HEAD `afda61eca`, tip commit `docs(JAC-4532): v3.3.9+12 — Zatara independent verification pass (planning-only)`):
+
+- `git ls-files report-kit/` — all 8 files tracked (README.md, report-data.schema.json, report-kit.zip, report-renderer.js, report-kit.test.mjs, sample-data-devin-deepwiki.json, sample-report.html, template.html)
+- `git diff report-kit/` — CLEAN, no uncommitted changes
+- `node --check report-kit/report-renderer.js` — exits 0 (valid ES module, pure-JS escapeHtml, no DOM dependency)
+- JSON validity: both `report-data.schema.json` and `sample-data-devin-deepwiki.json` parse correctly via `jq empty`
+- Manual schema validation: sample data validates against schema (all required fields present, status/Section enums valid, ISO 8601 dates)
+- `unzip -t report-kit/report-kit.zip` — No errors detected in compressed data
+- SHA-256: `a156ac87c0d37fa93b02a1207c777d53a8ac3f0c7e938a2a6fc510b7a50f21ab` (matches git HEAD `afda61eca` exactly — byte-for-byte identical on disk and in git)
+- Template tokens: 9 total occurrences across 8 unique tokens (`TITLE`, `SUBTITLE`, `GENERATED_BY`, `SOURCE`, `CHECKSUM`, `GUARDRAIL_VERSION`, `ENVIRONMENT`, `NOTES`)
+- End-to-end render via dynamic ES module import of `renderReport(sample-data-devin-deepwiki.json)`: 16,581 chars, 4 metric cards (matching 4 data metrics), div tag balance 30/30, no placeholder tokens, no `[object Object]` artifacts
+- Test suite: `node --test report-kit/report-kit.test.mjs` — **12/12 PASS**
+
+**Full verification battery (`./scripts/verify-report-kit.sh`):** All 6 checks pass:
+1. Git diff clean (report-kit/) ✓
+2. report-renderer.js syntax valid ✓
+3. report-kit test suite passes (12/12) ✓
+4. report-kit.zip integrity OK (unzip -t) ✓
+5. report-kit.zip SHA-256 matches git HEAD ✓
+6. End-to-end render from sample data OK (16581 chars) ✓
+
+**CI checks:**
+- `node ./scripts/check-report-kit-zip.mjs` — report-kit.zip is fresh — contents match source files ✓
+- `node --test ./scripts/check-report-kit-zip.test.mjs` — 4/4 pass ✓
+- `node ./scripts/check-hermes-adapter-config.mjs` — No hermes_local adapterConfig anti-patterns found ✓
+
+**CI wiring (`.github/workflows/pr.yml`):** Report-kit zip freshness check (O3) and Hermes adapter config lint (O6) both run in the policy job. npm scripts `check:report-kit-zip`, `test:check-report-kit-zip`, and `verify:report-kit` are defined in package.json.
+
+**Status:** All deliverables verified. Issue JAC-3679 (ID `68b87576-49e3-49a7-b834-a24a9683ed06`) is confirmed `done` in Paperclip API. The plan doc has been updated to reflect the current HEAD (`afda61eca`) and SHA-256 (`a156ac87...`), superseding the earlier plan-doc entries that referenced stale commit SHAs and hashes.

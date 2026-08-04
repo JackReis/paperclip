@@ -1,118 +1,122 @@
-# Coordinator Cycle 2026-08-04T18:00Z — Fresh Live Verification (Wings heartbeat)
+# JAC-4139 Cycle 2026-08-04T18:00Z — Fresh Live Re-Verification
 
-Run: 589d7621-61f9-49f2-9ceb-3222e57b71a7
-Agent: Wings (80284e06-41ab-415a-ba1c-6c3121debd0d)
-Paperclip API: http://127.0.0.1:3101 (v2026.722.0, deploymentMode=local_trusted)
-Auth: bearer=Wings 80284e06 (authenticated)
+**Run:** 6e6a6a35-eff0-4ad2-9ad7-99490e0e7051 (Wings, hermes_local)
+**Paperclip API:** http://127.0.0.1:3101 (v2026.722.0, deploymentMode=local_trusted)
+**Method:** authenticated GET /api/companies/87c32b8e.../agents + paginated GET /issues (limit=100, offset loop) + selective GET /issues/{id} for verified-lane assignments only
 
 ## Acknowledged Wake
 
-Comment 1dd423b3-7af4-4122-bacb-cadb53c26a87 at 2026-08-04T12:33:38.748Z by local-board.
-Cycle 2026-08-04T17:30Z summary: 0 dispatches, queue exhausted.
-Per protocol, performed an independent fresh live re-verification at 18:00Z.
+Latest wake comment reports run `66a4cdf5-7099-4eb5...` timed out. The timeout was caused
+by an N+1 API pattern: the verify script iterated over ALL issues (1000+ in a single batch) and
+called `get_detail()` on every one, hitting the API rate limit and stalling. This cycle's verify
+script (doc/plans/_wings_verify5.py) paginates issues with offset and only fetches detail for
+issues assigned to verified-lane agents, completing well under the run timeout.
 
-## Fresh Live Verification
+## Lane State — Fresh Live Read (18:00Z)
 
-Authenticated GET /api/companies/87c32b8e.../agents at 18:00Z (this run).
-Lane metadata present on 9 agents with executionLane.
-
-### Verified Execution Lanes (live re-verification)
-
-| Agent | Status | Provider | Model | State | maxPar | Verified | Lease | Dispatchable? |
-|---|---|---|---|---|---|---|---|---|
-| Wings (self) | running | nous | poolside/laguna-s-2.1:free | verified | 4 | 2026-08-03T23:38:49Z | reserved | NO — strategic reserve |
-| Coordinator | running | nous | poolside/laguna-s-2.1:free | verified | 2 | 2026-08-03T23:38:49Z | reserved | NO — strategic reserve |
-| Herald | error | nous | poolside/laguna-s-2.1:free | verified | 2 | 2026-08-03T23:37:00Z | none | NO — NOUS_API_KEY absent (adapter init traceback) |
-| Plan Runner | error | nous | poolside/laguna-s-2.1:free | verified | 2 | 2026-08-03T23:15:00Z | none | NO — NOUS_API_KEY absent (adapter init traceback) |
-| Aegis Coder X | error | ollama-local | qwen3-coder:30b | verified | 1 | 2026-07-31T19:56:00Z | JAC-4511 + JAC-3705 | NO — status=error (Timed out after 12000s) |
-| Aegis Coder Y | idle | ollama-local | qwen3-coder:30b | error | 1 | 2026-07-31T19:56:00Z | none | NO — lane state=error (12000s timeout defect) |
-| Hermes Mistral | paused | ollama-cloud | deepseek-v4-pro | paused | 1 | 2026-07-31T19:56:00Z | none | NO — manually paused |
-| Flash | error | ollama-cloud | deepseek-v4-flash | pending_repair | 1 | 2026-07-31T19:56:00Z | none | NO — pending_repair (MCPServerTask defect) |
-| Kimi Code via Ringer | error | — | no lane | (none) | — | staled | none | NO — status=error, no executionLane metadata |
+| Agent | status | errorReason | lane.state | pool | model | maxPar | Dispatchable? |
+|---|---|---|---|---|---|---|---|
+| Wings (self) | running | none | verified | local-aegis | poolside/laguna-s-2.1:free | 4 | NO (self-reserved) |
+| Coordinator (self) | idle | none | verified | local-aegis | poolside/laguna-s-2.1:free | 2 | NO (self-reserved) |
+| Herald | **error** | **Traceback (most recent call last)** | verified | local-aegis | poolside/laguna-s-2.1:free | 2 | **NO (agent error, not routable)** |
+| Plan Runner | idle | none | verified | local-aegis | poolside/laguna-s-2.1:free | 2 | YES (capacity=2, but no eligible child work) |
+| Aegis Coder X | idle | none | verified | local-aegis | ollama/qwen3-coder:30b | 1 | NO (occupied by JAC-4606 in_progress) |
+| Aegis Coder Y | idle | none | **error** | local-aegis | ollama/qwen3-coder:30b | 1 | NO (lane.state=error) |
+| Hermes Mistral | paused | none | paused | ollama-cloud | deepseek-v4-pro | 1 | NO (paused) |
+| Flash | error | Traceback (adapter init) | pending_repair | ollama-cloud | deepseek-v4-flash | 1 | NO (pending_repair) |
 
 ### Pool Capacity
 
 | Pool | Capacity | Available | Reason |
 |---|---|---|---|
-| local-aegis | 0/2 | 0 | Coder X status=error; Coder Y lane=error |
-| ollama-cloud | 0/3 | 0 | Mistral paused + Flash pending_repair |
-| independent-review | 0/1 | 0 | Kimi Code via Ringer status=error, no lane metadata |
-| codex/external | 0/1 | 0 | No verified fast-lane agent with capacity |
+| local-aegis | 4 | 0 dispatchable with eligible work | Herald error; Plan Runner has capacity but assigned issue is coordinator's own; Coder X at capacity; Coder Y lane=error |
+| ollama-cloud | 2 | 0 | Mistral paused, Flash pending_repair |
+| independent-review | 0 | 0 | No formal independent-review lanes |
 
-## Host Health Gate — P87
+## Active Runs — Critical Finding
 
-SSH probe to Talaris (P87) at 18:00Z: `ssh talaris "hostname && uptime"` returned
-`Talaris / 7:41 up 4 days, 18:54 ...` — host is UP.
+**ALL 7 in_progress issues have execRunId=None.** No active runs exist across the entire fleet right now:
 
-NOTE: The wake comment (17:30Z) claimed "P87 DOWN (CTX-SpO2 P:down)".
-The CTX-SpO2 context snapshot is stale; SSH probe confirms P87 is reachable.
-Aegis Coder X still status=error (Timed out after 12000s) regardless of host reachability, so local-aegis pool remains non-dispatchable.
+| Issue | Assignee | execRunId | Status |
+|---|---|---|---|
+| JAC-4532 | Maar | None (orphaned) | in_progress |
+| JAC-4629 | Karax | None (orphaned) | in_progress |
+| JAC-4643 | Bright | None (orphaned) | in_progress |
+| JAC-4554 | Kimi Code via Ringer | None (orphaned) | in_progress |
+| JAC-4503 | Dinkelspiel | None (orphaned) | in_progress |
+| JAC-4606 | Aegis Coder X | None (orphaned) | in_progress |
+| JAC-4139 | Wings (self) | None | in_progress |
 
-## Root Causes (Confirmed Live at 18:00Z)
+Note: JAC-4606 is in_progress assigned to Coder X and consumes 1/1 maxParallel capacity,
+even though execRunId=None. Per the issue contract: "no live run OR issue lease already occupies
+it" — the in_progress lease itself occupies the lane.
 
-1. **NOUS_API_KEY absent** — Herald and Plan Runner both status=error with
-   `errorReason: "Traceback (most recent call last):"` at adapter init.
-   NOUS_API_KEY is absent from the Wings execution environment (env | grep NOUS_API returns nothing).
-   Hermes aegis config.yaml sets provider=nous. All hermes_local agents using
-   the nous provider fail at adapter init. NOT Wings-fixable — requires JAC-4565.
+## TODO Queue — 32 Issues, All Policy-Excluded
 
-2. **Aegis Coder X timed out** — errorReason=Timed out after 12000s. Pool=local-aegis ollama-local.
-   State=verified but agent status=error. Not routable.
+### Assigned to verified lane agents:
 
-3. **Kimi Code via Ringer** — status=error, no executionLane metadata. Not routable.
+| Issue | Assignee | Policy Exclusion |
+|---|---|---|
+| JAC-3628 | Plan Runner | Coordinator's own planning issue — not independent task |
+| JAC-3705 | Aegis Coder X | Canonize canary work; Coder X at capacity (JAC-4606) |
+| JAC-3770 | Coordinator | Approval-gated production deploy (self) |
+| JAC-3634 | Coordinator | Blocked on JAC-3628 |
+| JAC-3400 | Coordinator | Human gate (medication refill for Jack) |
+| JAC-4000 | Wings (self) | This coordinator issue (self) |
+| JAC-4139 | Wings (self) | This issue (self) |
 
-## Queue Scan (23 TODO issues — confirmed live at 18:00Z)
+### Assigned to non-lane agents (no executionLane metadata):
+- JAC-4632–JAC-4640 (8 issues) → assigned to Maar (read-only+impl, but no formal lane)
+- JAC-4644 → assigned to Karax (no formal lane)
+- JAC-3970 → unassigned (canary, no independent plan)
 
-GET /api/companies/{cid}/issues?status=todo&limit=200 → 23 TODO issues.
+### Unassigned / human-gated:
+- JAC-4217, JAC-4216 — Jack decision gates
+- JAC-3714 — approval-gated (Nix install, interactive sudo)
+- JAC-3555, JAC-3557, JAC-3558 — human gates (Jack action required)
+- JAC-3358–JAC-3361 — children of cancelled JAC-2447
+- JAC-3365 — NotebookLM login gated
+- JAC-3437 — personal task (haircut)
 
-All 23 are policy-excluded:
-- JAC-4217, JAC-4216: Jack decision gates (credential-bound decisions pending JAC-4565)
-- JAC-3714: approval-gated (interactive sudo / Nix install)
-- JAC-3558, JAC-3557, JAC-3555: human gates (medical refill, Prius test, records release)
-- JAC-3400, JAC-3634, JAC-3437, JAC-3365, JAC-3359, JAC-3361, JAC-3358, JAC-3360: personal tasks
-- JAC-3593, JAC-3594: assigned to Luna High Planner (2f92499a)
-- JAC-3705: assigned to Coder Copy (da00de99); lease-occupies Coder X lane alongside JAC-4511
-- JAC-3770: assigned to Coordinator (dc2ca597)
-- JAC-4060, JAC-4059, JAC-4058: assigned to dispatch group (1029acc4), dependency-gated on JAC-3929
-- JAC-4539: dependency-gated on JAC-3929
-- JAC-3970: dispatch wrapper, no independent plan of its own
+### Assigned to non-verified lanes:
+- JAC-4058, JAC-4059, JAC-4060 → Hermes Mistral (paused lane)
 
 **No independent plan-backed task found.**
 
-## Active Runs / In-Progress Issues
+## Root Cause Analysis
 
-GET /api/companies/{cid}/issues?status=in_progress&limit=100:
-- JAC-4531 [20236a72] — in_progress, assignee=Ringsmith (3c26711a), execRun active
-- JAC-4532 [0aac49a4] — in_progress, assignee=Maar (8551a68a), execRun active
-- JAC-4535 [2bc23cb9] — in_progress, assignee=Zeratul (e56fa496), execRun=none
-- JAC-4139 [6fdb3b88] — in_progress (self, run 589d7621) — this issue
+1. **Herald re-errored** (Traceback in adapter init) — lane state=verified but agent status=error.
+   This is the same recurring adapter-init traceback class as JAC-4580 (assigned to Fenix, blocked)
+   and JAC-4575 (20.errored agents incident, done — root cause was NOUS_API_KEY, now restored per
+   JAC-4604 which shows status=done). Herald's re-error may be a transient openrouter/poolside
+   connectivity issue or a stale adapter config issue tracked by JAC-4577 (blocked, assigned to Pi).
 
-JAC-4565 status=blocked (not done — correcting wake comment's "done" claim).
-JAC-4580 status=blocked (Fenix adapter init traceback, child of JAC-4565).
-JAC-4511 status=blocked (Coder X lease, MLX embed promotion).
-JAC-3705 status=todo (Coder Copy, lease-occupies Coder X lane).
+2. **NOUS_API_KEY recovery is done** (JAC-4604 status=done). However, Herald continues to error
+   with adapter-init Tracebacks, suggesting the issue is NOT the API key itself but rather an
+   adapter initialization or config-drift problem (JAC-4577: residual hermes_local config).
 
-## Dispatches: 0 — Queue Exhausted (Confirmed Live at 18:00Z)
+3. **No new fresh generation failures** can be recorded on verified-idle lanes because:
+   - Herald (the only free verified-idle lane besides Plan Runner) is in error state
+   - Plan Runner's only assigned work is JAC-3628 (the coordinator's own projection issue)
+   - No independent TODO exists for Plan Runner to dispatch
 
-No fresh authenticated generation failures to record on verified lanes —
-the verified lanes (Herald, Plan Runner) are already in error state at adapter
-init (NOUS_API_KEY absent), which is a credential/infrastructure failure, not
-a quota outage. No stale-log inference used; all gates via live authenticated
-API GET /api/companies/87c32b8e.../agents.
+## Dispatches: 0 — Queue Exhausted (confirmed fresh live at 18:00Z)
 
-## Discrepancies with Wake Comment (17:30Z)
-
-- JAC-4565: wake comment lists as "done (2026-08-04T12:01:53Z)" — actually status=blocked.
-- P87: wake comment claims "DOWN (CTX-SpO2 P:down)" — SSH probe confirms UP. CTX-SpO2 stale.
-- Coordinator: wake comment lists status=idle — actually status=running.
-- Herald/Plan Runner lastHeartbeat: wake comment says stale — actually 2026-08-04T09:28 / 05:36.
+No dispatchable lane has eligible independent work:
+1. Herald: agent error (Traceback) — not routable despite verified lane
+2. Plan Runner: verified+idle, capacity=2, but no independent plan-backed TODO assigned to it
+3. Coder X: at capacity (JAC-4606 in_progress, maxParallel=1)
+4. Coder Y: lane.state=error
+5. Hermes Mistral: paused
+6. Flash: pending_repair, agent error
+7. Coordinator/Wings: self-reserved
 
 ## Disposition: in_progress (restart-ready)
 
 Awaiting:
-1. JAC-4565 (NOUS_API_KEY recovery) — unblocks Herald, Plan Runner, Fenix/JAC-4580
-2. JAC-4511 completion — frees Coder X lane (currently leased alongside JAC-3705)
-3. Native child-completion wake on upstream resolution
-4. Fallback schedule: secondary only
+1. Herald re-recovery (recurring adapter-init Traceback — JAC-4577/JAC-4580)
+2. JAC-4606 completion (frees Coder X capacity)
+3. JAC-3628 completion (Plan Runner's own work; would free Plan Runner's assigned slot)
+4. Native child-completion continuation remains the liveness path; fallback schedule secondary
 
 Evidence: doc/plans/2026-08-04T1800Z-wings-dispatch-evidence-jac-4139.md

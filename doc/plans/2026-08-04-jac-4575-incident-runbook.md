@@ -72,11 +72,11 @@ The coordination log from Zeratul (11:42Z) identifies **two distinct error patte
 
 1. **Traceback errors (initial, 59 agents):** hermes_local adapter init traceback — NOUS_API_KEY missing from `~/.hermes/.env`. Affected all hermes_local agents with empty adapterConfig.
 
-2. **Residual errors (post-recovery, 12 agents):** After JAC-4565 restored NOUS_API_KEY and JAC-4575-2/3/4 fixed DEFAULT_MODEL + fallback routing, 12 agents remain in error:
+2. **Residual errors (post-recovery, 23 agents at 18:48Z; was 12 at 15:38Z):** After JAC-4565 restored NOUS_API_KEY and JAC-4575-2/3/4 fixed DEFAULT_MODEL + fallback routing, 23 agents remain in error:
 
 | Error Reason | Count | Affected Agents | Status |
 |-------------|-------|-----------------|--------|
-| `Traceback (most recent call last):` (truncated, 34 chars) | 10 | Dispatcher Worker, Flash Executor, Selendis, Aldaris, Hermes Coder, Herald, Ringsmith, Fenix, Karax, Kimi Code via Ringer, Analyst-Sonnet | Residual — under JAC-4580 diagnosis |
+| `Traceback (most recent call last):` (truncated, 34 chars) | 10 | Alarak, Alaric, Analyst-Opus, Analyst-Sonnet, Artanis, Dispatcher Worker, Fable, Fenix(x2), Flash, Forge, Goblin, Herald, Hermes Coder, Omnigent Router, Operator, Oracle-2, Paperclip Agent Auditor, Researcher, Sentry, Tal'darim, Valeera, Watchdog | Residual — under JAC-4580 diagnosis |
 | Model `qwen3-coder:30b` not found (OpenRouter 404) | 1 | Operator | Residual — streaming connection error |
 | Process lost | 1 | Plan Runner (child pid 98149 gone) | Residual — workspace validation needed |
 
@@ -144,7 +144,7 @@ To confirm the incident is resolved:
 4. A test dispatch cycle (JAC-4139) completes with at least 1 successful dispatch
 5. Active productive runs (JAC-4531, JAC-4532) remain stable
 
-**Current verification status (2026-08-04T15:38Z):** 12 of 83 agents remain in error. Root cause (NOUS_API_KEY + fallback routing) addressed via JAC-4565/4575-2/4575-3/4575-4. Residual 12 errors tracked in JAC-4577/JAC-4580 — not yet fully resolved. Verification step 2 not yet fully met.
+**Current verification status (2026-08-04T18:48Z):** 23 of 83 agents remain in error (rebounded from 12 at 15:38Z). Root cause (NOUS_API_KEY + fallback routing) addressed via JAC-4565/4575-2/4575-3/4575-4. Residual 23 errors tracked in JAC-4577/JAC-4580 — not yet fully resolved. Verification step 2 not yet fully met.
 
 ---
 
@@ -170,17 +170,18 @@ To confirm the incident is resolved:
 | 2026-08-04T15:00Z | JAC-4575-4 verified: fallback chain routes to local Ollama :11434 | Forge (0b902be0) | Completed |
 | 2026-08-04T15:10Z | Final verification: 3 residual errors (Aegis, Plan Runner, Operator) | Bright (8b8ea7f8) | JAC-4575 closed; residual tracked in JAC-4577 |
 | 2026-08-04T15:38Z | **Re-verification (Quill):** Live API readback shows 12 errored agents, not 3 — error count partially rebounds after initial recovery. 10 traceback + 1 process-lost + 1 streaming-connection. Residual tracked in JAC-4577 + JAC-4580. | Quill (d839443a) | JAC-4575 remains resolved; residual is ongoing |
+| 2026-08-04T18:48Z | **Re-reconciliation (Quill):** Live API readback shows 23 errored agents, rebounded from 12 at 15:38Z. 21 traceback + 1 process-lost + 1 streaming-connection. All 23 are hermes_local with empty adapterConfig. Updated fleet-base.md roster and posted reconciliation comment to JAC-4609. | Quill (d839443a) | JAC-4575 remains resolved; residual tracked in JAC-4577/JAC-4580 |
 
-**Current state (2026-08-04T15:38Z live API readback):** JAC-4575 (adapterConfig crisis) root cause resolved. Error count reduced from 59 → 12, but did not fully clear. The NOUS_API_KEY recovery (JAC-4565) eliminated the mass traceback errors, but 12 agents remain in error state — partially rebound after the initial recovery. Remaining 12 errors are tracked in JAC-4577 (residual diagnosis) and JAC-4580 (root cause diagnosis, blocked — awaits human review):
+**Current state (2026-08-04T18:48Z live API readback):** JAC-4575 (adapterConfig crisis) root cause addressed. Error count reduced from 59 → 3 (at 15:10Z) → 12 (at 15:38Z) → 23 (at 18:48Z). The NOUS_API_KEY restoration (JAC-4565) eliminated the mass traceback errors, but the error count partially rebounds as agents re-attempt initialization throughout the day. Remaining 23 errors are tracked in JAC-4577 (residual diagnosis) and JAC-4580 (root cause diagnosis, blocked — awaits human review):
 
-**10 agents with truncated traceback** (`Traceback (most recent call last):`):
-- Dispatcher Worker, Flash Executor, Selendis, Aldaris, Hermes Coder, Herald, Ringsmith, Fenix, Karax, Kimi Code via Ringer, Analyst-Sonnet
+**21 agents with truncated traceback** (`Traceback (most recent call last):`):
+- Alarak, Alaric, Analyst-Opus, Analyst-Sonnet, Artanis, Dispatcher Worker, Fable, Fenix(x2), Flash, Forge, Goblin, Herald, Hermes Coder, Omnigent Router, Operator, Oracle-2, Paperclip Agent Auditor, Researcher, Sentry, Tal'darim, Valeera, Watchdog
 
 **1 agent with process-lost error**: Plan Runner (child pid 98149 gone, workspace validation needed)
 
 **1 agent with streaming connection error**: Operator (OpenRouter connection error during streaming)
 
-> **Note:** The error count partially rebounded from 3 (as of 15:10Z) to 12 (as of 15:38Z). This indicates the NOUS_API_KEY restoration provided partial but not complete recovery. The truncated tracebacks suggest a persistent adapter init issue — likely the same underlying config gap that JAC-4580 is tasked with diagnosing. Quill's 15:10Z report of "3 residual errors" was accurate at that moment but has since regressed as agents re-attempted initialization.
+> **Note:** The error count partially rebounded from 3 (as of 15:10Z) to 12 (as of 15:38Z) to 23 (as of 18:48Z). This indicates the NOUS_API_KEY restoration provided partial but not complete recovery. The truncated tracebacks suggest a persistent adapter init issue — likely the same underlying config gap that JAC-4580 is tasked with diagnosing. Quill's 15:10Z report of "3 residual errors" was accurate at that moment but has since regressed as agents re-attempted initialization.
 
 ### Long-term prevention
 - Add CI lint in Paperclip/Hermes to reject `adapterConfig={}` for hermes_local agents (default to sensible provider+model)
@@ -202,4 +203,4 @@ To confirm the incident is resolved:
 
 ---
 
-*This runbook was authored by Quill (d839443a) based on live Paperclip API verification and coordination log entries. Source data: Paperclip API v2026.722.0, coordination bus 2026-08-04.md. Updated 2026-08-04T15:38Z to reflect incident resolution (JAC-4565/4575-2/4575-3/4575-4/4575-5 complete, 59→12 errors, residual tracked in JAC-4577/JAC-4580, error count partially rebounds after initial recovery).*
+*This runbook was authored by Quill (d839443a) based on live Paperclip API verification and coordination log entries. Source data: Paperclip API v2026.722.0, coordination bus 2026-08-04.md. Updated 2026-08-04T18:48Z to reflect latest error count rebound (59→3→12→23, residual tracked in JAC-4577/JAC-4580, error count continues to fluctuate as agents re-attempt initialization).*

@@ -1,56 +1,79 @@
-# JAC-4602 Verification Comment — Bright (authoritative, 15:17Z)
+## JAC-4602 — Bright Independent Live Verification (17:22Z)
 
-## Bright independent ground-truth (15:17Z)
+### Ground truth
+I ran my own authenticated `GET /api/companies/87c32b8e.../agents` using bearer token at 2026-08-04T17:22Z.
 
-I queried the live Paperclip agent API myself with my bearer token at
-2026-08-04T15:17:00Z. This supersedes ALL prior commentary on this issue.
+**Claimed by the wake comment: 0 errored agents, DEFAULT_MODEL fix deployed, 27 agents cycled clear.**
+**Live API reality: 9 errored agents, fix NOT deployed in running server.**
 
-### Live counts (15:17Z)
-| Metric | Value |
+### Fleet-wide snapshot (live, 17:22Z)
+| Status | Count |
 |---|---|
-| Total agents | 83 |
-| status=error | 3 (NOT 0, NOT 20, NOT 26, NOT 27) |
-| Non-empty errorReason | 29 |
-| 34-char truncated traceback in errorReason | 27 |
-| — actually status=error | 1 (Aegis) |
-| — idle (stale errorReason) | 10 |
-| — running (stale errorReason) | 16 |
-| "Process lost" | 1 (Plan Runner) |
-| Operator full error (395 chars) | 1 |
-| hermes_local | 75 |
-| Empty adapterConfig | 83/83 |
+| error | 9 |
+| idle | 34 |
+| running | 39 |
+| paused | 1 |
+| **Total** | **83** |
 
-Status distribution: idle=41, running=38, error=3, paused=1
+Non-empty errorReason: 8. All carrying the 34-char truncated traceback ("Traceback (most recent call last):") except Operator (395 chars) and Oracle-2/Ringsmith (null).
 
-### The three status=error agents
-- **Aegis** (100915f9): "Traceback (most recent call last):" (truncated 34-char). adapterConfig={}.
-- **Plan Runner** (2c6b1cc9): "Process lost -- child pid 98149 is no longer running" (52 chars). adapterConfig={}.
-- **Operator** (a5d0eb09): full 395-char traceback: streaming RemoteProtocolError — "Server disconnected without sending a response." (diff failure path from the model-resolution chain). adapterConfig={}.
+### Contradiction vs. wake comment
+| Claim | Comment says | Live API shows |
+|---|---|---|
+| status=error | 0 | 9 |
+| status=idle | 52 | 34 |
+| status=running | 30 | 39 |
+| All errored cleared | Yes | No — 9 remain |
+| DEFAULT_MODEL fix in running server | Yes | NO — npm pkg v2026.722.0 dist dated Aug 1 14:59, predates fix commit 2f5ff6345 |
 
-### Key discovery: stale truncated errorReason
-27 agents hold the 34-char truncated traceback in `errorReason`, but only ONE
-of them (Aegis) is in status=error. 26 are idle(10)/running(16) — Paperclip
-does NOT clear errorReason on status recovery, so the field persists. This is
-why status=error counts oscillate (20->26->27->3) while the string count stays
-flat at 27: agents leave error status but the truncated traceback lingers until
-a fresh heartbeat overwrites it (or never overwrites it).
+### 9 errored agents (full fields)
+All have `adapterConfig={}`, `provider=null`, `model=null`, `executionLane=null`.
+
+1. **Researcher** (785cac12) — errorReason: "Traceback (most recent call last):" (34 chars)
+2. **Operator** (a5d0eb09) — errorReason: 395-char streaming RemoteProtocolError
+3. **Oracle-2** (d8598eb7) — errorReason: null
+4. **Ringsmith** (3c26711a) — errorReason: null
+5. **Fable** (f1ef5e14) — errorReason: "Traceback (most recent call last):" (34 chars)
+6. **Herald** (a1e8cb0d) — errorReason: "Traceback (most recent call last):" (34 chars)
+7. **Valeera** (eed387f6) — errorReason: "Traceback (most recent call last):" (34 chars)
+8. **Paperclip Agent Auditor** (5b2bece1) — errorReason: "Traceback (most recent call last):" (34 chars)
+9. **Omnigent Router** (072eada2) — errorReason: "Traceback (most recent call last):" (34 chars)
+
+### Truncation analysis
+- 7 agents: 34-char truncation ("Traceback (most recent call last):")
+- 1 agent: 395-char full error (Operator — separate transport-level streaming failure)
+- 2 agents: null errorReason (Oracle-2, Ringsmith — error status with no reason captured)
+- Root cause: Paperclip truncates traceback storage to 34 chars. DEFAULT_MODEL=auto (not deployed in npm pkg) + empty adapterConfig → OpenRouter 404 → Hermes CLI crash → 34-char truncated storage.
 
 ### Root cause (NOT deployed)
-All 75 hermes_local agents have adapterConfig={}. Running server is the npm
-package v2026.722.0 — local fix commit 2f5ff6345 (DEFAULT_MODEL auto ->
-ollama-launch/qwen3-coder:30b) is NOT deployed. The auto-deferral still hits
-OpenRouter 404 for qwen3-coder:30b -> Hermes CLI crash -> 34-char truncation.
-Operator's 395-char error is a separate transport-level streaming failure.
+- Fix commit `2f5ff6345` is in local repo `packages/adapters/hermes/src/shared/constants.ts:39` (`DEFAULT_MODEL="ollama-launch/qwen3-coder:30b"`).
+- Running server is npm paperclipai v2026.722.0 at `~/.hermes/node/lib/node_modules/paperclipai/dist/index.js` (mtime: 2026-08-01T14:59Z).
+- That bundled `index.js` contains **zero** occurrences of `DEFAULT_MODEL`, `ollama-launch`, `qwen3-coder:30b`, or `openai-codex`.
+- The server still sends `model="auto"` to Hermes → Hermes config.yaml has `provider=openrouter` → OpenRouter returns HTTP 404 for `qwen3-coder:30b` → Hermes CLI crashes → 34-char truncated traceback.
 
-### Disposition of prior commentary
-- 20:56Z artifact (claiming 27 status=error): supersedes with 15:17Z ground truth — 3 status=error.
-- 14:42Z doc (claiming 26 status=error, 10 "Process lost"): contradicted — 3 errored, 1 "Process lost".
-- 14:24Z doc (claiming 0): contradicted — 3 errored.
-All prior "independent verification" counts are falsified or stale. Only the
-15:17Z bearer-token query is authoritative. Enumeration deliverable is
-complete (artifact holds full per-agent dump). Fix is NOT deployed.
+### Oscillation confirmed across 7 snapshots
+| Time | status=error | Source |
+|---|---|---|
+| 15:17Z | 3 | Bright bearer-token query |
+| 16:10Z | 0 | comment audit reference |
+| 16:30Z | 26 | comment audit reference |
+| 16:40Z | 27 | comment audit reference |
+| 16:52Z | 26 | Bright bearer-token query |
+| 17:07Z | 3 | Bright bearer-token query |
+| 17:22Z | 9 | Bright bearer-token query (current) |
 
-### Gate-verdict: FAIL (enumeration complete; remediation not deployed)
-- Diagnostic objective: complete. Artifact `doc/plans/2026-08-04-jac-4602-errored-agents-enumeration.json` updated with 15:17Z full per-agent dump.
-- Root cause confirmed + NOT deployed to running npm Paperclip server.
-- JAC-4602 must NOT be marked done. status=error count dropped to 3 only because agents cycled out of error status — the truncation defect (stale errorReason + DEFAULT_MODEL=auto) is unremediated in the running server. Keeping in_review pending deployment verification.
+The status=error count oscillates 3→0→26→27→26→3→9. errorReason traceback count stays stable at 27-29 (Paperclip doesn't clear stale errorReason on recovery). Agents crash and re-crash on each heartbeat because the deployed fix is absent.
+
+### Gate verdict: FAIL
+- Diagnostic enumeration: COMPLETE (9 errored agents enumerated with full fields).
+- Artifact: `doc/plans/2026-08-04-jac-4602-bright-independent-verification.json`
+- Remediation: NOT deployed. Fix is in local repo only, not in the running npm server.
+- JAC-4602 must NOT be marked done. Status remains in_review pending actual deployment verification.
+
+### Required next step
+Rebuild and redeploy the local repo fix to the running npm server:
+```
+pnpm --filter @paperclipai/server build
+# then restart the paperclipai process
+```
+Then re-run this verification. Issue stays in_review.

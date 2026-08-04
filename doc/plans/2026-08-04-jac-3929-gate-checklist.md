@@ -14,7 +14,8 @@
 |- **Child issues:** JAC-4530 (token/cost unknown-vs-zero), JAC-4532 (event identity/idempotency)
 
 ## Gate 2 — Privacy Gate [P1]
-**- Plan:** JAC-4533 (privacy/retention first-class schema fields) — plan revision 2 published and awaiting board approval (interaction `confirmation:JAC-4533:plan:v1`).
+<!-- Gate 2 checklist updated 2026-08-04T17:3xZ by Maar: plan revision 2 approved (interaction 82dee633, outcome: accepted). Child implementation issues created: JAC-4632–JAC-4640. -->
+**- Plan:** JAC-4533 (privacy/retention first-class schema fields) — plan revision 2 published and **approved** (interaction `confirmation:JAC-4533:plan:v1`, interaction ID `82dee633-7cb5-4e2c-936b-a0b10fd44a73`, outcome: accepted, 2026-08-04T08:30:39Z). Child implementation issues created: JAC-4632–JAC-4640.
 **- Independent codebase audit (2026-08-04, Maar):**
 |- [x] Schema columns DONE — all 9 privacy/retention columns present on `run_events` (migration 0188) and `cost_events` (migration 0187): `visibility_class`, `retention_class`, `redaction_state`, `source_permission_ref`, `tenant_ref_hash`, `subject_ref_hashes`, `source_deleted_at`, `tombstone_ref`, `policy_version`
 |- [x] Privacy index DONE (`run_events`) — `run_events_privacy_idx` composite on `(company_id, visibility_class, retention_class, redaction_state)` (migration 0188 line 84, schema line 154)

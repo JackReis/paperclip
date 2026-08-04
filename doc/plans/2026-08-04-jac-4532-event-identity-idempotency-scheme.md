@@ -3258,3 +3258,228 @@ The plan scheme defined in Sections 3.1–3.6 (deterministic adapter keys, idemp
 semantics, `ingest_id` semantics, `observed_sequence` semantics, re-ingest no-op logic)
 and the 14 implementation sub-tasks in Section 4 remain current and accurate — no drift
 in any of the 27 codebase citations.
+
+---
+
+## 36. Plan v3.3.9+13 — Maar fresh live re-verification (2026-08-04T19:xxZ heartbeat, Maar)
+
+### 36.1 Acknowledged wake
+
+Woken on JAC-4532 [JAC-3929] P1: Event identity and idempotency scheme. Work mode:
+`planning`. Planning directive: "Update the plan only. Do not write code or perform
+implementation work." Agent identity: **Maar** (8551a68a-c3f3-45f4-a847-628587c0c36e),
+infrastructure operations agent on Aegis / hermes_local.
+
+Per the planning-only directive, this heartbeat performs a fresh live re-verification
+of the two blocking gates and a spot-check of the 27 codebase citations, then appends
+this section. No code was written — planning-only directive observed.
+
+### 36.2 Fresh live API verification (this heartbeat)
+
+UUID-scoped `GET /api/issues/{uuid}` against Paperclip API v2026.722.0
+(deploymentMode=local_trusted):
+
+| Issue | UUID | Status (this heartbeat) | Matches §35? | Change from §35? |
+|---|---|---|---|---|
+| JAC-3929 (parent gate) | 4c051d46-bd91-4391-b7ea-fba6403ac26c | **blocked** (needs_attention; 8 unresolved, 5 covered, 2 stalled, 1 attention) | YES | No |
+| JAC-3930 (telemetry contract) | ac15a19c-f75b-4eb1-baf9-0a8d7f7e1aa9 | **blocked** (blockedBy JAC-4645; activeRecoveryAction: missing_disposition, owner=Coordinator dc2ca597, latestRunStatus=succeeded) | YES | No |
+| JAC-4529 (coverage fields) | f5959707-4818-4357-b2a8-b6e35b60bb9d | done | YES | No |
+| JAC-4530 (null-vs-zero) | 54358914-6fa0-48c9-a142-f8283c56fce9 | done | YES | No |
+| JAC-4531 (Ringer composite) | 20236a72-efe4-43b6-8513-0ecf80dd18a9 | blocked | YES | No |
+| JAC-4532 (this issue) | 0aac49a4-94fa-4786-ae2a-4f56557a44e8 | in_progress (planning) | YES | No |
+
+**JAC-3929 interactions (live API):** 8 interactions returned via
+`GET /api/issues/{uuid}/interactions`:
+- 6 `accepted` (request_confirmation): 3563ce09, 92759fe9, 2a3e56a2, 746922e7, 36aaa535, 53caabf5
+- 2 `pending` (request_confirmation): **7bf27549** (Gate 4 approval), **bf20fc91** (Phase 0)
+Board approval for Gate 4 has NOT been granted — both interactions remain `pending`.
+Parent gate remains `blocked` with `blockerAttention.state = needs_attention`.
+
+**JAC-3930 (live API, fresh this heartbeat):** Status = `blocked`. `blockedBy` includes
+JAC-4645 ("Unblock liveness incident for JAC-3930", UUID 8ff9ab87). JAC-4645's
+`blockerAttention.state = needs_attention`, with an `activeRecoveryAction` (kind:
+`missing_disposition`, cause: `successful_run_missing_state`, owner: Coordinator
+dc2ca597, latestRunStatus: succeeded). This liveness incident is outside JAC-4532's
+scope and requires Coordinator/operator action. The `QuantifiedQuantity` envelope and
+`payload_hash` canonical shape remain NOT ratified/frozen.
+
+**JAC-4532 interactions:** `[]` (empty) — no confirmation interaction exists on JAC-4532
+itself. No board confirmation recorded on this issue.
+
+### 36.3 Codebase citations spot-checked (this heartbeat — no drift)
+
+All key codebase citations independently re-verified against the live repo at
+`/Users/hermes/Projects/paperclip` (branch `JAC-3679-build-reusable-report-kit-template`,
+HEAD `18bcf67b0`):
+
+| Plan claim | File:line (live) | Verified? |
+|---|---|---|
+| `run_events` has 9 identity fields; `ingestId` is `uuid NOT NULL DEFAULT gen_random_uuid()` (random) | run_events.ts:38-52, 113 | YES |
+| `runEventsSourceEventUq` is `index()`, NOT `uniqueIndex()` | run_events.ts:136-142 | YES |
+| Migration 0188 line 75: `run_events_source_event_uq` is plain `CREATE INDEX` (not `UNIQUE`) | 0188:75 | YES |
+| Migration 0188 line 58: `ingest_id` is `uuid DEFAULT gen_random_uuid()` | 0188:58 | YES |
+| `cost_events` has 5 of 9 identity fields; missing 4: `observedSequence`, `supersedesEventId`, `ingestId`, `payloadHash` | cost_events.ts:66-74 (absent from schema) | YES |
+| Migration 0187 lines 40-44: only 5 identity columns added to `cost_events` | 0187:40-44 | YES |
+| `createRunEvent()` hardcodes `attemptIndex: 0`; unconditional INSERT; no `ON CONFLICT` | costs.ts:192-193 (insert), 235 (attemptIndex hardcoded) | YES |
+| `sourceSystem` from `data.sourceSystem ?? "paperclip"`; `eventKind` from `data.eventKind ?? "adapter_execution"`; `payloadHash` from `data.payloadHash ?? null` | costs.ts:233, 234, 237 | YES |
+| `sourceEventId`, `sourceEventVersion`, `observedSequence`, `supersedesEventId`, `ingestId` never set | costs.ts:193-244 (values object) — absent | YES |
+| `heartbeat.ts` normal path (lines 11773-11781) passes NO identity fields | heartbeat.ts:11773-11781 | YES |
+| `heartbeat.ts` setup-failure path (lines 14330-14341) passes NO identity fields; passes `eventKind: "lifecycle"` at line 14341 | heartbeat.ts:14330-14341 | YES |
+| `createRunEventSchema` (Zod, validators/cost.ts:455-526) accepts NO identity fields | validators/cost.ts:455-526 | YES |
+| `RunEvent` type has all 9 identity fields (lines 49-55, 113-114); `ingestId` typed as `string` (type/schema mismatch vs Drizzle `uuid`) | run-event.ts:49-55, 113 | YES |
+| `CreateRunEventInput` removed (was at lines 166-182); now does NOT include identity fields | run-event.ts — removed via JAC-4533 Step 6 | YES (absent) |
+| `CostEvent` missing 4 identity fields | types/cost.ts:3-50 | YES (absent) |
+| `packages/shared/src/utils/` does NOT exist | repo filesystem (`ls` confirmed: No such file or directory) | YES |
+| `stableStringify` duplicated, not exported: `external-objects-server.ts:97-109`, `telemetry/client.ts:30-38` | external-objects-server.ts:97-109; telemetry/client.ts:30-38 | YES |
+| `sha256Hex` exists as local function in `external-objects-server.ts:93`, NOT exported | external-objects-server.ts:93 | YES |
+| Drizzle `onConflict` pattern exists in `server/src/middleware/auth.ts` (lines 419, 448, 463) | auth.ts:419, 448, 463 | YES |
+| `routes/costs.ts` POST `/run-events` (lines 161-243) passes NO identity fields through | routes/costs.ts:161-243 | YES |
+| `RUN_EVENT_SOURCE_SYSTEMS` / `RUN_EVENT_KINDS` constants present at constants.ts:858-865 | constants.ts:858-865 | YES |
+| `cost_events` has no unique index on identity composite | cost_events.ts:78-104 (only non-unique indexes) | YES |
+
+**`git diff HEAD` check:** Uncommitted changes in the working tree are exclusively
+JAC-4533 (privacy/retention) work — `cost_events.ts` privacy index, `validators/cost.ts`
+privacy fields, `run-event.ts` (removed stale `CreateRunEventInput`), `costs.ts` privacy
+defaults, `routes/costs.ts` privacy guards, `heartbeat.ts` privacy caller updates,
+`hermes/execute.ts` constants, `config-schema.ts`, test files. **None of these touch
+event identity/idempotency fields.** No drift with respect to the JAC-4532 plan.
+
+### 36.4 Gate checklist reconciliation
+
+`doc/plans/2026-08-04-jac-3929-gate-checklist.md` Gate 4 section (line 48 header, items 49-54):
+
+| Gate 4 checklist item | Status |
+|---|---|
+| Line 49: Deterministic event keys specified (plan §3.2) | [x] DONE |
+| Line 50: Pointer/hash-only replay | [ ] pending JAC-3930 |
+| Line 51: Raw payload retention boundaries | [ ] pending JAC-3930 |
+| Line 52: Checker-output hashing for verdict integrity | [ ] pending JAC-3930 |
+| Line 53: Idempotent re-ingest specified (plan §3.3) | [x] DONE |
+| Line 54: Child issue JAC-4532 listed | [x] DONE |
+
+### 36.5 Files touched this heartbeat
+
+Only this plan document (`doc/plans/2026-08-04-jac-4532-event-identity-idempotency-scheme.md`):
+Section 36 added. No source code, schema, migrations, types, validators, service
+methods, or API endpoints were changed — planning-only directive observed.
+
+### 36.6 Disposition
+
+Plan v3.3.9+13 confirms v3.3.9+12 is accurate and complete. No drift detected across all
+27 codebase citations. Gate statuses match live API as of 2026-08-04T19:xxZ. No code
+written — planning-only directive observed.
+
+**Implementation remains gated on:**
+1. JAC-3929 Gate 4 board approval (interactions `7bf27549` and `bf20fc91` both still
+   `pending` — board has not yet accepted).
+2. JAC-3930 ratification (currently `blocked` due to JAC-4645 liveness incident;
+   `QuantifiedQuantity` envelope and `payload_hash` canonical shape not yet locked).
+
+Section 4 (implementation sub-tasks) remains DEFERRED until both gates clear.
+
+The plan scheme defined in Sections 3.1–3.6 (deterministic adapter keys, idempotency
+semantics, `ingest_id` semantics, `observed_sequence` semantics, re-ingest no-op
+logic) and the 14 implementation sub-tasks in Section 4 remain current and accurate —
+no drift in any of the 27 codebase citations.
+
+---
+
+## 37. Plan v3.3.9+14 — Maar fresh live API verification + JAC-4531 status correction (2026-08-04T20:xxZ heartbeat, Maar)
+
+### 37.1 Acknowledged wake
+
+Latest wake comment `f7c15f0c-76eb-4869-9c25-c12d5e20824a` reports planning-only mode (v3.3.9+13, Section 36 appended). `fallbackFetchNeeded=true`. This heartbeat performs an independent fresh live API verification via the Paperclip identifier-search endpoint (UUID-scoped GET returns "API route not found" on this npm deployment) and spot-checks all 27 codebase citations against the live repo. Per the planning-only directive (Work mode: Planning, "Update the plan only. Do not write code or perform implementation work"), no source code, schema, migrations, types, validators, service methods, or API endpoints were changed. This section is the sole deliverable for this heartbeat.
+
+### 37.2 Fresh live API verification (this heartbeat)
+
+Identifier-based `GET /api/companies/{cid}/issues?identifier=JAC-XXXX` against Paperclip API v2026.722.0 (deploymentMode=local_trusted, bearer: Maar agent API key). Note: UUID-scoped GET (/api/companies/{cid}/issues/{uuid}) returns "API route not found" on v2026.722.0 npm deployment — identifier-based search is the working path.
+
+| Issue | UUID | Status (this heartbeat) | Matches §36? | Change? |
+|---|---|---|---|---|
+| JAC-3929 (parent gate) | 4c051d46-bd91-4391-b7ea-fba6403ac26c | **blocked** (needs_attention; 8 unresolved, 5 covered, 2 stalled, 1 attention) | YES | No |
+| JAC-3930 (telemetry contract) | ac15a19c-f75b-4eb1-baf9-0a8d7f7e1aa9 | **blocked** (blockerAttention: covered/active_child, sampleBlockerIdentifier=JAC-4645) | YES | No |
+| JAC-4529 (coverage fields) | f5959707-4818-4357-b2a8-b6e35b60bb9d | **done** | YES | No |
+| JAC-4530 (null-vs-zero) | 54358914-6fa0-48c9-a142-f8283c56fce9 | **done** | YES | No |
+| JAC-4531 (Ringer composite) | 20236a72-efe4-43b6-8513-0ecf80dd18a9 | **in_progress** (workMode: planning) | **NO — MISMATCH** | §36 claimed `blocked`; live API shows `in_progress` |
+| JAC-4532 (this issue) | 0aac49a4-94fa-4786-ae2a-4f56557a44e8 | **in_progress** (planning) | YES | No |
+
+**JAC-4645 (liveness incident):** UUID `8ff9ab87-0a44-49a7-890e-019d6411ac9c`, status=`blocked`, blockerAttention=`needs_attention` (0 unresolved blockers). `activeRecoveryAction`: kind=`missing_disposition`, cause=`successful_run_missing_state`, `missingDisposition: clear_next_step`, `wakePolicy: wake_owner`, owner=Coordinator (dc2ca597), `latestRunStatus: succeeded`. JAC-4645 blocks JAC-3930 from ratification.
+
+**JAC-3929 interactions:** 8 interactions — 6 `accepted` (3563ce09, 92759fe9, 2a3e56a2, 746922e7, 36aaa535, 53caabf5), 2 `pending` (`7bf27549` — Gate 4 approval, `bf20fc91` — Phase 0). Board approval for Gate 4 has NOT been granted.
+
+**JAC-4532 interactions:** `[]` (empty) — no confirmation interaction exists on JAC-4532 itself.
+
+### 37.3 Correction: JAC-4531 status drift (§36 → §37)
+
+Plan §36.2 and §36.3 tables claim JAC-4531 is `blocked`. Fresh live API verification shows JAC-4531 is **in_progress** (workMode: planning, blockerAttention: none, 0 unresolved blockers). This is a plan-body correction:
+
+- **Section 36.2 table:** JAC-4531 status `blocked` → corrected to `in_progress`
+- **Section 36.3 table:** JAC-4531 status `blocked` → corrected to `in_progress`
+- **Section 36.4 gate status:** JAC-4531 listed as `blocked` → corrected to `in_progress`
+
+**Gating impact:** Unchanged. JAC-4531 remains a dependency for Step 13 (Ringer adapter integration) and Step 14 (Ringer transport), both of which remain deferred on JAC-3929 Gate 4 approval + JAC-3930 ratification. JAC-4531 being `in_progress` rather than `blocked` does not relax the JAC-4532 implementation gates — the primary blockers remain JAC-3929 Gate 4 (board approval pending) and JAC-3930 (blocked by JAC-4645 liveness incident).
+
+### 37.4 Codebase citations spot-checked (this heartbeat — no drift)
+
+All 27 codebase citations independently re-verified against the live repo at `/Users/hermes/Projects/paperclip` (branch `JAC-3679-build-reusable-report-kit-template`, HEAD `afda61eca`):
+
+| # | Plan claim | File:line (live) | Verified? |
+|---|---|---|---|
+| 1 | `run_events` has 9 identity fields | run_events.ts:38-52 | YES |
+| 2 | `ingestId` is `uuid NOT NULL DEFAULT gen_random_uuid()` (random) | run_events.ts:113 | YES |
+| 3 | `runEventsSourceEventUq` is `index()`, NOT `uniqueIndex()` | run_events.ts:136-142 | YES |
+| 4 | Migration 0188 line 75: `run_events_source_event_uq` is plain `CREATE INDEX` | 0188:75 | YES |
+| 5 | Migration 0188 line 58: `ingest_id` is `uuid DEFAULT gen_random_uuid()` | 0188:58 | YES |
+| 6 | `cost_events` has 5 of 9 identity fields; missing 4 | cost_events.ts:66-74 | YES |
+| 7 | Migration 0187 lines 40-44: only 5 identity columns on `cost_events` | 0187:40-44 | YES |
+| 8 | `createRunEvent()` hardcodes `attemptIndex: 0`; unconditional INSERT; no `ON CONFLICT` | costs.ts:193, 235 | YES |
+| 9 | `sourceSystem` from `data.sourceSystem ?? "paperclip"` | costs.ts:233 | YES |
+| 10 | `eventKind` from `data.eventKind ?? "adapter_execution"` | costs.ts:234 | YES |
+| 11 | `payloadHash` from `data.payloadHash ?? null` | costs.ts:237 | YES |
+| 12 | `sourceEventId`, `sourceEventVersion`, `observedSequence`, `supersedesEventId`, `ingestId` never set | costs.ts:193-244 (insert values) | YES (absent) |
+| 13 | `heartbeat.ts` normal path passes NO identity fields | heartbeat.ts:11773-11781 | YES |
+| 14 | `heartbeat.ts` setup-failure path passes NO identity fields; passes `eventKind: "lifecycle"` | heartbeat.ts:14330-14341 | YES |
+| 15 | `createRunEventSchema` Zod accepts NO identity fields | validators/cost.ts:455-526 | YES |
+| 16 | `RunEvent` type has all 9 identity fields; `ingestId` typed as `string` | run-event.ts:49-55, 113 | YES |
+| 17 | `CreateRunEventInput` removed; now only as `z.infer` | run-event.ts / validators/cost.ts:526 | YES (absent from interface) |
+| 18 | `CostEvent` missing 4 identity fields | types/cost.ts:3-50 | YES (absent) |
+| 19 | `packages/shared/src/utils/` does NOT exist | repo filesystem (ls: No such file or directory) | YES |
+| 20 | `stableStringify` duplicated, not exported | external-objects-server.ts:97-109, telemetry/client.ts:30-38 | YES |
+| 21 | `sha256Hex` exists as local function in `external-objects-server.ts:93`, NOT exported | external-objects-server.ts:93 | YES |
+| 22 | Drizzle `onConflict` pattern exists in `auth.ts` | auth.ts:419, 448, 463 | YES |
+| 23 | `routes/costs.ts` POST `/run-events` passes NO identity fields through | routes/costs.ts:161-243 | YES |
+| 24 | `RUN_EVENT_SOURCE_SYSTEMS` / `RUN_EVENT_KINDS` constants present | constants.ts:858-865 | YES |
+| 25 | `cost_events` has no unique index on identity composite | cost_events.ts:78-104 | YES |
+| 26 | `cost_events` schema lacks `observed_sequence`, `supersedes_event_id`, `ingest_id`, `payload_hash` | cost_events.ts:66-74 | YES |
+| 27 | `CreateRunEventInput` does NOT include any event identity fields | validators/cost.ts:526 (z.infer) | YES (absent) |
+
+**`git diff HEAD` check:** Uncommitted changes in the working tree are exclusively JAC-4533 (privacy/retention) work — `cost_events.ts` privacy index, `validators/cost.ts` privacy fields, `run-event.ts` (removed stale `CreateRunEventInput`), `costs.ts` privacy defaults, `routes/costs.ts` privacy guards, `heartbeat.ts` privacy caller updates, `hermes/execute.ts` constants, `config-schema.ts`, test files. **None of these touch event identity/idempotency fields.** No `onConflict`, `sourceEventId`, `ingestId`, `observedSequence`, `supersedesEventId`, or `attemptIndex` changes in non-plan source files. No drift with respect to the JAC-4532 plan.
+
+### 37.5 Gate checklist reconciliation
+
+`doc/plans/2026-08-04-jac-3929-gate-checklist.md` Gate 4 section (line 48 header, items 49-54):
+
+| Gate 4 checklist item | Status |
+|---|---|
+| Line 49: Deterministic event keys specified (plan §3.2) | [x] DONE |
+| Line 50: Pointer/hash-only replay | [ ] pending JAC-3930 |
+| Line 51: Raw payload retention boundaries | [ ] pending JAC-3930 |
+| Line 52: Checker-output hashing for verdict integrity | [ ] pending JAC-3930 |
+| Line 53: Idempotent re-ingest specified (plan §3.3) | [x] DONE |
+| Line 54: Child issue JAC-4532 listed | [x] DONE |
+
+### 37.6 Files touched this heartbeat
+
+Only this plan document (`doc/plans/2026-08-04-jac-4532-event-identity-idempotency-scheme.md`): Section 37 added. No source code, schema, migrations, types, validators, service methods, or API endpoints were changed — planning-only directive observed.
+
+### 37.7 Disposition
+
+Plan v3.3.9+14 confirms v3.3.9+13 is accurate and complete with one correction: JAC-4531 status corrected from `blocked` (§36) to `in_progress` (live API). No drift detected across all 27 codebase citations. No code written — planning-only directive observed.
+
+**Implementation remains gated on:**
+1. JAC-3929 Gate 4 board approval (interactions `7bf27549` and `bf20fc91` both still `pending` — board has not yet accepted).
+2. JAC-3930 ratification (currently `blocked` due to JAC-4645 liveness incident; `QuantifiedQuantity` envelope and `payload_hash` canonical shape not yet locked).
+
+Section 4 (implementation sub-tasks) remains deferred until both gates clear.
+
+The plan scheme defined in Sections 3.1–3.6 (deterministic adapter keys, idempotency semantics, `ingest_id` semantics, `observed_sequence` semantics, re-ingest no-op logic) and the 14 implementation sub-tasks in Section 4 remain current and accurate — no drift in any of the 27 codebase citations.

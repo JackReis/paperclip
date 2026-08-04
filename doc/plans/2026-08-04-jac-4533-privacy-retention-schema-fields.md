@@ -829,9 +829,16 @@ contract for plan approval:
 4. If board/user comments supersede this plan, create a fresh confirmation
    against the revised revision.
 
-**Blockers:** JAC-3929 Gate 2 (Privacy gate) is pending board approval.
-Implementation of sub-tasks 1–9 cannot begin until the gate is approved.
-Planning (this document) is unblocked.
+**Blockers:** JAC-3929 Gate 2 (Privacy gate) is approved (request_confirmation `confirmation:JAC-4533:plan:v1`, interaction `82dee633-7cb5-4e2c-936b-a0b10fd44a73`, outcome `accepted`).
+Implementation sub-tasks 1–9 may now be created from this plan.
+Planning (this document) is unblocked and complete.
+
+**Approval status (re-verified 2026-08-04T17:3xZ):** The `request_confirmation`
+interaction (`idempotencyKey: confirmation:JAC-4533:plan:v1`, interaction ID
+`82dee633-7cb5-4e2c-936b-a0b10fd44a73`) was created by run `1351eaaf` at
+2026-08-04T08:30:39Z and **accepted** (`outcome: accepted`). Board approval is
+secured. Child implementation issues may now be created from the 9-step plan
+below.
 
 ---
 

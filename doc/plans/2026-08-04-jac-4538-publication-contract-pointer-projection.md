@@ -553,3 +553,28 @@ status, per the directive in §8.4.
 **No source mutations performed — planning only.**
 
 **Verification token:** jack-green-phoenix
+
+## 11. Verification checkpoint (2026-08-04T17:36Z)
+
+**Run:** b4c736fd-c517-4951-af66-c3588ae16b27 (Kimi Code via Ringer)
+
+**Wake directive:** issue_reopened_via_comment (latest comment cfb97791, 16:11:44Z).
+Planning directive: Update the plan only. Do not write code or perform implementation work.
+
+**Fresh live API re-verification (Paperclip v2026.722.0, authenticated):**
+
+| Dependency | Issue ID | Status | Assignee | Last Activity |
+|---|---|---|---|---|
+| JAC-3929 (parent) | 4c051d46 | blocked | dc2ca597 (Coordinator) | 2026-08-04T02:35Z |
+| JAC-3930 (telemetry contract) | ac15a19c | in_review | none (board) | 2026-08-01T01:15Z |
+| JAC-3932 (privacy-safe replay) | f42b01a5 | in_review | none (board) | 2026-07-31T21:56Z |
+
+**Confirmation interactions (re-checked):**
+- `62b5c266` — canonical request_confirmation, **status: expired** (no board decision since creation)
+- `5aa27d65` — duplicate request_confirmation, **status: expired**
+
+**Assessment:** Upstream dependencies unchanged since checkpoint §10. JAC-3930 and JAC-3932 remain in_review with no board decision. The plan content is complete and correct — no structural changes needed. Only this verification checkpoint was appended.
+
+**Plan document:** Updated checkpoint §11 with fresh live API re-verification (Paperclip v2026.722.0). Plan content remains unchanged — upstream blockers unchanged.
+
+**No source mutations performed — planning only.**
