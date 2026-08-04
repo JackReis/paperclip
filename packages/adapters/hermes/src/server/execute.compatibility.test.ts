@@ -148,3 +148,54 @@ describe("legacy provider-exhaustion false-green defense", () => {
     expect(result.errorMessage).toBeUndefined();
   });
 });
+
+describe("adapter init traceback extraction", () => {
+  beforeEach(() => vi.clearAllMocks());
+
+  const INIT_TRACEBACK = [
+    "Traceback (most recent call last):",
+    '  File "/usr/local/bin/hermes", line 42, in <module>',
+    "    raise RuntimeError('adapter init failed')",
+    "RuntimeError: adapter init failed",
+  ].join("\n");
+
+  it("preserves the full traceback block (header + frames + exception line)", async () => {
+    vi.mocked(runChildProcess).mockResolvedValue({
+      exitCode: 1,
+      signal: null,
+      timedOut: false,
+      pid: 123,
+      startedAt: "2026-07-15T00:00:00.000Z",
+      stdout: "session_id: failed-session-1\n",
+      stderr: INIT_TRACEBACK,
+    });
+
+    const result = await execute(makeCtx());
+
+    // The error message should contain the full traceback, not just
+    // the single exception line — this is the root cause of truncated tracebacks.
+    expect(result.exitCode).toBe(1);
+    expect(result.errorMessage).toBeTruthy();
+    expect(result.errorMessage).toContain("Traceback (most recent call last):");
+    expect(result.errorMessage).toContain('File "/usr/local/bin/hermes", line 42');
+    expect(result.errorMessage).toContain("raise RuntimeError('adapter init failed')");
+    expect(result.errorMessage).toContain("RuntimeError: adapter init failed");
+  });
+
+  it("does not error when stderr has only benign log lines", async () => {
+    vi.mocked(runChildProcess).mockResolvedValue({
+      exitCode: 0,
+      signal: null,
+      timedOut: false,
+      pid: 123,
+      startedAt: "2026-07-15T00:00:00.000Z",
+      stdout: "response\nsession_id: ok-1\n",
+      stderr: "[2026-07-15T10:00:00Z] INFO: Successfully registered all tools\n",
+    });
+
+    const result = await execute(makeCtx());
+
+    expect(result.exitCode).toBe(0);
+    expect(result.errorMessage).toBeUndefined();
+  });
+});

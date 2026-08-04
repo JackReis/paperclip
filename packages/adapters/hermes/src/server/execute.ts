@@ -263,6 +263,66 @@ function cleanResponse(raw: string): string {
 }
 
 // ---------------------------------------------------------------------------
+// Error extraction
+// ---------------------------------------------------------------------------
+
+/**
+ * Extract a human-readable error summary from stderr.
+ *
+ * Strategy — in priority order:
+ * 1. Python-style tracebacks: capture the full "Traceback (most recent call last):"
+ *    block up to the exception line, so the File/line context is not lost.
+ * 2. Generic error/exception lines: collect lines matching common error keywords
+ *    (error, exception, traceback, failed), skipping log-level noise, capped at
+ *    a reasonable number of lines.
+ *
+ * Returns null when no error-like content is found.
+ */
+function extractErrorSummary(stderr: string): string | null {
+  const lines = stderr.split("\n");
+
+  // --- 1. Python-style traceback block ----------------------------------
+  // Find "Traceback (most recent call last):" and capture everything from
+  // there until the actual exception line (the last line that isn't indented
+  // with File/line or blank). This preserves the full stack context.
+  const tracebackStart = lines.findIndex((l) =>
+    /traceback/i.test(l.trim()),
+  );
+  if (tracebackStart >= 0) {
+    // Walk forward from the traceback header to find the exception line.
+    // In a Python traceback the frames are indented, and the final exception
+    // line (e.g. "RuntimeError: adapter init failed") is at indent 0.
+    let end = tracebackStart + 1;
+    for (let i = tracebackStart + 1; i < lines.length; i++) {
+      const line = lines[i];
+      const trimmed = line.trim();
+      if (trimmed === "") continue; // skip blank lines between frames
+      // Indented lines are continuation (File "...", line N, etc.)
+      if (/^\s/.test(line)) {
+        end = i;
+        continue;
+      }
+      // Non-indented non-empty line after the traceback header: this is the
+      // exception type/message line (the terminal line of the traceback).
+      end = i;
+      break;
+    }
+    const block = lines.slice(tracebackStart, end + 1).join("\n").trim();
+    if (block) return block;
+  }
+
+  // --- 2. Generic error keyword lines ------------------------------------
+  const errorLines = lines
+    .filter((line) => /error|exception|failed/i.test(line))
+    .filter((line) => !/INFO|DEBUG|warn/i.test(line.trim()));
+  if (errorLines.length > 0) {
+    return errorLines.slice(0, 10).join("\n").trim();
+  }
+
+  return null;
+}
+
+// ---------------------------------------------------------------------------
 // Output parsing
 // ---------------------------------------------------------------------------
 
@@ -355,14 +415,14 @@ function parseHermesOutput(stdout: string, stderr: string): ParsedOutput {
     result.costUsd = parseFloat(costMatch[1]);
   }
 
-  // Check for error patterns in stderr
+  // Check for error patterns in stderr.
+  // Extract full traceback blocks rather than only keyword-matching lines,
+  // so that traceback context (File "...", line N, raise/return statements)
+  // is preserved alongside the exception line.
   if (stderr.trim()) {
-    const errorLines = stderr
-      .split("\n")
-      .filter((line) => /error|exception|traceback|failed/i.test(line))
-      .filter((line) => !/INFO|DEBUG|warn/i.test(line)); // skip log-level noise
-    if (errorLines.length > 0) {
-      result.errorMessage = errorLines.slice(0, 5).join("\n");
+    const extracted = extractErrorSummary(stderr);
+    if (extracted !== null) {
+      result.errorMessage = extracted;
     }
   }
 

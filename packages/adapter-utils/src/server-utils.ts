@@ -384,34 +384,6 @@ export function appendWithCap(prev: string, chunk: string, cap = MAX_CAPTURE_BYT
   return combined.length > cap ? combined.slice(combined.length - cap) : combined;
 }
 
-/**
- * Append with dual capture strategy for stderr:
- * Preserves the **head** (first `headBytes`, default 256KB) so that init
- * tracebacks are never truncated, while also keeping the **tail** (up to
- * `cap` bytes) for recent output.  When the combined output fits within
- * `cap`, both strategies are equivalent (no split needed).
- *
- * This addresses the root cause of truncated adapter init tracebacks:
- * previously `appendWithCap` kept only the last `cap` bytes, discarding
- * any traceback that appeared before large volumes of MCP-init stderr noise.
- */
-export function appendWithDualCap(
-  prev: string,
-  chunk: string,
-  cap = MAX_CAPTURE_BYTES,
-  headBytes = MAX_STDERR_HEAD_BYTES,
-): { head: string; tail: string } {
-  const combined = prev + chunk;
-  const combinedLen = combined.length;
-  if (combinedLen <= cap) {
-    return { head: combined, tail: combined };
-  }
-  // Keep the first headBytes for init tracebacks, plus the last cap bytes for recent output
-  const head = combined.slice(0, Math.min(headBytes, combinedLen));
-  const tail = combined.slice(combinedLen - cap);
-  return { head, tail };
-}
-
 export function appendWithByteCap(prev: string, chunk: string, cap = MAX_CAPTURE_BYTES) {
   const combined = prev + chunk;
   const bytes = Buffer.byteLength(combined, "utf8");
@@ -3203,13 +3175,20 @@ export async function runChildProcess(
         });
 
         let stderrHead = "";
+        let stderrTruncated = false;
         const STDERR_HEAD_CAP = MAX_STDERR_HEAD_BYTES;
         child.stderr?.on("data", (chunk: unknown) => {
           const readable = child.stderr;
           if (!readable) return;
           readable.pause();
           const text = String(chunk);
+          const prevStderrLen = stderr.length;
           stderr = appendWithCap(stderr, text);
+          // Detect when appendWithCap discarded earlier content (truncation).
+          // If the new length is less than prev + chunk, the tail cap was hit.
+          if (!stderrTruncated && stderr.length < prevStderrLen + text.length) {
+            stderrTruncated = true;
+          }
           // Preserve the head of stderr for init tracebacks (capped separately)
           if (stderrHead.length < STDERR_HEAD_CAP) {
             stderrHead = (stderrHead + text).slice(0, STDERR_HEAD_CAP);
@@ -3266,7 +3245,10 @@ export async function runChildProcess(
                 stdout,
                 // Merge stderr head (init tracebacks) + tail (recent output) so
                 // tracebacks at the beginning are never lost to truncation.
-                stderr: stderrHead ? `${stderrHead}\n[--- stderr tail (truncated head preserved) ---]\n${stderr}` : stderr,
+                // Only merge head+tail when the tail actually truncated the head —
+                // otherwise stderr already contains everything and merging would
+                // duplicate the content.
+                stderr: stderrTruncated && stderrHead ? `${stderrHead}\n[--- stderr tail (truncated head preserved) ---]\n${stderr}` : stderr,
                 pid: child.pid ?? null,
                 startedAt,
                 terminalResultCleanup: terminalCleanupStarted
