@@ -90,18 +90,19 @@ test("resolveProvider still infers from the requested model when Hermes config i
   });
 });
 
-test("resolveProvider extracts explicit provider prefix from model name (e.g. ollama-launch/qwen3-coder:30b)", () => {
+test("resolveProvider extracts explicit provider prefix from model name (e.g. openrouter/poolside/laguna-s-2.1:free)", () => {
   // When the model name includes a recognized provider prefix like
-  // "ollama-launch/qwen3-coder:30b", the adapter should use that provider
+  // "openrouter/poolside/laguna-s-2.1:free", the adapter should use that provider
   // instead of stripping it and falling back to "auto" (which would route
-  // to Hermes's config-default provider — openrouter — and get a 404).
+  // to Hermes's config-default provider — which may be broken if the API key
+  // is absent or the config provider is wrong).
   expect(resolveProvider({
     explicitProvider: undefined,
     detectedProvider: undefined,
     detectedModel: undefined,
-    model: "ollama-launch/qwen3-coder:30b",
+    model: "openrouter/poolside/laguna-s-2.1:free",
   })).toEqual({
-    provider: "ollama-launch",
+    provider: "openrouter",
     resolvedFrom: "modelInference",
   });
 });
@@ -120,7 +121,7 @@ test("resolveProvider falls back to prefix inference for bare qwen model names",
   // A bare "qwen3-coder:30b" without a provider prefix resolves to "auto"
   // via the qwen → auto hint. This preserves backward compatibility for
   // cloud-hosted qwen models — the provider prefix must be explicit
-  // (e.g. "ollama-launch/qwen3-coder:30b") for local Ollama routing.
+  // (e.g. "openrouter/qwen3-coder:30b") for cloud OpenRouter routing.
   expect(resolveProvider({
     explicitProvider: undefined,
     model: "qwen3-coder:30b",
@@ -133,45 +134,44 @@ test("resolveProvider falls back to prefix inference for bare qwen model names",
 test("resolveProvider handles mixed-case provider prefix in model name", () => {
   expect(resolveProvider({
     explicitProvider: undefined,
-    model: "Ollama-Launch/qwen3-coder:30b",
+    model: "OpenRouter/poolside/laguna-s-2.1:free",
   })).toEqual({
-    provider: "ollama-launch",
+    provider: "openrouter",
     resolvedFrom: "modelInference",
   });
 });
 
-test("resolveProvider resolves ollama-launch/qwen3-coder:30b even when Hermes config has a different model+provider (JAC-4608)", () => {
-  // JAC-4608: When NOUS_API_KEY is absent, the Hermes config may have
-  // model.default=poolside/laguna-s-2.1:free with provider=openrouter.
-  // The adapter uses DEFAULT_MODEL="ollama-launch/qwen3-coder:30b".
+test("resolveProvider resolves openrouter/poolside/laguna-s-2.1:free even when Hermes config has a different model+provider", () => {
+  // When NOUS_API_KEY is absent, the Hermes config may have
+  // model.default=some-other-model with provider=nous.
+  // The adapter uses DEFAULT_MODEL="openrouter/poolside/laguna-s-2.1:free".
   // Since the config model doesn't match the requested model, resolveProvider
-  // must NOT use the config's openrouter provider. Instead it should infer
-  // "ollama-launch" from the model-name prefix, routing to local Ollama :11434
-  // instead of hitting OpenRouter (404).
+  // must NOT use the config's provider. Instead it should infer
+  // "openrouter" from the model-name prefix, routing to OpenRouter directly
+  // instead of hitting an invalid provider.
   expect(resolveProvider({
     explicitProvider: undefined,
-    detectedProvider: "openrouter",
-    detectedModel: "poolside/laguna-s-2.1:free",
-    model: "ollama-launch/qwen3-coder:30b",
+    detectedProvider: "nous",
+    detectedModel: "hermes-3:1b",
+    model: "openrouter/poolside/laguna-s-2.1:free",
   })).toEqual({
-    provider: "ollama-launch",
+    provider: "openrouter",
     resolvedFrom: "modelInference",
   });
 });
 
-test("resolveProvider prefers ollama-launch prefix over a matching Hermes config provider", () => {
+test("resolveProvider prefers explicit provider prefix over a matching Hermes config provider", () => {
   // Even when the config model matches, if the requested model name
-  // contains an explicit ollama-launch provider prefix AND the config
-  // provider is openrouter, the prefix should win to avoid OpenRouter 404s.
-  // This tests that the model name with ollama-launch prefix is distinct
-  // from a config that has the same base model under openrouter.
+  // contains an explicit openrouter provider prefix AND the config
+  // provider is nous, the prefix should win to avoid routing to an
+  // invalid provider with bad API keys.
   expect(resolveProvider({
     explicitProvider: undefined,
-    detectedProvider: "openrouter",
-    detectedModel: "openrouter/qwen3-coder:30b",
-    model: "ollama-launch/qwen3-coder:30b",
+    detectedProvider: "nous",
+    detectedModel: "nous/hermes-3:1b",
+    model: "openrouter/poolside/laguna-s-2.1:free",
   })).toEqual({
-    provider: "ollama-launch",
+    provider: "openrouter",
     resolvedFrom: "modelInference",
   });
 });

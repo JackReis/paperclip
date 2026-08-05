@@ -20,23 +20,26 @@ export const DEFAULT_GRACE_SEC = 10;
 /**
  * Default model to use if none specified in adapterConfig.
  *
- * Set to "ollama-launch/qwen3-coder:30b" so that hermes_local agents with
- * empty adapterConfig (the fleet-wide default) resolve to a deterministic
- * local Ollama model on :11434 rather than deferring to the user's Hermes
- * config provider — which, when NOUS_API_KEY is absent or the config
- * provider is wrong, produces 404s and truncated tracebacks on every run.
+ * Set to "openrouter/poolside/laguna-s-2.1:free" so that hermes_local
+ * agents with empty adapterConfig (the fleet-wide default) resolve to a
+ * model on a provider whose API key is known to be valid — OpenRouter.
  *
- * The "ollama-launch/" prefix is a recognized VALID_PROVIDERS entry, so
+ * The "openrouter/" prefix is a recognized VALID_PROVIDERS entry, so
  * inferProviderFromModel() extracts it directly and the adapter passes
- * both `-m ollama-launch/qwen3-coder:30b` and `--provider ollama-launch`
- * to the Hermes CLI.
+ * both `-m openrouter/poolside/laguna-s-2.1:free` and
+ * `--provider openrouter` to the Hermes CLI. The CLI normalizes the
+ * "openrouter/" model-name prefix at runtime (same path that strips
+ * "openai/" etc.), yielding the bare model name expected by the API.
  *
- * As of JAC-4603, this change replaces the previous DEFAULT_MODEL="auto"
- * which caused all 20 errored agents to defer to Hermes config.yaml (provider:
- * openrouter), hit HTTP 404 for qwen3-coder:30b, and fail with truncated
- * tracebacks.
+ * Previous value "ollama-launch/qwen3-coder:30b" was a JAC-4603 stopgap
+ * that routed through provider=nous (from config.yaml fallback) because
+ * the Hermes CLI does not recognize "ollama-launch" as a provider alias
+ * — producing truncated tracebacks and server disconnects (RemoteProtocolError).
+ * The NOUS_API_KEY in the active fleet profile is also invalid (401), so
+ * any fallback to provider=nous is a dead end. OpenRouter is verified
+ * working with OPENROUTER_API_KEY present in ~/.hermes/.env.
  */
-export const DEFAULT_MODEL = "ollama-launch/qwen3-coder:30b";
+export const DEFAULT_MODEL = "openrouter/poolside/laguna-s-2.1:free";
 
 /**
  * Valid --provider choices for the hermes CLI.
@@ -56,7 +59,6 @@ export const VALID_PROVIDERS = [
   "minimax",
   "minimax-cn",
   "kilocode",
-  "ollama-launch",
   "ollama-cloud",
 ] as const;
 

@@ -166,9 +166,9 @@ describe.sequential("Hermes environment compatibility", () => {
     }
   });
 
-  it("reports hermes_configured_default_model and ollama-launch fallback when model is unset (JAC-4575 empty adapterConfig)", async () => {
+  it("reports hermes_configured_default_model when model is unset (JAC-4575 empty adapterConfig)", async () => {
     // JAC-4575: Agents with empty adapterConfig={} (no model field) should
-    // report that DEFAULT_MODEL (ollama-launch/qwen3-coder:30b) will be used.
+    // report that DEFAULT_MODEL (openrouter/poolside/laguna-s-2.1:free) will be used.
     // The checkModel function maps undefined model to hermes_configured_default_model.
     const runtime = await createFakeHermesRuntime();
     try {
@@ -190,7 +190,7 @@ describe.sequential("Hermes environment compatibility", () => {
         (check) => check.code === "hermes_configured_default_model",
       );
       expect(modelCheck?.message).toMatch(/DEFAULT_MODEL/);
-      expect(modelCheck?.message).toMatch(/ollama-launch\/qwen3-coder:30b/);
+      expect(modelCheck?.message).toMatch(/openrouter\/poolside\/laguna-s-2\.1:free/);
     } finally {
       await rm(runtime.root, { recursive: true, force: true });
     }

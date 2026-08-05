@@ -278,6 +278,15 @@ export function costRoutes(
         sourceDeletedAt: req.body.sourceDeletedAt ? new Date(req.body.sourceDeletedAt) : null,
         tombstoneRef: req.body.tombstoneRef,
         policyVersion: req.body.policyVersion,
+        // JAC-4532: forward event identity / idempotency fields.
+        sourceSystem: req.body.sourceSystem,
+        sourceEventId: req.body.sourceEventId ?? null,
+        sourceEventVersion: req.body.sourceEventVersion ?? null,
+        eventKind: req.body.eventKind,
+        attemptIndex: req.body.attemptIndex,
+        observedSequence: req.body.observedSequence ?? null,
+        supersedesEventId: req.body.supersedesEventId ?? null,
+        payloadHash: req.body.payloadHash ?? null,
       });
 
       const actor = getActorInfo(req);

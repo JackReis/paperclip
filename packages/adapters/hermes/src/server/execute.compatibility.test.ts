@@ -91,17 +91,18 @@ describe("hermes-local compatibility invocation", () => {
     expect(spawnedArgs()).not.toContain("-Q");
   });
 
-  it("uses the DEFAULT_MODEL (ollama-launch/qwen3-coder:30b) when adapterConfig is empty, passing -m and --provider", async () => {
-    // JAC-4603: DEFAULT_MODEL changed from "auto" to "ollama-launch/qwen3-coder:30b"
-    // so that empty-adapterConfig agents resolve to a deterministic local Ollama
-    // model instead of deferring to a potentially-broken Hermes config provider.
+  it("uses the DEFAULT_MODEL (openrouter/poolside/laguna-s-2.1:free) when adapterConfig is empty, passing -m and --provider", async () => {
+    // DEFAULT_MODEL changed to "openrouter/poolside/laguna-s-2.1:free" so that
+    // empty-adapterConfig agents resolve to a model on a provider whose API key
+    // is known valid (OPENROUTER_API_KEY), rather than deferring to a broken
+    // Hermes config provider (nous/ollama-launch both 404/401).
     const result = await execute(makeCtx());
-    expect(result.model).toBe("ollama-launch/qwen3-coder:30b");
-    expect(result.provider).toBe("ollama-launch");
+    expect(result.model).toBe("openrouter/poolside/laguna-s-2.1:free");
+    expect(result.provider).toBe("openrouter");
     expect(spawnedArgs()).toContain("-m");
-    expect(spawnedArgs()).toContain("ollama-launch/qwen3-coder:30b");
+    expect(spawnedArgs()).toContain("openrouter/poolside/laguna-s-2.1:free");
     expect(spawnedArgs()).toContain("--provider");
-    expect(spawnedArgs()).toContain("ollama-launch");
+    expect(spawnedArgs()).toContain("openrouter");
   });
 
   it("omits auto model and provider flags so Hermes can use its profile when explicitly set to auto", async () => {

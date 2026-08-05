@@ -116,6 +116,15 @@ export const createCostEventSchema = z.object({
   sourceDeletedAt: z.string().datetime().optional().nullable(),
   tombstoneRef: z.string().optional().nullable(),
   policyVersion: z.string().optional().nullable(),
+  /** Event identity / idempotency fields (JAC-4532). */
+  sourceSystem: z.enum(RUN_EVENT_SOURCE_SYSTEMS).optional().default("paperclip"),
+  sourceEventId: z.string().optional().nullable(),
+  sourceEventVersion: z.string().optional().nullable(),
+  eventKind: z.enum(RUN_EVENT_KINDS).optional().default("cost_report"),
+  attemptIndex: z.number().int().nonnegative().optional().default(0),
+  observedSequence: z.number().int().nonnegative().optional().nullable(),
+  supersedesEventId: z.string().optional().nullable(),
+  payloadHash: z.string().optional().nullable(),
   occurredAt: z.string().datetime(),
 }).transform((value) => {
   const resolvedCoverageState = resolveCoverageState(value.coverageState, value.sourceStatus);
@@ -489,6 +498,15 @@ export const createRunEventSchema = z.object({
   sourceDeletedAt: z.string().datetime().optional().nullable(),
   tombstoneRef: z.string().optional().nullable(),
   policyVersion: z.string().optional().nullable(),
+  /** Event identity / idempotency fields (JAC-4532). */
+  sourceSystem: z.enum(RUN_EVENT_SOURCE_SYSTEMS).optional().default("paperclip"),
+  sourceEventId: z.string().optional().nullable(),
+  sourceEventVersion: z.string().optional().nullable(),
+  eventKind: z.enum(RUN_EVENT_KINDS).optional().default("adapter_execution"),
+  attemptIndex: z.number().int().nonnegative().optional().default(0),
+  observedSequence: z.number().int().nonnegative().optional().nullable(),
+  supersedesEventId: z.string().optional().nullable(),
+  payloadHash: z.string().optional().nullable(),
   occurredAt: z.string().datetime(),
 }).transform((value) => {
   // Fail-closed: coverage fields are derived from usageReportedState + token values,
