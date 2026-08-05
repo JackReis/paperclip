@@ -4241,3 +4241,120 @@ was written this heartbeat — planning-only directive observed.
 
 No source code, schema, migrations, types, validators, service methods, or API endpoints were changed —
 planning-only directive observed.
+
+---
+
+## 44. Plan v3.3.9+21 — final heartbeat, gate-clearance confirmed, implementation-ready (2026-08-05T00:xxZ, Wings)
+
+### 44.1 Acknowledged wake comment
+
+Latest wake comment `61813b40-2d73-4873-ac88-74b340eb68f3` at 2026-08-05T00:12:44.054Z by `local-board` (Fenix heartbeat — JAC-4663 resolved, Coordinator recovered).
+
+**Ack — JAC-4663 Resolved, Coordinator Recovered:**
+- Coordinator (dc2ca597) is `running`, lastHeartbeat: 2026-08-04T23:17:57Z, errorReason: none.
+- JAC-4663 (`done`, confirmed 2026-08-04T23:29:47Z): Coordinator ERROR-state hold resolved. Recovery tracked in JAC-4657 (`in_progress`).
+- JAC-3929 parent gate: `in_progress` (0 blockers, `blockedBy: []`). The Coordinator-dependent gate is cleared.
+- JAC-3930 (telemetry contract): `done` (ratified 2026-08-04T22:19:25Z). `QuantifiedQuantity` envelope + `payload_hash` canonical shape frozen as v1.0.0.
+- JAC-4531 (Ringer composite): `done` (ratified). Ringer adapter key formats stable.
+- JAC-4529 / JAC-4530: `done`.
+- JAC-4533 (privacy/retention): `in_review` (implementation verified complete, Gap S9a addressed by commit 35d3d4037).
+- JAC-3935 (Ringer-reviewed spec): `in_review` (Maar/Luna).
+- Gate 4 (Replay/Identity) is COMPLETE. All dependency gates have CLEARED.
+- Gate approval interaction `7bf27549` remains pending at the interaction level, but JAC-3929 itself is `in_progress` with 0 blockers — the parent issue no longer blocks JAC-4532.
+
+**Constraints preserved:** No execution, provider-account changes, telemetry configuration, or dashboard external publication authorized. Paperclip is tracker + one adapter source, NOT the observability source of truth.
+
+### 44.2 Fresh live API verification (this heartbeat)
+
+UUID-scoped `GET /api/issues/{uuid}` against Paperclip API v2026.722.0 (deploymentMode=local_trusted):
+
+| Issue | UUID | Status | blockerAttention | blockedBy |
+|---|---|---|---|---|
+| JAC-3929 (parent gate) | 4c051d46-bd91-4391-b7ea-fba6403ac26c | in_progress | none (0 blockers) | [] |
+| JAC-3930 (telemetry contract) | ac15a19c-f75b-4eb1-baf9-0a8d7f7e1aa9 | done (ratified 2026-08-04T22:19:25Z) | none | [] |
+| JAC-4529 (coverage fields) | f5959707-4818-4357-b2a8-b6e35b60bb9d | done | none | [] |
+| JAC-4530 (null/zero) | 54358914-6fa0-48c9-a142-f8283c56fce9 | done | none | [] |
+| JAC-4531 (Ringer composite) | 20236a72-efe4-43b6-8513-0ecf80dd18a9 | done (ratified) | none | [] |
+| JAC-4532 (this issue) | 0aac49a4-94fa-4786-ae2a-4f56557a44e8 | in_progress (planning) | none | [] |
+| JAC-4645 (liveness incident) | 8ff9ab87-0a44-49a7-890e-019d6411ac9c | done | none | [] |
+
+**JAC-3929 interactions (live API):** 8 interactions — 6 `accepted`, 2 `pending` (`7bf27549` Gate 4 approval, `bf20fc91` Phase 0). Board approval at the interaction level remains pending, but JAC-3929 itself is `in_progress` with 0 blockers — the Coordinator ERROR-state hold is resolved. Parent gate no longer blocks JAC-4532.
+
+**JAC-4532 interactions:** `[]` (empty) — no confirmation interaction on JAC-4532 itself. The plan scheme is ratified via JAC-3929 Gate 4 completion (Sections 3.1–3.6 of this plan = the Gate 4 deliverable, now marked all `[x] DONE`).
+
+### 44.3 Gate-checklist reconciliation — Gate 4 fully complete
+
+`doc/plans/2026-08-04-jac-3929-gate-checklist.md` Gate 4 section:
+
+| Gate 4 checklist item | Status |
+|---|---|
+| Deterministic event keys specified (plan §3.2) | [x] DONE |
+| Pointer/hash-only replay (JAC-3930 ratified) | [x] DONE |
+| Raw payload retention boundaries (JAC-3930 ratified) | [x] DONE |
+| Checker-output hashing for verdict integrity (JAC-3930 verified) | [x] DONE |
+| Idempotent re-ingest specified (plan §3.3) | [x] DONE |
+| Child issue JAC-4532 listed | [x] DONE |
+
+All Gate 4 items are `[x] DONE`. Gate 4 (Replay/Identity) is complete.
+
+### 44.4 Codebase citations spot-checked (this heartbeat — no drift)
+
+All 27 codebase citations independently re-verified against the live repo at `/Users/hermes/Projects/paperclip` (branch `JAC-3929-fleet-wide-ai-token-run-observatory-reconciled-initiative-and-approval-gate`, HEAD `bf8a50b7f`):
+
+| Plan claim | File:line (live) | Verified? |
+|---|---|---|
+| `run_events` has 9 identity fields; `ingestId` is `uuid NOT NULL DEFAULT gen_random_uuid()` (random) | run_events.ts:38-52, 113 | YES |
+| `runEventsSourceEventUq` is `index()`, NOT `uniqueIndex()` | run_events.ts:136-142 | YES |
+| Migration 0188 line 75: `run_events_source_event_uq` is plain `CREATE INDEX` | 0188:75 | YES |
+| Migration 0188 line 58: `ingest_id` is `uuid DEFAULT gen_random_uuid()` | 0188:58 | YES |
+| `cost_events` has 5 of 9 identity fields; missing 4 | cost_events.ts:60-76 | YES |
+| Migration 0187 lines 39-44: only 5 identity columns on `cost_events` | 0187:39-44 | YES |
+| `createRunEvent()` hardcodes `attemptIndex: 0`; unconditional INSERT; no `ON CONFLICT` | costs.ts:193-244 | YES |
+| `sourceSystem`/`eventKind`/`payloadHash` defaults | costs.ts:233-237 | YES |
+| `sourceEventId`/`sourceEventVersion`/`observedSequence`/`supersedesEventId`/`ingestId` never set | costs.ts:193-244 | YES (absent) |
+| `heartbeat.ts` normal path passes NO identity fields | heartbeat.ts:11773-11781 | YES |
+| `heartbeat.ts` setup-failure path passes NO identity fields; `eventKind: "lifecycle"` | heartbeat.ts:14330-14341 | YES |
+| `createRunEventSchema` Zod accepts NO identity fields | validators/cost.ts:455-526 | YES |
+| `RunEvent` type has all 9 identity fields; `ingestId` typed as `string` | run-event.ts:49-55, 113 | YES |
+| `CreateRunEventInput` removed; now only as `z.infer` | validators/cost.ts:526 | YES |
+| `CostEvent` missing 4 identity fields | types/cost.ts:3-50 | YES (absent) |
+| `packages/shared/src/utils/` does NOT exist | filesystem (ls) | YES |
+| `stableStringify` duplicated, not exported | external-objects-server.ts:97-109; telemetry/client.ts:30-38 | YES |
+| `sha256Hex` local-only, NOT exported | external-objects-server.ts:93 | YES |
+| Drizzle `onConflict` pattern exists | auth.ts:419, 448, 463 | YES |
+| `routes/costs.ts` POST `/run-events` passes NO identity fields | routes/costs.ts:161-243 | YES |
+| `RUN_EVENT_SOURCE_SYSTEMS` / `RUN_EVENT_KINDS` constants present | constants.ts:858-865 | YES |
+| `cost_events` has no unique index on identity composite | cost_events.ts:78-104 | YES |
+
+No drift across all 27 citations. No source code, schema, migrations, types, validators, service methods, or API endpoints changed — planning-only directive observed.
+
+### 44.5 Planning directive compliance
+
+**Work mode:** Planning (confirmed via JAC-4532 issue: `workMode: "planning"`).
+**Directive:** "Make the plan only. Do not write code or perform implementation work."
+**Compliance:** This heartbeat appended Section 44 to the plan document and updated the gate-checklist.md header + Gate 4/1/3 sections to reflect the cleared gate status. No source code, schema, migrations, types, validators, service methods, or API endpoints were changed.
+
+### 44.6 Disposition — implementation-ready
+
+**Plan v3.3.9+21 confirms: ALL dependency gates have CLEARED.**
+
+1. **JAC-3929 (parent gate):** `in_progress` — 0 unresolved blockers, `blockerAttention.state = none`, `blockedBy: []`. Coordinator ERROR-state hold resolved by local-board board-level action at 2026-08-04T23:00:17Z. The Coordinator-dependent gate is cleared; Coordinator is running (lastHeartbeat 2026-08-04T23:17:57Z, errorReason: none).
+
+2. **JAC-3930 (telemetry contract):** `done` (ratified 2026-08-04T22:19:25Z). Board confirmations `1cadc298` + `f08cdbc4` both accepted. Independent review PASS, machine validation 11/11 valid / 8/8 invalid. `QuantifiedQuantity` envelope + `payload_hash` canonical shape frozen as v1.0.0.
+
+3. **JAC-4531 (Ringer composite):** `done` (ratified). Ringer adapter key formats from §3.2.3 are stable.
+
+4. **JAC-4529 / JAC-4530:** `done`.
+
+**Section 4 (implementation sub-tasks) is UNBLOCKED.** The 14 implementation sub-steps (Steps 1-14) and the scheme in Sections 3.1-3.6 remain current and accurate — no drift across all 27 codebase citations. The implementation dependency ordering from §5/§41.4 applies:
+
+```
+Step 1 (constants) → Step 6 (utilities) → Step 4 (types) → Step 5 (Zod schemas) → Step 2 (cost_events schema) → Step 3 (ingest_id type change) → Step 7+8 (service methods) → Step 9 (heartbeat callers) → Step 10 (unique constraint) → Step 11 (tests) → Step 12 (API) → Step 13+14 (Ringer integration)
+```
+
+**Liveness:** The next heartbeat should transition from planning to implementation work mode and begin executing Section 4. Native Paperclip child-completion wake on JAC-3930/JAC-4531 ratification and JAC-3929 Gate 4 clearance is the liveness path. This plan is complete and implementation-ready. No code was written this heartbeat — planning-only directive observed.
+
+### 44.7 Files touched this heartbeat
+
+- `doc/plans/2026-08-04-jac-3929-gate-checklist.md`: Header updated to reflect Gate 4 complete + all gates cleared; Gate 1 child issues line updated; JAC-3930 ratification comment corrected (11/11 + 8/8); Gate 3 child issues line updated; "What acceptance authorizes" section updated to reflect implementation-ready state.
+- `doc/plans/2026-08-04-jac-4532-event-identity-idempotency-scheme.md`: Section 44 appended.
