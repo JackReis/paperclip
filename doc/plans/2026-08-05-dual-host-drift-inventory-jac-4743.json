@@ -1,0 +1,305 @@
+{
+    "auditId": "jac-4743-drift-inventory-20260805T1732Z",
+    "auditor": "Aegis (100915f9, hermes_local)",
+    "timestamp": "2026-08-05T17:32:00Z",
+    "hostnameCorrection": "2026-08-05T17:32:03Z local-board comment: hostname is 'Talaris'; Tailscale DNS talaris.tailc2f398.ts.net resolves to 100.97.178.76",
+    "checkerPolicy": "read-only; no settings mutated",
+    "hosts": {
+        "Aegis": {
+            "user": "hermes",
+            "tailscaleIp": "100.84.253.97",
+            "tailscaleDns": "aegis.tailc2f398.ts.net",
+            "paperclipApi": "http://127.0.0.1:3101",
+            "paperclipRunning": true,
+            "paperclipVersion": "v2026.722.0+fbc15a2d8.dirty",
+            "codexAgentsMd": {
+                "mtime": "2026-07-30T13:44:50Z",
+                "sizeBytes": 1657,
+                "hashSha256": "b1e180d09f3d965124d20b15f4192e1d9daaf5d4b8e15a3c70e2e0d47ee83b7c"
+            },
+            "chatGptAppInstalled": true,
+            "customInstructions": "account-scoped-via-openai-cloud-human-gate",
+            "memoryProvider": "ob1,hindsight,holographic,honcho",
+            "modelProvider": "openrouter",
+            "modelDefault": "openrouter/poolside/laguna-s-2.1:free",
+            "spineDirectory": "absent",
+            "hookProvenanceTest": "present",
+            "plugins": [
+                {
+                    "name": "fleet-beacon-consumer",
+                    "plugin_yaml": true
+                },
+                {
+                    "name": "herdr-agent-state",
+                    "plugin_yaml": true
+                },
+                {
+                    "name": "hindsight,holographic,honcho",
+                    "plugin_yaml": false,
+                    "note": "non-standard plugin dir name, missing plugin.yaml"
+                },
+                {
+                    "name": "ob1",
+                    "plugin_yaml": true
+                },
+                {
+                    "name": "ob1,hindsight,holographic,honcho",
+                    "plugin_yaml": true
+                },
+                {
+                    "name": "superpowers",
+                    "plugin_yaml": true
+                }
+            ],
+            "memoryPlaneHealth": {
+                "OB1:8787": "200",
+                "Hindsight:8888": "200",
+                "Honcho:8005": "200",
+                "Bifrost:8078": "200"
+            },
+            "launchdAgents": 82
+        },
+        "Talaris": {
+            "user": "jack.reis",
+            "tailscaleIp": "100.97.178.76",
+            "tailscaleDns": "talaris.tailc2f398.ts.net",
+            "paperclipApi": "http://127.0.0.1:3101",
+            "paperclipRunning": false,
+            "codexAgentsMd": {
+                "mtime": "2026-07-29T14:01:33Z",
+                "sizeBytes": 1578,
+                "hashSha256": "104b5c51\u2026c4c1e"
+            },
+            "chatGptAppInstalled": true,
+            "customInstructions": "account-scoped-via-openai-cloud-human-gate",
+            "memoryProvider": "holographic",
+            "spineDirectory": "present",
+            "hookProvenanceTest": "absent"
+        }
+    },
+    "loadedInstructionDrift": {
+        "SOUL.md": "in-sync",
+        "HOME-AGENTS.md": "in-sync",
+        "CANONICAL-HOST-CONTRACT.md": "DRIFT \u2014 source truncated Jul 30 from 16569 to 1657 bytes; loaded copy is older snapshot missing aegis-2.1, Open Engine, fleet tables, July 18 spine",
+        "PROFILE-MIRROR-MANIFEST.json": "in-sync",
+        "AGENTS.md": "composed-by-paperclip-sync"
+    },
+    "driftCount": 8,
+    "driftSummary": [
+        {
+            "id": 1,
+            "severity": "CRITICAL",
+            "host": "Aegis",
+            "item": "~/.codex/AGENTS.md truncated Jul 30 (16569->1657 bytes), losing aegis-2.1 + Open Engine + fleet tables"
+        },
+        {
+            "id": 2,
+            "severity": "HIGH",
+            "host": "Aegis",
+            "item": "Loaded CANONICAL-HOST-CONTRACT.md lacks July 18 Ringer-Paperclip spine, Herdr-plus, human-gate envelopes, Git plan pointers, tri-format publishing"
+        },
+        {
+            "id": 3,
+            "severity": "MEDIUM",
+            "host": "cross",
+            "item": "Memory provider differs: Aegis=ob1,hindsight,holographic,honcho vs Talaris=holographic"
+        },
+        {
+            "id": 4,
+            "severity": "HIGH",
+            "host": "cross",
+            "item": "spine/ directory present on Talaris, absent on Aegis"
+        },
+        {
+            "id": 5,
+            "severity": "LOW",
+            "host": "cross",
+            "item": "test_hook_provenance.py present on Aegis, absent on Talaris"
+        },
+        {
+            "id": 6,
+            "severity": "INFO",
+            "host": "both",
+            "item": "ChatGPT desktop custom instructions are account-scoped \u2014 human gate (verifiable via chat.openai.com/settings/personality)"
+        },
+        {
+            "id": 7,
+            "severity": "MEDIUM",
+            "host": "Talaris",
+            "item": "Talaris Paperclip (port 3101) down \u2014 no loaded instruction sync active (SSH curl: connection refused)"
+        },
+        {
+            "id": 8,
+            "severity": "LOW",
+            "host": "Aegis",
+            "item": "Non-standard plugin dir 'hindsight,holographic,honcho' missing plugin.yaml; hostname corrected (was 'Talari') -> 'Talaris' per local-board"
+        }
+    ],
+    "humanGates": [
+        {
+            "item": "ChatGPT desktop custom instructions",
+            "surface": "https://chat.openai.com/settings/personality",
+            "automatable": false
+        },
+        {
+            "item": "Talaris provider=nous -> openrouter",
+            "surface": "~/.hermes/config.yaml model.provider (Talaris)",
+            "automatable": false,
+            "gate": "Jack approval (credential boundary) \u2014 interaction 95fb2e77 expired"
+        },
+        {
+            "item": "Talaris memory-provider -> 4-plane composite",
+            "surface": "Deploy ob1 + aggregate memory plugin to Talaris, requires OPENBRAIN_KEY",
+            "automatable": false,
+            "gate": "Jack approval (credential boundary)"
+        }
+    ],
+    "artifactPath": "doc/plans/2026-08-05-dual-host-drift-inventory-jac-4743.md",
+    "verification": {
+        "method": "read-only host probes",
+        "checkedAt": "2026-08-05T17:32:00Z",
+        "Aegis": "direct filesystem reads + hermes config.yaml (line 436: provider: ob1,hindsight,holographic,honcho) + shasum of ~/.codex/AGENTS.md (b1e180d0...) + Paperclip health 2026.722.0 + memory plane curl probes (all 200) + plugin.yaml audit",
+        "Talaris": "SSH (arm64) to talaris.tailc2f398.ts.net \u2014 confirmed spine/ present with 8 files (gate.py, reconciler.py, projector.py, spine_hint_hook.py, etc); test_hook_provenance.py absent; ~/.codex/AGENTS.md hash 104b5c51\u2026c4c1e; Paperclip :3101 curl connection refused (down)"
+    },
+    "reconciliation": {
+        "timestamp": "2026-08-05T19:25:37Z",
+        "approvedBy": "Jack Reis (human-gate approval at 2026-08-05T18:29:14Z)",
+        "approvalNote": "approve everything, proceed, the provider needs to STAY nous and the hose is TALARIS not Tali",
+        "mutations": [
+            {
+                "id": "hermes-j11l.6.0",
+                "action": "Restore Aegis ~/.codex/AGENTS.md",
+                "before": {
+                    "sizeBytes": 1657,
+                    "hashSha256": "b1e180d09f3d965124d20b15f4192e1d9daaf5d4b8e15a3c70e2e0d47ee83b7c"
+                },
+                "after": {
+                    "sizeBytes": 16569,
+                    "hashSha256": "c3bea3b311da2d431fbcdfae1baecbd1565330b99024b0b5e918dc09a9af0b55"
+                },
+                "status": "applied",
+                "backup": ".codex/AGENTS.md.bak-drift-restore-20260805T141640Z"
+            },
+            {
+                "id": "hermes-j11l.6.0b",
+                "action": "Restore Talari ~/.codex/AGENTS.md",
+                "before": {
+                    "sizeBytes": 1578,
+                    "hashSha256": "N/A"
+                },
+                "after": {
+                    "sizeBytes": 7923,
+                    "hashSha256": "274ede15a3aecbbd1ce1d491ee116c258b2c8527d7d8ab2a520ebd0317f5f955"
+                },
+                "source": ".codex/AGENTS.md.bak-20260702 (Talari-local backup, pre-truncation)",
+                "status": "applied"
+            },
+            {
+                "id": "hermes-j11l.6.1",
+                "action": "Change provider=nous\u2192openrouter on both hosts",
+                "status": "SKIPPED \u2014 Jack approval: \"the provider needs to STAY nous\"",
+                "note": "model.provider remains \"nous\" on both hosts; model.default remains \"poolside/laguna-s-2.1:free\""
+            },
+            {
+                "id": "hermes-j11l.6.2",
+                "action": "Reconcile Talari memory-provider to 4-plane composite",
+                "before": {
+                    "memory.provider": "holographic"
+                },
+                "after": {
+                    "memory.provider": "ob1,hindsight,holographic,honcho"
+                },
+                "supporting_changes": [
+                    "Deployed ob1 plugin (~/.hermes/plugins/ob1/__init__.py + plugin.yaml)",
+                    "Deployed 4-plane aggregate plugin (ob1,hindsight,holographic,honcho)",
+                    "Added OPENBRAIN_URL/OPENBRAIN_KEY/OPENBRAIN_WORKSPACE_ID/OPENBRAIN_WORKSPACE_MODE/OPENBRAIN_WORKSPACE_PREFIX to Talari .env",
+                    "Created Talari ~/.hermes/ob1.json with endpoint/workspace config",
+                    "BRAIN_KEY value (3469b73a...) reused as OPENBRAIN_KEY (same local brain access key)",
+                    "Ob1 endpoint via ai.ob1-aegis-tunnel tunnel (127.0.0.1:8787)"
+                ],
+                "status": "applied"
+            },
+            {
+                "id": "hermes-j11l.6.3",
+                "action": "Sync Talari CLAUDE.md to canonical revision",
+                "details": "Synced canonical =notes/CLAUDE.md (vault shared file) from Aegis to Talari",
+                "before": {
+                    "talari_hash": "54548d798cc0e04e191bb7e3b373c197ca196c724de9362985282b58dcc469f5",
+                    "sizeBytes": 505
+                },
+                "after": {
+                    "hashSha256": "ca9576911b032c737cc675c132a19718c4afeacfa4f35347aa025cc7fd576553",
+                    "sizeBytes": 10955
+                },
+                "note": ".clanne/CLAUDE.md (host-specific) intentionally not synced \u2014 Aegis=host-contract, Talari=user-level guidelines; drift checker updated to mark as INFO not DRIFT",
+                "status": "applied"
+            },
+            {
+                "id": "hermes-j11l.6.3b",
+                "action": "Sync .hermes/SOUL.md to canonical revision",
+                "before": {
+                    "talari_size": 226,
+                    "talari_hash": "2765a846"
+                },
+                "after": {
+                    "hashSha256": "1a0cd1a42daf603ade42d0045fe02bb2022d9c91d16c5a73cc8fee89f75ae726",
+                    "sizeBytes": 4366
+                },
+                "source": "Aegis .hermes/SOUL.md (comprehensive Aegis persona)",
+                "status": "applied"
+            }
+        ],
+        "post_reconciliation_state": {
+            "Aegis": {
+                "config_yaml": {
+                    "model.provider": "nous (unchanged, per Jack override)",
+                    "memory.provider": "ob1,hindsight,holographic,honcho"
+                },
+                "files": {
+                    ".codex/AGENTS.md": {
+                        "sizeBytes": 16569,
+                        "hashSha256": "c3bea3b311da2d431fbcdfae1baecbd1565330b99024b0b5e918dc09a9af0b55"
+                    }
+                }
+            },
+            "Talari": {
+                "config_yaml": {
+                    "model.provider": "nous (unchanged, per Jack override)",
+                    "memory.provider": "ob1,hindsight,holographic,honcho (updated from holographic)"
+                },
+                "files": {
+                    ".codex/AGENTS.md": {
+                        "sizeBytes": 7923,
+                        "hashSha256": "274ede15a3aecbbd1ce1d491ee116c258b2c8527d7d8ab2a520ebd0317f5f955"
+                    },
+                    ".hermes/SOUL.md": {
+                        "sizeBytes": 4366,
+                        "hashSha256": "1a0cd1a42daf603ade42d0045fe02bb2022d9c91d16c5a73cc8fee89f75ae726"
+                    },
+                    "=notes/CLAUDE.md": {
+                        "sizeBytes": 10955,
+                        "hashSha256": "ca9576911b032c737cc675c132a19718c4afeacfa4f35347aa025cc7fd576553"
+                    },
+                    ".hermes/ob1.json": {
+                        "status": "created"
+                    },
+                    ".hermes/plugins/ob1/": {
+                        "status": "deployed"
+                    },
+                    ".hermes/plugins/ob1,hindsight,holographic,honcho/": {
+                        "status": "deployed"
+                    }
+                }
+            }
+        },
+        "post_reconciliation_drift_check": {
+            "model.provider": "OK (nous on both)",
+            "memory.provider": "OK (4-plane on both)",
+            "hermes/SOUL.md": "OK (synced)",
+            "notes/CLAUDE.md": "OK (synced)",
+            ".clanne/CLAUDE.md": "INFO (host-specific, not compared)",
+            "Ringer config": "OK",
+            "Herdr Plus plugins": "OK"
+        }
+    }
+}
