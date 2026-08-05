@@ -597,6 +597,9 @@ export {
   DEFAULT_RETENTION_CLASS,
   REDACTION_STATES,
   DEFAULT_REDACTION_STATE,
+  DEFAULT_ATTEMPT_INDEX,
+  PAPERCLIP_EVENT_KEY_FORMAT,
+  PAPERCLIP_SOURCE_EVENT_ID_FORMAT,
   ROUTING_STATUSES,
   QUOTA_STATUSES,
   PUBLICATION_STATUSES,
@@ -2414,3 +2417,9 @@ export {
   type FeatureTier,
   type InstanceFeatureKey,
 } from "./feature-catalog.js";
+export { stableStringify } from "./utils/json.js";
+export {
+  computePaperclipRunEventKey,
+  computePayloadHash,
+  computeSourceEventId,
+} from "./utils/event-identity.js";

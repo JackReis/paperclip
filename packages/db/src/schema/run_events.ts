@@ -1,4 +1,4 @@
-import { pgTable, uuid, text, timestamp, integer, index, boolean } from "drizzle-orm/pg-core";
+import { pgTable, uuid, text, timestamp, integer, index, boolean, uniqueIndex } from "drizzle-orm/pg-core";
 import { companies } from "./companies.js";
 import { agents } from "./agents.js";
 import { issues } from "./issues.js";
@@ -110,7 +110,8 @@ export const runEvents = pgTable(
 
     // --- Ingestion tracking ---
     observedAt: timestamp("observed_at", { withTimezone: true }).notNull().defaultNow(),
-    ingestId: uuid("ingest_id").notNull().defaultRandom(),
+    /** Deterministic ingest ID — computed from run_id + usage_updated_at + payload_hash (JAC-4532). */
+    ingestId: text("ingest_id").notNull(),
     payloadHash: text("payload_hash"),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   },
@@ -133,7 +134,9 @@ export const runEvents = pgTable(
       table.companyId,
       table.payloadHash,
     ),
-    runEventsSourceEventUq: index("run_events_source_event_uq").on(
+    /** Idempotency enforcement (JAC-4532): re-ingest of the same logical event
+     * is a no-op via ON CONFLICT DO NOTHING on this composite. */
+    runEventsSourceEventUq: uniqueIndex("run_events_source_event_uq").on(
       table.companyId,
       table.sourceSystem,
       table.sourceEventId,

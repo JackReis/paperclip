@@ -8,7 +8,8 @@ import { visibleIssueCondition } from "./issue-visibility.js";
 import { resolveCoverageState, resolveSafeStatus, resolveLedgerCoverageForRun, resolveRunCoverageForError, computeCoverageWarning } from "@paperclipai/shared";
 import type { CostStatus, CoverageState, SafeStatus, SourceStatus, CoverageTotals, CoverageWarning, CoverageByAdapterRow, CoverageWarningsResponse, CoverageByAgent } from "@paperclipai/shared";
 import type { RunCoverageResolution } from "@paperclipai/shared";
-import { DEFAULT_VISIBILITY_CLASS, DEFAULT_RETENTION_CLASS, DEFAULT_REDACTION_STATE } from "@paperclipai/shared";
+import { DEFAULT_VISIBILITY_CLASS, DEFAULT_RETENTION_CLASS, DEFAULT_REDACTION_STATE, DEFAULT_ATTEMPT_INDEX, type RunEventSourceSystem, type RunEventKind } from "@paperclipai/shared";
+import { computePaperclipRunEventKey, computePayloadHash, computeSourceEventId } from "@paperclipai/shared";
 
 export interface CostDateRange {
   from?: Date;
@@ -79,6 +80,32 @@ export function costService(db: Db, budgetHooks: BudgetServiceHooks = {}) {
       );
       const resolvedSafeStatus: SafeStatus = resolveSafeStatus(resolvedCoverageState);
 
+      // JAC-4532: Compute deterministic identity fields for idempotency when
+      // the caller does not supply them. Cost events derive their source_event_id
+      // from the heartbeat run + provider + model, enabling deterministic
+      // re-ingest deduplication.
+      const occurredAtIso = data.occurredAt.toISOString();
+      const computedSourceEventId = data.sourceEventId ??
+        (data.heartbeatRunId
+          ? `paperclip:${data.heartbeatRunId}:${occurredAtIso}:${data.provider ?? "unknown"}:${data.model ?? "unknown"}`
+          : null);
+      const computedPayloadHash = data.payloadHash ?? computePayloadHash({
+        inputTokens: data.inputTokens,
+        outputTokens: data.outputTokens,
+        cachedInputTokens: data.cachedInputTokens,
+        costCents: data.costCents,
+        currency: data.currency ?? "USD",
+        provider: data.provider ?? "unknown",
+        model: data.model ?? "unknown",
+        billingCode: data.billingCode,
+        billingType: data.billingType,
+      });
+      const computedIngestId = data.ingestId ?? computePaperclipRunEventKey({
+        runId: data.heartbeatRunId ?? data.runId ?? "unknown",
+        usageUpdatedAt: occurredAtIso,
+        payloadHash: computedPayloadHash,
+      });
+
       const event = await db
         .insert(costEvents)
         .values({
@@ -96,6 +123,25 @@ export function costService(db: Db, budgetHooks: BudgetServiceHooks = {}) {
           visibilityClass: data.visibilityClass ?? DEFAULT_VISIBILITY_CLASS,
           retentionClass: data.retentionClass ?? DEFAULT_RETENTION_CLASS,
           redactionState: data.redactionState ?? DEFAULT_REDACTION_STATE,
+          // JAC-4532: deterministic identity fields for idempotent re-ingest.
+          sourceEventId: computedSourceEventId,
+          sourceSystem: data.sourceSystem ?? "paperclip",
+          eventKind: data.eventKind ?? "cost_report",
+          attemptIndex: data.attemptIndex ?? DEFAULT_ATTEMPT_INDEX,
+          ingestId: computedIngestId,
+          payloadHash: data.payloadHash ?? computedPayloadHash,
+        })
+        // JAC-4532: Idempotent re-ingest — ON CONFLICT DO NOTHING on the
+        // (company_id, source_system, source_event_id, event_kind, attempt_index)
+        // composite prevents duplicate writes for the same logical cost event.
+        .onConflictDoNothing({
+          target: [
+            costEvents.companyId,
+            costEvents.sourceSystem,
+            costEvents.sourceEventId,
+            costEvents.eventKind,
+            costEvents.attemptIndex,
+          ],
         })
         .returning()
         .then((rows) => rows[0]);
@@ -149,6 +195,11 @@ export function costService(db: Db, budgetHooks: BudgetServiceHooks = {}) {
         coverage: RunCoverageResolution;
         eventKind?: "adapter_execution" | "cost_report" | "usage_report" | "lifecycle";
         sourceSystem?: "paperclip" | "adapter" | "provider" | "external";
+        sourceEventId?: string | null;
+        sourceEventVersion?: string | null;
+        attemptIndex?: number;
+        observedSequence?: number | null;
+        supersedesEventId?: string | null;
         usageReportedState?: string;
         payloadHash?: string | null;
         /** Optional pricing-version reference for cost provenance (JAC-4530). */
@@ -188,6 +239,27 @@ export function costService(db: Db, budgetHooks: BudgetServiceHooks = {}) {
         data.coverage.sourceStatus,
         costStatus,
       );
+
+      // JAC-4532: Compute deterministic identity fields when caller does not supply them.
+      const sourceSystem = data.sourceSystem ?? "paperclip";
+      const eventKind = data.eventKind ?? "adapter_execution";
+      const usageTimestamp = data.occurredAt.toISOString();
+      const computedSourceEventId = data.sourceEventId ?? computeSourceEventId({
+        runId: data.runId,
+        usageUpdatedAt: usageTimestamp,
+      });
+      const computedPayloadHash = data.payloadHash ?? computePayloadHash({
+        runId: data.runId,
+        agentId: data.agentId,
+        status: data.status,
+        ...data.coverage,
+      });
+      const computedIngestId = computePaperclipRunEventKey({
+        runId: data.runId,
+        usageUpdatedAt: usageTimestamp,
+        payloadHash: computedPayloadHash,
+      });
+      const computedAttemptIndex = data.attemptIndex ?? DEFAULT_ATTEMPT_INDEX;
 
       const event = await db
         .insert(runEvents)
@@ -230,17 +302,34 @@ export function costService(db: Db, budgetHooks: BudgetServiceHooks = {}) {
           sourceDeletedAt: data.sourceDeletedAt ?? null,
           tombstoneRef: data.tombstoneRef ?? null,
           policyVersion: data.policyVersion ?? null,
-          sourceSystem: data.sourceSystem ?? "paperclip",
-          eventKind: data.eventKind ?? "adapter_execution",
-          attemptIndex: 0,
+          sourceSystem,
+          sourceEventId: computedSourceEventId,
+          sourceEventVersion: data.sourceEventVersion ?? null,
+          eventKind,
+          attemptIndex: computedAttemptIndex,
+          observedSequence: data.observedSequence ?? null,
+          supersedesEventId: data.supersedesEventId ?? null,
+          ingestId: computedIngestId,
+          payloadHash: computedPayloadHash,
           observedAt: data.occurredAt,
-          payloadHash: data.payloadHash ?? null,
           routingStatus: data.coverage.safeStatus === "available" ? "routable" : "unroutable",
           quotaStatus: "unknown",
           publicationStatus: "published",
           workStateConfidence: data.coverage.confidence,
           pauseEligibleScope: "none",
           operatorDecisionRequired: false,
+        })
+        // JAC-4532: Idempotent re-ingest — ON CONFLICT DO NOTHING on the
+        // (company_id, source_system, source_event_id, event_kind, attempt_index)
+        // composite prevents duplicate writes for the same logical run event.
+        .onConflictDoNothing({
+          target: [
+            runEvents.companyId,
+            runEvents.sourceSystem,
+            runEvents.sourceEventId,
+            runEvents.eventKind,
+            runEvents.attemptIndex,
+          ],
         })
         .returning()
         .then((rows) => rows[0]);

@@ -45,6 +45,14 @@ export interface CostEvent {
   sourceEventVersion: string | null;
   eventKind: string;
   attemptIndex: number;
+  /** JAC-4532: monotonic sequence number from source. */
+  observedSequence: number | null;
+  /** JAC-4532: supersedes a previous event ID when this is a correction. */
+  supersedesEventId: string | null;
+  /** JAC-4532: deterministic ingest key (adapter key). */
+  ingestId: string;
+  /** JAC-4532: SHA-256 of canonical payload. */
+  payloadHash: string | null;
   occurredAt: Date;
   createdAt: Date;
 }

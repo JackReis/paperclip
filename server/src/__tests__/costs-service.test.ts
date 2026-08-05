@@ -14,6 +14,7 @@ import {
   heartbeatRuns,
   issues,
   projects,
+  runEvents,
 } from "@paperclipai/db";
 import { costService } from "../services/costs.ts";
 import { financeService } from "../services/finance.ts";
@@ -594,6 +595,7 @@ describeEmbeddedPostgres("cost and finance aggregate overflow handling", () => {
 
   afterEach(async () => {
     await db.delete(financeEvents);
+    await db.delete(runEvents);
     await db.delete(costEvents);
     await db.delete(activityLog);
     await db.delete(heartbeatRuns);
@@ -1608,5 +1610,481 @@ describeEmbeddedPostgres("cost and finance aggregate overflow handling", () => {
     expect(event.tenantRefHash).toBe("b".repeat(64));
     expect(event.retentionClass).toBe("standard");
     expect(event.redactionState).toBe("unredacted");
+  });
+
+  // ── JAC-4532: Event identity and idempotency tests ─────────────────────
+
+  it("JAC-4532: createRunEvent computes deterministic identity fields", async () => {
+    const companyId = randomUUID();
+    const agentId = randomUUID();
+
+    await db.insert(companies).values({
+      id: companyId,
+      name: "Paperclip",
+      issuePrefix: `T${companyId.replace(/-/g, "").slice(0, 6).toUpperCase()}`,
+      requireBoardApprovalForNewAgents: false,
+    });
+    await db.insert(agents).values({
+      id: agentId,
+      companyId,
+      name: "CLI Agent",
+      role: "engineer",
+      status: "active",
+      adapterType: "codex_local",
+      adapterConfig: {},
+      runtimeConfig: {},
+      permissions: {},
+    });
+
+    const runId = randomUUID();
+    await db.insert(heartbeatRuns).values({
+      id: runId,
+      companyId,
+      agentId,
+      status: "succeeded",
+      startedAt: new Date("2026-08-04T12:00:00.000Z"),
+      completedAt: new Date("2026-08-04T12:01:00.000Z"),
+      issueId: null,
+    });
+
+    const occurredAt = new Date("2026-08-04T12:00:00.000Z");
+    const event = await costs.createRunEvent(companyId, {
+      agentId,
+      issueId: null,
+      runId,
+      adapterType: "codex_local",
+      model: "gpt-5",
+      provider: "openai",
+      status: "success",
+      occurredAt,
+      coverage: {
+        usageReportedState: "not_reported",
+        inputTokens: null,
+        outputTokens: null,
+        cachedInputTokens: null,
+        reasoningTokens: null,
+        toolCallTokens: null,
+        costCents: null,
+        priceBasis: "not_reported",
+        costConfidence: "low",
+        nativeTotalTokens: null,
+        recomputedTotalTokens: null,
+        isSubscriptionIncluded: false,
+        coverageState: "unknown",
+        sourceStatus: "unavailable",
+        safeStatus: "unavailable",
+        confidence: "low",
+      },
+    });
+
+    // JAC-4532: identity fields must be deterministic, not random UUIDs.
+    expect(event.sourceSystem).toBe("paperclip");
+    expect(event.sourceEventId).toBeDefined();
+    expect(event.sourceEventId).toMatch(/^paperclip:/);
+    expect(event.sourceEventId).toContain(runId);
+    expect(event.eventKind).toBe("adapter_execution");
+    expect(event.attemptIndex).toBe(0);
+    expect(event.ingestId).toBeDefined();
+    expect(event.ingestId).toMatch(/^paperclip:/);
+    expect(event.ingestId).toContain(runId);
+    expect(event.payloadHash).toBeDefined();
+    expect(event.payloadHash).toMatch(/^[a-f0-9]{64}$/);
+  });
+
+  it("JAC-4532: createRunEvent is idempotent — re-ingest with same identity is a no-op", async () => {
+    const companyId = randomUUID();
+    const agentId = randomUUID();
+
+    await db.insert(companies).values({
+      id: companyId,
+      name: "Paperclip",
+      issuePrefix: `T${companyId.replace(/-/g, "").slice(0, 6).toUpperCase()}`,
+      requireBoardApprovalForNewAgents: false,
+    });
+    await db.insert(agents).values({
+      id: agentId,
+      companyId,
+      name: "CLI Agent",
+      role: "engineer",
+      status: "active",
+      adapterType: "codex_local",
+      adapterConfig: {},
+      runtimeConfig: {},
+      permissions: {},
+    });
+
+    const runId = randomUUID();
+    await db.insert(heartbeatRuns).values({
+      id: runId,
+      companyId,
+      agentId,
+      status: "succeeded",
+      startedAt: new Date("2026-08-04T12:00:00.000Z"),
+      completedAt: new Date("2026-08-04T12:01:00.000Z"),
+      issueId: null,
+    });
+
+    const occurredAt = new Date("2026-08-04T12:00:00.000Z");
+    const coverage = {
+      usageReportedState: "not_reported" as const,
+      inputTokens: null,
+      outputTokens: null,
+      cachedInputTokens: null,
+      reasoningTokens: null,
+      toolCallTokens: null,
+      costCents: null,
+      priceBasis: "not_reported" as const,
+      costConfidence: "low" as const,
+      nativeTotalTokens: null,
+      recomputedTotalTokens: null,
+      isSubscriptionIncluded: false,
+      coverageState: "unknown" as const,
+      sourceStatus: "unavailable" as const,
+      safeStatus: "unavailable" as const,
+      confidence: "low" as const,
+    };
+
+    // First insert — should succeed.
+    const event1 = await costs.createRunEvent(companyId, {
+      agentId,
+      issueId: null,
+      runId,
+      adapterType: "codex_local",
+      model: "gpt-5",
+      provider: "openai",
+      status: "success",
+      occurredAt,
+      coverage,
+    });
+    expect(event1).toBeDefined();
+
+    // Re-ingest with the same data — should be a no-op (ON CONFLICT DO NOTHING
+    // returns no rows, so .returning() yields undefined).
+    const event2 = await costs.createRunEvent(companyId, {
+      agentId,
+      issueId: null,
+      runId,
+      adapterType: "codex_local",
+      model: "gpt-5",
+      provider: "openai",
+      status: "success",
+      occurredAt,
+      coverage,
+    });
+    expect(event2).toBeUndefined();
+
+    // Verify only one row exists in the database.
+    const rows = await db
+      .select({ id: runEvents.id })
+      .from(runEvents)
+      .where(eq(runEvents.runId, runId));
+    expect(rows).toHaveLength(1);
+    expect(rows[0].id).toBe(event1.id);
+  });
+
+  it("JAC-4532: createRunEvent computes stable identity fields across calls", async () => {
+    const companyId = randomUUID();
+    const agentId = randomUUID();
+
+    await db.insert(companies).values({
+      id: companyId,
+      name: "Paperclip",
+      issuePrefix: `T${companyId.replace(/-/g, "").slice(0, 6).toUpperCase()}`,
+      requireBoardApprovalForNewAgents: false,
+    });
+    await db.insert(agents).values({
+      id: agentId,
+      companyId,
+      name: "CLI Agent",
+      role: "engineer",
+      status: "active",
+      adapterType: "codex_local",
+      adapterConfig: {},
+      runtimeConfig: {},
+      permissions: {},
+    });
+
+    const runId = randomUUID();
+    await db.insert(heartbeatRuns).values({
+      id: runId,
+      companyId,
+      agentId,
+      status: "succeeded",
+      startedAt: new Date("2026-08-04T12:00:00.000Z"),
+      completedAt: new Date("2026-08-04T12:01:00.000Z"),
+      issueId: null,
+    });
+
+    const occurredAt = new Date("2026-08-04T12:00:00.000Z");
+    const coverage = {
+      usageReportedState: "not_reported" as const,
+      inputTokens: null,
+      outputTokens: null,
+      cachedInputTokens: null,
+      reasoningTokens: null,
+      toolCallTokens: null,
+      costCents: null,
+      priceBasis: "not_reported" as const,
+      costConfidence: "low" as const,
+      nativeTotalTokens: null,
+      recomputedTotalTokens: null,
+      isSubscriptionIncluded: false,
+      coverageState: "unknown" as const,
+      sourceStatus: "unavailable" as const,
+      safeStatus: "unavailable" as const,
+      confidence: "low" as const,
+    };
+
+    // The ON CONFLICT DO NOTHING means the second insert returns undefined.
+    // But the computed identity should be the same for both calls.
+    const event1 = await costs.createRunEvent(companyId, {
+      agentId,
+      issueId: null,
+      runId,
+      adapterType: "codex_local",
+      model: "gpt-5",
+      provider: "openai",
+      status: "success",
+      occurredAt,
+      coverage,
+    });
+
+    const event2 = await costs.createRunEvent(companyId, {
+      agentId,
+      issueId: null,
+      runId,
+      adapterType: "codex_local",
+      model: "gpt-5",
+      provider: "openai",
+      status: "success",
+      occurredAt,
+      coverage,
+    });
+
+    // First insert returns the row; second is a no-op.
+    expect(event1).toBeDefined();
+    expect(event2).toBeUndefined();
+
+    // Verify the stored identity fields are deterministic.
+    const stored = await db
+      .select({
+        sourceEventId: runEvents.sourceEventId,
+        ingestId: runEvents.ingestId,
+        payloadHash: runEvents.payloadHash,
+      })
+      .from(runEvents)
+      .where(eq(runEvents.id, event1.id));
+    expect(stored).toHaveLength(1);
+    const { sourceEventId, ingestId, payloadHash } = stored[0];
+
+    // Re-derive the expected keys using the same logic the service uses.
+    const expectedSourceEventId = `paperclip:${runId}:${occurredAt.toISOString()}`;
+    const expectedPayloadHash = payloadHash; // captured from DB
+    const expectedIngestId = `paperclip:${runId}:${occurredAt.toISOString()}:${expectedPayloadHash}`;
+
+    expect(sourceEventId).toBe(expectedSourceEventId);
+    expect(ingestId).toBe(expectedIngestId);
+    expect(payloadHash).toMatch(/^[a-f0-9]{64}$/);
+  });
+
+  it("JAC-4532: createEvent computes deterministic identity fields for cost events", async () => {
+    const companyId = randomUUID();
+    const agentId = randomUUID();
+
+    await db.insert(companies).values({
+      id: companyId,
+      name: "Paperclip",
+      issuePrefix: `T${companyId.replace(/-/g, "").slice(0, 6).toUpperCase()}`,
+      requireBoardApprovalForNewAgents: false,
+    });
+    await db.insert(agents).values({
+      id: agentId,
+      companyId,
+      name: "CLI Agent",
+      role: "engineer",
+      status: "active",
+      adapterType: "codex_local",
+      adapterConfig: {},
+      runtimeConfig: {},
+      permissions: {},
+    });
+
+    const runId = randomUUID();
+    await db.insert(heartbeatRuns).values({
+      id: runId,
+      companyId,
+      agentId,
+      status: "succeeded",
+      startedAt: new Date("2026-08-04T12:00:00.000Z"),
+      completedAt: new Date("2026-08-04T12:01:00.000Z"),
+      issueId: null,
+    });
+
+    const occurredAt = new Date("2026-08-04T12:00:00.000Z");
+    const event = await costs.createEvent(companyId, {
+      heartbeatRunId: runId,
+      agentId,
+      provider: "openai",
+      biller: "openai",
+      billingType: "metered_api",
+      costStatus: "reported",
+      model: "gpt-5",
+      inputTokens: 500,
+      cachedInputTokens: 0,
+      outputTokens: 200,
+      costCents: 15,
+      currency: "USD",
+      occurredAt,
+    });
+
+    expect(event).toBeDefined();
+    // JAC-4532: cost events should have deterministic identity fields.
+    expect(event.sourceSystem).toBe("paperclip");
+    expect(event.sourceEventId).toBeDefined();
+    expect(event.sourceEventId).toContain(runId);
+    expect(event.ingestId).toBeDefined();
+    expect(event.ingestId).toMatch(/^paperclip:/);
+    expect(event.payloadHash).toBeDefined();
+    expect(event.payloadHash).toMatch(/^[a-f0-9]{64}$/);
+    expect(event.attemptIndex).toBe(0);
+  });
+
+  it("JAC-4532: createEvent is idempotent — re-ingest with same identity is a no-op", async () => {
+    const companyId = randomUUID();
+    const agentId = randomUUID();
+
+    await db.insert(companies).values({
+      id: companyId,
+      name: "Paperclip",
+      issuePrefix: `T${companyId.replace(/-/g, "").slice(0, 6).toUpperCase()}`,
+      requireBoardApprovalForNewAgents: false,
+    });
+    await db.insert(agents).values({
+      id: agentId,
+      companyId,
+      name: "CLI Agent",
+      role: "engineer",
+      status: "active",
+      adapterType: "codex_local",
+      adapterConfig: {},
+      runtimeConfig: {},
+      permissions: {},
+    });
+
+    const runId = randomUUID();
+    await db.insert(heartbeatRuns).values({
+      id: runId,
+      companyId,
+      agentId,
+      status: "succeeded",
+      startedAt: new Date("2026-08-04T12:00:00.000Z"),
+      completedAt: new Date("2026-08-04T12:01:00.000Z"),
+      issueId: null,
+    });
+
+    const occurredAt = new Date("2026-08-04T12:00:00.000Z");
+    const costData = {
+      heartbeatRunId: runId,
+      agentId,
+      provider: "openai",
+      biller: "openai",
+      billingType: "metered_api",
+      costStatus: "reported" as const,
+      model: "gpt-5",
+      inputTokens: 500,
+      cachedInputTokens: 0,
+      outputTokens: 200,
+      costCents: 15,
+      currency: "USD",
+      occurredAt,
+    };
+
+    // First insert — should succeed.
+    const event1 = await costs.createEvent(companyId, costData);
+    expect(event1).toBeDefined();
+
+    // Re-ingest with the same data — should be a no-op.
+    const event2 = await costs.createEvent(companyId, costData);
+    expect(event2).toBeUndefined();
+
+    // Verify only one row exists.
+    const rows = await db
+      .select({ id: costEvents.id })
+      .from(costEvents)
+      .where(eq(costEvents.heartbeatRunId, runId));
+    expect(rows).toHaveLength(1);
+    expect(rows[0].id).toBe(event1.id);
+  });
+
+  it("JAC-4532: createRunEvent respects explicit attemptIndex for correction events", async () => {
+    const companyId = randomUUID();
+    const agentId = randomUUID();
+
+    await db.insert(companies).values({
+      id: companyId,
+      name: "Paperclip",
+      issuePrefix: `T${companyId.replace(/-/g, "").slice(0, 6).toUpperCase()}`,
+      requireBoardApprovalForNewAgents: false,
+    });
+    await db.insert(agents).values({
+      id: agentId,
+      companyId,
+      name: "CLI Agent",
+      role: "engineer",
+      status: "active",
+      adapterType: "codex_local",
+      adapterConfig: {},
+      runtimeConfig: {},
+      permissions: {},
+    });
+
+    const runId = randomUUID();
+    await db.insert(heartbeatRuns).values({
+      id: runId,
+      companyId,
+      agentId,
+      status: "succeeded",
+      startedAt: new Date("2026-08-04T12:00:00.000Z"),
+      completedAt: new Date("2026-08-04T12:01:00.000Z"),
+      issueId: null,
+    });
+
+    const occurredAt = new Date("2026-08-04T12:00:00.000Z");
+    const coverage = {
+      usageReportedState: "not_reported" as const,
+      inputTokens: null,
+      outputTokens: null,
+      cachedInputTokens: null,
+      reasoningTokens: null,
+      toolCallTokens: null,
+      costCents: null,
+      priceBasis: "not_reported" as const,
+      costConfidence: "low" as const,
+      nativeTotalTokens: null,
+      recomputedTotalTokens: null,
+      isSubscriptionIncluded: false,
+      coverageState: "unknown" as const,
+      sourceStatus: "unavailable" as const,
+      safeStatus: "unavailable" as const,
+      confidence: "low" as const,
+    };
+
+    const event = await costs.createRunEvent(companyId, {
+      agentId,
+      issueId: null,
+      runId,
+      adapterType: "codex_local",
+      model: "gpt-5",
+      provider: "openai",
+      status: "success",
+      occurredAt,
+      coverage,
+      attemptIndex: 3,
+      supersedesEventId: "paperclip:old-run-id:old-timestamp:oldhash",
+    });
+
+    expect(event).toBeDefined();
+    expect(event.attemptIndex).toBe(3);
+    expect(event.supersedesEventId).toBe("paperclip:old-run-id:old-timestamp:oldhash");
   });
 });

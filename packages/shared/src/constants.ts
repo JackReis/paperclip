@@ -895,6 +895,28 @@ export const RUN_EVENT_KINDS = ["adapter_execution", "cost_report", "usage_repor
 export type RunEventKind = (typeof RUN_EVENT_KINDS)[number];
 
 /**
+ * Deterministic key format for Paperclip run events (JAC-4532).
+ *
+ * The ingestId is computed from this template so that re-ingesting the same
+ * logical event (same run + same usage timestamp + same payload hash) produces
+ * the same key, enabling idempotent upsert via ON CONFLICT DO NOTHING.
+ */
+export const PAPERCLIP_EVENT_KEY_FORMAT = "paperclip:<run_id>:<usage_updated_at>:<payload_hash>" as const;
+
+/**
+ * Format for the source_event_id when the source system is Paperclip itself.
+ * This is a deterministic identifier scoped to the run and the timestamp
+ * at which usage was reported, used as the idempotency key composite.
+ */
+export const PAPERCLIP_SOURCE_EVENT_ID_FORMAT = "paperclip:<run_id>:<usage_updated_at>" as const;
+
+/**
+ * Default attempt index for first-seen events (JAC-4532).
+ * Incremented on re-ingest when payload_hash changes but source_event_id is the same.
+ */
+export const DEFAULT_ATTEMPT_INDEX = 0;
+
+/**
  * Privacy/retention visibility classification for telemetry events (JAC-4533).
  */
 export const VISIBILITY_CLASSES = ["public", "internal", "private", "redacted"] as const;

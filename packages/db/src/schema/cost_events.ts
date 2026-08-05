@@ -1,4 +1,4 @@
-import { pgTable, uuid, text, timestamp, integer, index } from "drizzle-orm/pg-core";
+import { pgTable, uuid, text, timestamp, integer, index, uniqueIndex } from "drizzle-orm/pg-core";
 import { companies } from "./companies.js";
 import { agents } from "./agents.js";
 import { issues } from "./issues.js";
@@ -72,6 +72,14 @@ export const costEvents = pgTable(
     eventKind: text("event_kind").notNull().default("cost_report"),
     /** Retry/attempt index for re-ingest deduplication (JAC-4532). */
     attemptIndex: integer("attempt_index").notNull().default(0),
+    /** Monotonically increasing sequence number observed from the source (JAC-4532). */
+    observedSequence: integer("observed_sequence"),
+    /** When this event supersedes a previous event ID (for corrections/replacements) (JAC-4532). */
+    supersedesEventId: text("supersedes_event_id"),
+    /** Deterministic ingest ID — computed from run_id + usage_updated_at + payload_hash (JAC-4532). */
+    ingestId: text("ingest_id").notNull(),
+    /** SHA-256 hex digest of the canonical payload, for idempotency (JAC-4532). */
+    payloadHash: text("payload_hash"),
     occurredAt: timestamp("occurred_at", { withTimezone: true }).notNull(),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   },
@@ -106,6 +114,15 @@ export const costEvents = pgTable(
       table.visibilityClass,
       table.retentionClass,
       table.redactionState,
+    ),
+    /** Idempotency enforcement (JAC-4532): re-ingest of the same logical event
+     * is a no-op via ON CONFLICT DO NOTHING on this composite. */
+    costEventsSourceEventUq: uniqueIndex("cost_events_source_event_uq").on(
+      table.companyId,
+      table.sourceSystem,
+      table.sourceEventId,
+      table.eventKind,
+      table.attemptIndex,
     ),
   }),
 );
