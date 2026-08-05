@@ -88,7 +88,7 @@ echo ""
 echo "=== Verifying new key against ollama.com/v1/chat/completions ==="
 HTTP_CODE=$(curl -sS -o /dev/null -w "%{http_code}" \
   -X POST \
-  -H "Authorization: Bearer $NEW_KEY"
+  -H "Authorization: Bearer ***" \
   -H "Content-Type: application/json" \
   "https://ollama.com/v1/chat/completions" \
   -d '{"model":"gpt-oss:20b","messages":[{"role":"user","content":"hi"}]}')
