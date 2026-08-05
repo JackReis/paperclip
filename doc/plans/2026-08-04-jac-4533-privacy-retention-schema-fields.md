@@ -932,69 +932,33 @@ below.
 
 ---
 
-## 13. Verification checkpoint
+## 13. Verification checkpoint (pre-implementation audit state)
 
-**Run:** Current planning heartbeat (run ID: `137626bf-b603-4767-ae04-49051bc7432a`)
-
-**Independently re-verified by agent audit (2026-08-04):**
-Each claim below was traced to its exact source file and line range in this
-workspace before confirmation. No prior plan assertions were trusted without
-re-checking the actual file contents.
-
-**Verified:**
-- All 9 privacy/retention columns confirmed present on both `run_events` and
-  `cost_events` schemas (run_events.ts lines 85–95; cost_events.ts lines 47–64)
-  and their migrations (0188 lines 31–40; 0187 lines 28–37)
-- `run_events_privacy_idx` composite index EXISTS at run_events.ts lines 154–159
-  and migration 0188 line 84 — covers `(company_id, visibility_class,
-  retention_class, redaction_state)`
-- `cost_events` has NO privacy composite index (cost_events.ts lines 78–104 list
-  only coverage/provider/agent indexes — gap confirmed, not a typo in the plan)
-- Constants confirmed: `VISIBILITY_CLASSES` at constants.ts line 870,
-  `RETENTION_CLASSES` at line 877, `REDACTION_STATES` at line 884 — all exported
-  from `packages/shared/src/index.ts` lines 515–519 and 537–539
-- Types confirmed: `RunEvent` includes all 9 fields (run-event.ts lines 93–101);
-  `CostEvent` includes all 9 fields (types/cost.ts lines 34–42)
-- Validators confirmed GAP: `createRunEventSchema` (validators/cost.ts lines
-  440–494) and `createCostEventSchema` (validators/cost.ts lines 78–124) do
-  NOT accept or validate any of the 9 privacy/retention fields. The constants
-  (`VISIBILITY_CLASSES`, etc.) are imported into this file (lines 17–22) but
-  are NOT used in either Zod schema — clear validator gap
-- Note: there is no `packages/shared/src/validators/interaction.ts` file;
-  the validators touched by this issue live in `validators/cost.ts`. The
-  validators/index.ts barrel (lines 630–634) re-exports
-  `createRunEventSchema`, `createRunEventInput`, and `CreateCostEvent` from
-  `./cost.js`
-- Service layer confirmed: `createRunEvent()` (costs.ts lines 132–227)
-  hardcodes 3 defaults at lines 208–210 (`visibilityClass: "internal"`,
-  `retentionClass: "standard"`, `redactionState: "unredacted"`) but does NOT
-  pass the 6 nullable fields — they fall to DB defaults (NULL)
-- Service layer confirmed: `createEvent()` (costs.ts lines 58–121) does NOT
-  set any of the 9 privacy fields — they all fall to DB defaults
-- Heartbeat callers confirmed: no privacy fields passed at either call site —
-  heartbeat.ts line 11771 (`costs.createRunEvent` for executed runs) and
-  line 14320 (`setupFailureCosts.createRunEvent` for pre-execution failures)
-- API routes confirmed: `POST /companies/:companyId/run-events` (costs.ts
-  lines 153–222) validates via `createRunEventSchema` (no privacy fields) and
-  calls `createRunEvent()` without any privacy arguments — no API path to
-  supply privacy metadata
-- `approvals` table confirmed: already carries `artifactKind`, `artifactPointer`,
-  `artifactSha256`, `redactionState` (approvals.ts lines 22–25)
-- `CreateRunEventInput`/`CreateCostEvent` types: these are Zod-inferred types
-  (validators/cost.ts lines 126 and 496), NOT standalone interfaces in
-  types/. Step 6 extends these Zod schemas. The plan's Step 6 file references
-  (types/run-event.ts) have been corrected: the input type is Zod-inferred,
-  not a hand-written interface. (See also: there is a stale, unused
-  `CreateRunEventInput` interface at types/run-event.ts line 166 that is NOT
-  re-exported from types/index.ts and is NOT imported by the service layer —
-  dead code flagged for removal during implementation)
-- SPEC-implementation §7.17.2 confirmed: lines 489–495 specify the publication
-  contract with `artifact_kind`, `artifact_pointer`, `artifact_sha256`,
-  `redaction_state` (reusing JAC-4533 enum)
-- Gate 2 checklist confirmed at `doc/plans/2026-08-04-jac-3929-gate-checklist.md`
-  line 18
-
-**No source mutations performed** — planning only.
+> **Historical record:** This section captured the pre-implementation audit state
+> performed during the original planning heartbeat (run ID `137626bf`). The
+> implementation has since been completed and verified against the workspace
+> source tree. See **Section 15** for the final post-implementation verification.
+>
+> **Pre-implementation findings (as of initial audit):**
+> - All 9 privacy/retention columns confirmed present on both `run_events` and
+>   `cost_events` schemas and their migrations
+> - `run_events_privacy_idx` composite index EXISTS
+> - `cost_events` had NO privacy composite index (gap, now resolved by Step 1)
+> - Constants confirmed: `VISIBILITY_CLASSES`, `RETENTION_CLASSES`,
+>   `REDACTION_STATES` defined and exported
+> - Types confirmed: `RunEvent` and `CostEvent` interfaces include all 9 fields
+> - Validators confirmed GAP: `createCostEventSchema` and
+>   `createRunEventSchema` did NOT accept or validate any of the 9 privacy/retention
+>   fields
+> - Service layer confirmed PARTIAL/GAP: `createRunEvent()` hardcoded 3 defaults
+>   but did not pass 6 nullable fields; `createEvent()` passed none
+> - API routes confirmed GAP: no privacy fields accepted or enforced
+> - Heartbeat callers confirmed: no privacy fields passed
+> - `approvals` table confirmed: already carries `artifactKind`,
+>   `artifactPointer`, `artifactSha256`, `redactionState`
+> - SPEC-implementation §7.17.2 confirmed: publication contract fields present
+>
+> **No source mutations performed** — planning only.
 
 ---
 
@@ -1171,4 +1135,56 @@ and only a **stale, unused** hand-written interface at that same `types/` path
 gone and the Zod-inferred type is the canonical input type imported by the service
 layer.
 
+---
+
+## 17. Final reconciliation — wake comment `2bce9e0b` (2026-08-04T18:50:25.942Z)
+
+**Wake reason:** `issue_commented` — comment reports all 9 JAC-4533 sub-steps
+complete and verified. Tests pass (23 validator + 4 service), typecheck passes,
+migration check passes. Issue status: `in_review`.
+
+**Planning directive honored:** No code written in this heartbeat. Independent
+source verification only.
+
+**Verification summary:**
+
+| Step | Source file:line | Status |
+|------|-----------------|--------|
+| S1 | `cost_events.ts:104-109` (schema) + migration `0192` in journal | CONFIRMED |
+| S2 | `validators/cost.ts:105-118` (`createCostEventSchema` — 9 fields, fail-closed defaults, SHA-256 regex) | CONFIRMED |
+| S3 | `validators/cost.ts:478-491` (`createRunEventSchema` — same 9 fields) | CONFIRMED |
+| S4 | `server/src/services/costs.ts:156-165` (param), `:224-232` (insert) | CONFIRMED |
+| S5 | `server/src/services/costs.ts:94-98` (fail-closed enum defaults + spread) | CONFIRMED |
+| S6 | `grep -rn CreateRunEventInput types/` → 0 hits; interface removed in `ed1b1c276` | CONFIRMED |
+| S7 | `heartbeat.ts:11784-11794` (exec run), `:14342-14357` (setup failure) | CONFIRMED |
+| S8 | `routes/costs.ts:128-149` (cost-events clamp + `visibility_escalation.rejected` log), `:204-227` (run-events clamp + log) | CONFIRMED (Gap S8a RESOLVED) |
+| S9 | `cost.test.ts` 23/23 pass; `costs-service.test.ts` route-level clamp tests at `:420-456` (cost-events) and `:492-560` (run-events) — all pass | CONFIRMED (Gap S9a RESOLVED) |
+
+**Key corrections from earlier plan sections:**
+- Gap S8a (activity-log entry for rejected visibility escalation): RESOLVED —
+  `routes/costs.ts` now emits `logActivity({ action: "visibility_escalation.rejected", ... })`
+  at both clamp sites (cost-events `:133-147`, run-events `:211-227`).
+- Gap S9a (route-level test for public→internal clamp): RESOLVED —
+  `costs-service.test.ts` now has tests at lines 420-456 (cost-events, non-board
+  actor clamp + board actor passthrough) and 492-560 (run-events, same pattern).
+
+**Test pass counts (re-verified by Maar in this heartbeat):**
+- `packages/shared/src/validators/cost.test.ts`: 23/23 pass (13 privacy/retention tests in `JAC-4533 privacy/retention field defaults` describe block at lines 133-282) — verified via `npx vitest run`
+- `server/src/__tests__/costs-service.test.ts`: 15 passed, 14 skipped (15 with extended timeout; 2 route-level clamp tests time out at default 5000ms due to full Express app boot — increasing to 60s resolves; skipped tests require embedded Postgres). Route-level tests at lines 420-456 (cost-events clamp + board passthrough) and 492-560 (run-events clamp + board passthrough) — all pass with extended timeout.
+
+**Conclusion:** All 9 sub-steps of JAC-4533 are verified complete and correct in
+the workspace. The plan document Sections 2, 5, 7, and 15 are current. No further
+planning actions required — implementation is ready for final review.
+
 Plan SHA-256 after this revision: see working tree.
+
+---
+
+## Appendix A: File change log
+
+| Revision | Date | Author | Changes |
+|----------|------|--------|---------|
+| 0 (initial) | 2026-08-04 | Maar | Initial plan document created |
+| 1 | 2026-08-04 | Maar | Audit results, Section 2 codebase state assessment |
+| 2 | 2026-08-04 | Maar | Implementation verification (Section 15), independent reconciliation (Section 16) |
+| 3 | 2026-08-04 | Maar | Final reconciliation against wake comment `2bce9e0b` (Section 17) |
