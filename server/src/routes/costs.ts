@@ -1,13 +1,17 @@
 import { Router } from "express";
 import type { Db } from "@paperclipai/db";
+import { heartbeatRuns } from "@paperclipai/db";
+import { eq } from "drizzle-orm";
 import {
   createCostEventSchema,
   createFinanceEventSchema,
+  createRunEventSchema,
   normalizeIssueIdentifier,
   resolveBudgetIncidentSchema,
   updateBudgetSchema,
   upsertBudgetPolicySchema,
 } from "@paperclipai/shared";
+import type { RunCoverageResolution } from "@paperclipai/shared";
 import { validate } from "../middleware/validate.js";
 import {
   budgetService,
@@ -21,6 +25,7 @@ import {
   logActivity,
 } from "../services/index.js";
 import { assertBoard, assertCompanyAccess, getAccessibleResource, getActorInfo } from "./authz.js";
+import { DEFAULT_VISIBILITY_CLASS } from "@paperclipai/shared";
 import { fetchAllQuotaWindows } from "../services/quota-windows.js";
 import { badRequest } from "../errors.js";
 import type { PluginWorkerManager } from "../services/plugin-worker-manager.js";
@@ -120,6 +125,29 @@ export function costRoutes(
       return;
     }
 
+    // JAC-4533: fail-closed enforcement — external (non-board) actors cannot
+    // escalate visibility_class to "public". Clamp to the internal default
+    // and record an activity-log entry for the rejected escalation.
+    if (req.actor.type !== "board" && req.body.visibilityClass === "public") {
+      const actor = getActorInfo(req);
+      await logActivity(db, {
+        companyId,
+        actorType: actor.actorType,
+        actorId: actor.actorId,
+        agentId: actor.agentId,
+        runId: actor.runId,
+        agentApiKeyId: actor.agentApiKeyId,
+        action: "visibility_escalation.rejected",
+        entityType: "cost_event",
+        entityId: req.body.runId ?? "pending",
+        details: {
+          submittedVisibilityClass: "public",
+          clampedTo: DEFAULT_VISIBILITY_CLASS,
+        },
+      });
+      req.body.visibilityClass = DEFAULT_VISIBILITY_CLASS;
+    }
+
     const event = await costs.createEvent(companyId, {
       ...req.body,
       occurredAt: new Date(req.body.occurredAt),
@@ -139,6 +167,148 @@ export function costRoutes(
 
     res.status(201).json(event);
   });
+
+  /**
+   * Accept a normalized run event from the adapter (JAC-4529).
+   * Agents may report their own run events; board users may report for any agent.
+   * Coverage fields are resolved via fail-closed transforms in the schema —
+   * callers cannot override coverageState, sourceStatus, or safeStatus.
+   */
+  router.post(
+    "/companies/:companyId/run-events",
+    validate(createRunEventSchema),
+    async (req, res) => {
+      const companyId = req.params.companyId as string;
+      assertCompanyAccess(req, companyId);
+
+      // Resolve agent from the associated heartbeat run (run events are
+      // reported per-run, not per-agent — the adapter does not know the agent
+      // id). The issueId, if provided by the adapter, is preferred; otherwise
+      // it is looked up from the run's contextSnapshot.
+      const [runRow] = await db
+        .select({
+          agentId: heartbeatRuns.agentId,
+          contextSnapshot: heartbeatRuns.contextSnapshot,
+        })
+        .from(heartbeatRuns)
+        .where(eq(heartbeatRuns.id, req.body.runId));
+
+      if (!runRow) {
+        res.status(404).json({ error: "Run not found" });
+        return;
+      }
+
+      if (req.actor.type === "agent" && req.actor.agentId !== runRow.agentId) {
+        res.status(403).json({ error: "Agent can only report run events for its own runs" });
+        return;
+      }
+
+      // JAC-4533: fail-closed enforcement — external (non-board) actors cannot
+      // escalate visibility_class to "public". Clamp to the internal default
+      // and record an activity-log entry for the rejected escalation.
+      if (req.actor.type !== "board" && req.body.visibilityClass === "public") {
+        const actor = getActorInfo(req);
+        await logActivity(db, {
+          companyId,
+          actorType: actor.actorType,
+          actorId: actor.actorId,
+          agentId: actor.agentId,
+          runId: actor.runId,
+          agentApiKeyId: actor.agentApiKeyId,
+          action: "visibility_escalation.rejected",
+          entityType: "run_event",
+          entityId: req.body.runId,
+          details: {
+            submittedVisibilityClass: "public",
+            clampedTo: DEFAULT_VISIBILITY_CLASS,
+          },
+        });
+        req.body.visibilityClass = DEFAULT_VISIBILITY_CLASS;
+      }
+
+      const runIssueId =
+        req.body.issueId ?? (runRow.contextSnapshot?.issueId as string | undefined);
+
+      // The Zod schema transform has already resolved coverage fields
+      // (coverageState, sourceStatus, safeStatus, confidence, etc.)
+      // fail-closed from the submitted usage/token values. Reconstruct
+      // the RunCoverageResolution shape for the cost service.
+      const coverage: RunCoverageResolution = {
+        usageReportedState: req.body.usageReportedState,
+        inputTokens: req.body.inputTokens ?? null,
+        outputTokens: req.body.outputTokens ?? null,
+        cachedInputTokens: req.body.cachedInputTokens ?? null,
+        reasoningTokens: req.body.reasoningTokens ?? null,
+        toolCallTokens: req.body.toolCallTokens ?? null,
+        costCents: req.body.costCents ?? null,
+        // JAC-4530: forward cost-provenance metadata. priceBasis/costConfidence
+        // are resolved fail-closed by the schema transform above; native/recomputed
+        // totals and isSubscriptionIncluded come from the same transform.
+        priceBasis: req.body.priceBasis,
+        costConfidence: req.body.costConfidence,
+        nativeTotalTokens: req.body.nativeTotalTokens ?? null,
+        recomputedTotalTokens: req.body.recomputedTotalTokens ?? null,
+        isSubscriptionIncluded: req.body.isSubscriptionIncluded,
+        coverageState: req.body.coverageState,
+        sourceStatus: req.body.sourceStatus,
+        safeStatus: req.body.safeStatus,
+        confidence: req.body.confidence,
+      };
+
+      const event = await costs.createRunEvent(companyId, {
+        runId: req.body.runId,
+        agentId: runRow.agentId,
+        issueId: runIssueId ?? null,
+        adapterType: req.body.adapterType,
+        model: req.body.model,
+        provider: req.body.provider,
+        status: req.body.status,
+        occurredAt: new Date(req.body.occurredAt),
+        coverage: coverage,
+        pricingVersionRef: req.body.pricingVersionRef ?? null,
+        // JAC-4533: forward privacy/retention fields from validated request body.
+        // The Zod schema already applied fail-closed defaults; the visibility_class
+        // public-clamp above ensures non-board actors cannot escalate.
+        visibilityClass: req.body.visibilityClass,
+        retentionClass: req.body.retentionClass,
+        redactionState: req.body.redactionState,
+        sourcePermissionRef: req.body.sourcePermissionRef,
+        tenantRefHash: req.body.tenantRefHash,
+        subjectRefHashes: req.body.subjectRefHashes,
+        sourceDeletedAt: req.body.sourceDeletedAt ? new Date(req.body.sourceDeletedAt) : null,
+        tombstoneRef: req.body.tombstoneRef,
+        policyVersion: req.body.policyVersion,
+        // JAC-4532: forward event identity / idempotency fields.
+        sourceSystem: req.body.sourceSystem,
+        sourceEventId: req.body.sourceEventId ?? null,
+        sourceEventVersion: req.body.sourceEventVersion ?? null,
+        eventKind: req.body.eventKind,
+        attemptIndex: req.body.attemptIndex,
+        observedSequence: req.body.observedSequence ?? null,
+        supersedesEventId: req.body.supersedesEventId ?? null,
+        payloadHash: req.body.payloadHash ?? null,
+      });
+
+      const actor = getActorInfo(req);
+      await logActivity(db, {
+        companyId,
+        actorType: actor.actorType,
+        actorId: actor.actorId,
+        agentId: actor.agentId,
+        action: "run_event.reported",
+        entityType: "run_event",
+        entityId: event.id,
+        details: {
+          adapterType: event.adapterType,
+          model: event.model,
+          status: event.status,
+          coverageState: event.coverageState,
+        },
+      });
+
+      res.status(201).json(event);
+    },
+  );
 
   router.post("/companies/:companyId/finance-events", validate(createFinanceEventSchema), async (req, res) => {
     const companyId = req.params.companyId as string;
@@ -324,6 +494,25 @@ export function costRoutes(
     if (!(await assertCompanyCostReadAllowed(req, res, companyId))) return;
     const range = parseCostDateRange(req.query);
     const rows = await costs.byProject(companyId, range);
+    res.json(rows);
+  });
+
+  /** Coverage-aware fail-closed summary endpoints (JAC-4529). */
+  router.get("/companies/:companyId/coverage/warnings", async (req, res) => {
+    const companyId = req.params.companyId as string;
+    assertCompanyAccess(req, companyId);
+    if (!(await assertCompanyCostReadAllowed(req, res, companyId))) return;
+    const range = parseCostDateRange(req.query);
+    const summary = await costs.coverageSummary(companyId, range);
+    res.json(summary);
+  });
+
+  router.get("/companies/:companyId/coverage/by-agent", async (req, res) => {
+    const companyId = req.params.companyId as string;
+    assertCompanyAccess(req, companyId);
+    if (!(await assertCompanyCostReadAllowed(req, res, companyId))) return;
+    const range = parseCostDateRange(req.query);
+    const rows = await costs.coverageByAgent(companyId, range);
     res.json(rows);
   });
 

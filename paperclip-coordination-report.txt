@@ -1,0 +1,97 @@
+## Coordinator Fleet Coordination Check — JAC-4670
+
+**Run ID:** 7b3b1b48-44f5-4dd7-9f6d-fa775a8b5885
+**Date:** 2026-08-04
+**Source:** Live agent table `metadata.executionLane` + Paperclip API
+
+### Lane Capacity & State
+
+| Lane (Agent) | Pool | Model | State | maxParallel | Active Runs | Eligible? |
+|---|---|---|---|---|---|---|
+| Coordinator | local-aegis | nous/laguna-s-2.1:free | verified | 2 | 0 (read-only only) | N/A (self) |
+| Plan Runner | local-aegis | nous/laguna-s-2.1:free | verified | 2 | 0 | YES |
+| Wings | local-aegis | nous/laguna-s-2.1:free | verified | 4 | 1 (JAC-3929) | YES 3 slots free |
+| Aegis Coder X | local-aegis | ollama/qwen3-coder:30b | verified | 1 | 0 | YES |
+| Aegis Coder Y | local-aegis | ollama/qwen3-coder:30b | error | 1 | 0 | NO - error state |
+| Herald | local-aegis | nous/laguna-s-2.1:free | verified | 2 | 0 | YES |
+| Hermes Mistral | ollama-cloud | deepseek-v4-pro | paused | 1 | 0 | NO - paused |
+| Flash | ollama-cloud | deepseek-v4-flash | pending_repair | 1 | 0 | NO - not verified |
+
+**Verified lanes summary:** local-aegis has 4 verified, routable lanes (Plan Runner, Wings, Aegis Coder X, Herald). Ollama Cloud has 0 verified lanes (both non-routable). Local Aegis host health is green (Paperclip API health: ok, DB backup: ok 15.6h old).
+
+### Active Runs (in_progress + in_review)
+
+| Issue | Agent | Lane | Status | Started |
+|---|---|---|---|---|
+| JAC-3929 (critical) | Wings | local-aegis | in_progress | 23:00 |
+| JAC-4602 | Bright | local-aegis | in_review | 19:24 |
+| JAC-4532 | Maar | local-aegis | in_progress | 21:20 |
+| JAC-4605 | Bright | local-aegis | in_progress | 22:20 |
+| JAC-4655 | Zatara | local-aegis | in_progress | 21:03 |
+| JAC-4580 | Fenix | local-aegis | in_progress | 20:58 |
+| JAC-4657 | Zatara | local-aegis | in_progress | 21:03 |
+| JAC-4533 | Maar | local-aegis | in_review | 14:22 |
+| JAC-4383 | Coordinator | local-aegis | in_review | 08-01 |
+| JAC-4507 | Coordinator | local-aegis | in_review | 08-03 |
+| JAC-4503 | Dinkelspiel | local-aegis | in_progress | 22:12 |
+
+### Queue & Dispatch Opportunities
+
+**Todo issues with pre-assigned agent + no active run (ready for dispatch):**
+
+1. **JAC-4660** -> Wings (post-recovery receipts) - parent: JAC-4565; no workspace yet
+2. **JAC-4659** -> Watchdog (verify 32 agents cleared) - parent: JAC-4565; no workspace yet
+3. **JAC-4656** -> Fenix (CLI bootstrap hang fix) - parent: JAC-4565; no workspace yet
+4. **JAC-3628** -> Plan Runner (pull-first fleet beacon) - standalone, no parent, no workspace yet; started 2026-07-17, never kicked off
+
+**Blocked issues (cannot dispatch until unblocked):**
+- JAC-4565 (blocked, Wings) - parent of JAC-4655/4656/4657/4659/4660; blocking all 5 children
+- JAC-4550 (blocked, Coordinator) - liveness incident for JAC-3597
+- JAC-4617 (blocked, Coordinator) - review silent run for Aegis Coder X
+- JAC-4615/4616 (blocked, Coordinator) - review silent runs for Aegis Coder X
+- JAC-4630 (blocked, Coordinator) - fleet health audit after JAC-4605
+- JAC-4443 (blocked, Coordinator) - Paperclip Agent Auditor capacity
+- JAC-4152 (blocked, Coordinator) - Agent audit: Kloud
+- JAC-4598 (blocked, Coordinator) - Review productivity for JAC-4580
+
+### Eligible Dispatch Decisions
+
+Per lane limits (Ollama Cloud 3; Claude Code through OmniGent 2; local Aegis 2 while healthy; Codex 1; external fast lane 1 after canary; Ringer review 1) and current verified lane state:
+
+- **local-aegis lanes:** 4 verified (Plan Runner 2/2 free, Wings 3/4 free, Aegis Coder X 1/1 free, Herald 2/2 free). Host health green.
+- **Ollama Cloud:** 0 verified lanes available (both non-routable). No dispatch possible.
+- **Codex:** No Codex agent with verified executionLane found in the table. No dispatch possible.
+- **OmniGent:** No OmniGent agent found. No dispatch possible.
+- **External fast lane:** No external fast lane agent with verified executionLane found. No dispatch possible.
+- **Ringer review:** No independent Ringer review agent found with verified executionLane. No dispatch possible.
+
+### Selected Independent Tasks (0 dispatched this cycle)
+
+**Finding:** All independently dispatchable todo issues are children of JAC-4565, which is currently **blocked** (assigned to Wings, status=blocked). Until JAC-4565 is unblocked, its children (JAC-4655, 4656, 4657, 4659, 4660) remain dependent and cannot be dispatched as independent work per the exclusion rules.
+
+The only standalone, non-blocked, non-child todo issue is **JAC-3628** (pull-first fleet beacon), but it has a pre-assigned agent (Plan Runner) already and carries an older startedAt (2026-07-17) with no active run — this is stale assignment without execution, not independent new work.
+
+### Blockers
+
+1. **JAC-4565 blocked** (Wings) - cascades to 5 child issues. Cannot dispatch any child until parent is unblocked. Needs Wings or Zatara to resolve root cause.
+2. **JAC-4550 blocked** (Coordinator) - liveness incident for JAC-3597. Coordinator-owned; needs diagnostic input to unblock.
+3. **JAC-4617/4615/4616 blocked** (Coordinator) - Aegis Coder X silent runs. Review-pending; awaiting evidence.
+4. **JAC-4630 blocked** (Coordinator) - fleet health audit despite JAC-4605 PASS. Stale errorReason churn likely.
+
+### Lane Verification Notes
+
+- Aegis Coder Y: state=error, errorReason=Timed out after 12000s. NOT routable. Needs re-probe.
+- Hermes Mistral: state=paused, heartbeat ~15h stale. NOT routable while paused.
+- Flash: state=pending_repair, errorReason=MCPServerTask event-loop-closed defect. NOT routable.
+
+### Report
+
+No independent plan-backed tasks dispatched this cycle. All dispatchable todo work is either:
+- Child of a blocked parent (JAC-4565)
+- Already assigned with stale state (JAC-3628)
+- Human-gated (JAC-3555/3557/3558)
+- In Review (JAC-4602/4533/4383/4507)
+
+Fleet is in a recovery cycle (JAC-4575 -> JAC-4565). The 5 child issues under JAC-4565 represent the next dispatch batch but are gated on parent unblocking. Recommend Wings/Zatara resolve JAC-4565 blockage to unlock 5 high-priority implementation/verify tasks.
+
+Dispatch evidence: this comment. No runs created. No issues closed cosmetically.

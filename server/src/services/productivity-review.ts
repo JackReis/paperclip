@@ -21,6 +21,7 @@ import {
   withRecoveryModelProfileHint,
 } from "./recovery/model-profile-hint.js";
 import { RECOVERY_ORIGIN_KINDS } from "./recovery/origins.js";
+import type { ProductivityReviewOverride } from "@paperclipai/shared";
 
 export const PRODUCTIVITY_REVIEW_ORIGIN_KIND = RECOVERY_ORIGIN_KINDS.issueProductivityReview;
 export const DEFAULT_PRODUCTIVITY_REVIEW_NO_COMMENT_STREAK_RUNS = 10;
@@ -289,6 +290,25 @@ export function productivityReviewService(db: Db, deps?: { enqueueWakeup?: Enque
       .orderBy(desc(issues.updatedAt))
       .limit(1)
       .then((rows) => rows[0] ?? null);
+  }
+
+  function isProductivityReviewTriggerSnoozed(
+    override: ProductivityReviewOverride | null | undefined,
+    trigger: ProductivityReviewTrigger,
+    now: Date,
+  ): { snoozed: boolean; reason: string | null } {
+    if (!override?.triggerSnoozes || override.triggerSnoozes.length === 0) {
+      return { snoozed: false, reason: null };
+    }
+    for (const snooze of override.triggerSnoozes) {
+      if (snooze.trigger === trigger) {
+        const snoozeUntil = coerceDate(snooze.snoozedUntil);
+        if (snoozeUntil && snoozeUntil.getTime() > now.getTime()) {
+          return { snoozed: true, reason: snooze.reason ?? null };
+        }
+      }
+    }
+    return { snoozed: false, reason: null };
   }
 
   async function countRecentProductivityReviews(
@@ -885,6 +905,27 @@ export function productivityReviewService(db: Db, deps?: { enqueueWakeup?: Enque
       const evidence = await collectEvidence(candidate, sourceAgent, thresholds, now);
       if (!evidence) {
         result.skipped += 1;
+        continue;
+      }
+      const triggerSnooze = isProductivityReviewTriggerSnoozed(
+        candidate.productivityReviewOverride as ProductivityReviewOverride | null | undefined,
+        evidence.trigger,
+        now,
+      );
+      if (triggerSnooze.snoozed) {
+        result.snoozed += 1;
+        logger.info(
+          {
+            companyId: candidate.companyId,
+            issueId: candidate.id,
+            trigger: evidence.trigger,
+            snoozeReason: triggerSnooze.reason,
+            snoozedUntil: candidate.productivityReviewOverride?.triggerSnoozes?.find(
+              (s) => s.trigger === evidence.trigger,
+            )?.snoozedUntil,
+          },
+          "productivity review snoozed by trigger override on source issue",
+        );
         continue;
       }
       let prefix = prefixCache.get(candidate.companyId);

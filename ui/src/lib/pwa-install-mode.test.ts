@@ -5,16 +5,36 @@ import { describe, expect, it } from "vitest";
 
 const uiRoot = resolve(fileURLToPath(new URL("../..", import.meta.url)));
 
-describe("PWA install mode", () => {
-  it("opens home-screen launches with browser controls visible", () => {
-    const manifest = JSON.parse(readFileSync(resolve(uiRoot, "public/site.webmanifest"), "utf8")) as {
+describe("PWA install mode — platform-aware display", () => {
+  function readManifest() {
+    return JSON.parse(readFileSync(resolve(uiRoot, "public/site.webmanifest"), "utf8")) as {
       display?: string;
     };
-    const html = readFileSync(resolve(uiRoot, "index.html"), "utf8");
+  }
 
-    expect(manifest.display).toBe("browser");
-    expect(html).not.toContain('name="mobile-web-app-capable"');
-    expect(html).not.toContain('name="apple-mobile-web-app-capable"');
-    expect(html).not.toContain('name="apple-mobile-web-app-status-bar-style"');
+  function readIndexHtml() {
+    return readFileSync(resolve(uiRoot, "index.html"), "utf8");
+  }
+
+  it("manifest uses display: standalone so iOS opens in minimal-ui/standalone-like mode", () => {
+    const manifest = readManifest();
+    expect(manifest.display).toBe("standalone");
+  });
+
+  it("HTML includes apple-mobile-web-app-capable meta tag for iOS full-screen mode", () => {
+    const html = readIndexHtml();
+    expect(html).toContain('name="apple-mobile-web-app-capable"');
+    expect(html).toContain('content="yes"');
+  });
+
+  it("HTML includes apple-mobile-web-app-title meta tag", () => {
+    const html = readIndexHtml();
+    expect(html).toContain('name="apple-mobile-web-app-title"');
+    expect(html).toContain("Paperclip");
+  });
+
+  it("HTML sets viewport-fit=cover for iPhone X+ safe-area insets", () => {
+    const html = readIndexHtml();
+    expect(html).toContain("viewport-fit=cover");
   });
 });

@@ -13,6 +13,11 @@ export interface Approval {
   decidedAt: Date | null;
   createdAt: Date;
   updatedAt: Date;
+  // Publication contract (JAC-4538): populated when type = "publish_full_artifact"
+  artifactKind: "full_report" | "raw_transcript" | "private_payload" | null;
+  artifactPointer: string | null;
+  artifactSha256: string | null;
+  redactionState: "unredacted" | "partially_redacted" | "fully_redacted";
 }
 
 export interface ApprovalComment {

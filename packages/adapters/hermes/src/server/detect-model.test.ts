@@ -1,4 +1,4 @@
-import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
+import { chmod, mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, expect, test } from "vitest";
@@ -90,16 +90,110 @@ test("resolveProvider still infers from the requested model when Hermes config i
   });
 });
 
+test("resolveProvider extracts explicit provider prefix from model name (e.g. openrouter/poolside/laguna-s-2.1:free)", () => {
+  // When the model name includes a recognized provider prefix like
+  // "openrouter/poolside/laguna-s-2.1:free", the adapter should use that provider
+  // instead of stripping it and falling back to "auto" (which would route
+  // to Hermes's config-default provider — which may be broken if the API key
+  // is absent or the config provider is wrong).
+  expect(resolveProvider({
+    explicitProvider: undefined,
+    detectedProvider: undefined,
+    detectedModel: undefined,
+    model: "openrouter/poolside/laguna-s-2.1:free",
+  })).toEqual({
+    provider: "openrouter",
+    resolvedFrom: "modelInference",
+  });
+});
+
+test("resolveProvider extracts explicit provider prefix for huggingface models", () => {
+  expect(resolveProvider({
+    explicitProvider: undefined,
+    model: "huggingface/org/model-name",
+  })).toEqual({
+    provider: "huggingface",
+    resolvedFrom: "modelInference",
+  });
+});
+
+test("resolveProvider falls back to prefix inference for bare qwen model names", () => {
+  // A bare "qwen3-coder:30b" without a provider prefix resolves to "auto"
+  // via the qwen → auto hint. This preserves backward compatibility for
+  // cloud-hosted qwen models — the provider prefix must be explicit
+  // (e.g. "openrouter/qwen3-coder:30b") for cloud OpenRouter routing.
+  expect(resolveProvider({
+    explicitProvider: undefined,
+    model: "qwen3-coder:30b",
+  })).toEqual({
+    provider: "auto",
+    resolvedFrom: "modelInference",
+  });
+});
+
+test("resolveProvider handles mixed-case provider prefix in model name", () => {
+  expect(resolveProvider({
+    explicitProvider: undefined,
+    model: "OpenRouter/poolside/laguna-s-2.1:free",
+  })).toEqual({
+    provider: "openrouter",
+    resolvedFrom: "modelInference",
+  });
+});
+
+test("resolveProvider resolves openrouter/poolside/laguna-s-2.1:free even when Hermes config has a different model+provider", () => {
+  // When NOUS_API_KEY is absent, the Hermes config may have
+  // model.default=some-other-model with provider=nous.
+  // The adapter uses DEFAULT_MODEL="openrouter/poolside/laguna-s-2.1:free".
+  // Since the config model doesn't match the requested model, resolveProvider
+  // must NOT use the config's provider. Instead it should infer
+  // "openrouter" from the model-name prefix, routing to OpenRouter directly
+  // instead of hitting an invalid provider.
+  expect(resolveProvider({
+    explicitProvider: undefined,
+    detectedProvider: "nous",
+    detectedModel: "hermes-3:1b",
+    model: "openrouter/poolside/laguna-s-2.1:free",
+  })).toEqual({
+    provider: "openrouter",
+    resolvedFrom: "modelInference",
+  });
+});
+
+test("resolveProvider prefers explicit provider prefix over a matching Hermes config provider", () => {
+  // Even when the config model matches, if the requested model name
+  // contains an explicit openrouter provider prefix AND the config
+  // provider is nous, the prefix should win to avoid routing to an
+  // invalid provider with bad API keys.
+  expect(resolveProvider({
+    explicitProvider: undefined,
+    detectedProvider: "nous",
+    detectedModel: "nous/hermes-3:1b",
+    model: "openrouter/poolside/laguna-s-2.1:free",
+  })).toEqual({
+    provider: "openrouter",
+    resolvedFrom: "modelInference",
+  });
+});
+
 async function withHermesHomeConfig(
   configLines: string[],
-  fn: () => Promise<void>,
+  fn: (hermesCommand: string) => Promise<void>,
 ) {
   const tempHome = await mkdtemp(join(tmpdir(), "hermes-paperclip-adapter-"));
   const hermesDir = join(tempHome, ".hermes");
   const configPath = join(hermesDir, "config.yaml");
+  const binDir = join(tempHome, "bin");
+  const hermesCommand = join(binDir, "hermes");
+  const siblingPython = join(binDir, "python3");
 
   await mkdir(hermesDir, { recursive: true });
+  await mkdir(binDir, { recursive: true });
   await writeFile(configPath, `${configLines.join("\n")}\n`, "utf8");
+  await writeFile(hermesCommand, "#!/bin/sh\necho Hermes Agent test\n", "utf8");
+  await writeFile(siblingPython, "#!/bin/sh\necho Python 3.11.15\n", "utf8");
+  await chmod(hermesCommand, 0o755);
+  await chmod(siblingPython, 0o755);
   process.env.HOME = tempHome;
   process.env.USERPROFILE = tempHome;
   delete process.env.HOMEDRIVE;
@@ -109,7 +203,7 @@ async function withHermesHomeConfig(
   }
 
   try {
-    await fn();
+    await fn(hermesCommand);
   } finally {
     await rm(tempHome, { recursive: true, force: true });
   }
@@ -121,12 +215,12 @@ test("testEnvironment does not warn about missing API keys when Hermes config pr
     "  default: openrouter/gpt-4.1-mini",
     "  provider: openrouter",
     "  api_key: test-secret",
-  ], async () => {
+  ], async (hermesCommand) => {
     const result = await testEnvironment({
       companyId: "company-test",
       adapterType: "hermes_local",
       config: {
-        hermesCommand: "python3",
+        hermesCommand,
         model: "openrouter/gpt-4.1-mini",
       },
     });
@@ -144,12 +238,12 @@ test("testEnvironment describes provider-omitted runtime config without inventin
     "  default: oca/gpt-5.4",
     "  base_url: https://example.invalid/litellm",
     "  api_key: test-secret",
-  ], async () => {
+  ], async (hermesCommand) => {
     const result = await testEnvironment({
       companyId: "company-test",
       adapterType: "hermes_local",
       config: {
-        hermesCommand: "python3",
+        hermesCommand,
         model: "oca/gpt-5.4",
       },
     });
@@ -168,12 +262,12 @@ test("testEnvironment does not warn about missing API keys when Hermes config pr
     "  provider: custom",
     "  base_url: https://example.invalid/litellm",
     "  api_key: test-secret",
-  ], async () => {
+  ], async (hermesCommand) => {
     const result = await testEnvironment({
       companyId: "company-test",
       adapterType: "hermes_local",
       config: {
-        hermesCommand: "python3",
+        hermesCommand,
         model: "oca/gpt-5.4",
       },
     });

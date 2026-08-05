@@ -14,6 +14,7 @@ import { heartbeatRuns } from "./heartbeat_runs.js";
 import { issues } from "./issues.js";
 import { projects } from "./projects.js";
 import { workspaceRuntimeServices } from "./workspace_runtime_services.js";
+import { approvals } from "./approvals.js";
 
 export const issueWorkProducts = pgTable(
   "issue_work_products",
@@ -39,6 +40,9 @@ export const issueWorkProducts = pgTable(
     metadata: jsonb("metadata").$type<Record<string, unknown>>(),
     sourceTrust: jsonb("source_trust").$type<SourceTrustMetadata | null>(),
     createdByRunId: uuid("created_by_run_id").references(() => heartbeatRuns.id, { onDelete: "set null" }),
+    // Publication contract (JAC-4538): set when this work product was created from
+    // an approved publish_full_artifact approval.
+    publicationApprovalId: uuid("publication_approval_id").references(() => approvals.id, { onDelete: "set null" }),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
   },

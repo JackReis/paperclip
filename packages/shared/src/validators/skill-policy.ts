@@ -33,7 +33,11 @@ function isSafeSourceLocator(value: string) {
     const url = new URL(value);
     if (url.username || url.password) return false;
     const credentialParameter = /token|secret|password|api[-_]?key|authorization/i;
-    if ([...url.searchParams.keys()].some((key) => credentialParameter.test(key))) return false;
+    let containsCredentialParameter = false;
+    url.searchParams.forEach((_value, key) => {
+      if (credentialParameter.test(key)) containsCredentialParameter = true;
+    });
+    if (containsCredentialParameter) return false;
     const fragment = url.hash.slice(1);
     return !/(?:^|[?&;])(?:token|secret|password|api[-_]?key|authorization)=/i.test(fragment);
   } catch {

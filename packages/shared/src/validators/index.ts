@@ -663,8 +663,16 @@ export {
 
 export {
   createCostEventSchema,
+  resolveCoverageState,
+  resolveSafeStatus,
+  resolveLedgerCoverageForRun,
+  resolveRunCoverageForError,
+  computeCoverageWarning,
+  createRunEventSchema,
   updateBudgetSchema,
   type CreateCostEvent,
+  type RunCoverageResolution,
+  type CreateRunEventInput,
   type UpdateBudget,
 } from "./cost.js";
 
@@ -914,3 +922,11 @@ export {
 } from "./tool-access.js";
 export * from "./skill-policy.js";
 export * from "./app-definition.js";
+export {
+  memoryPlaneEventEntityTypeSchema,
+  memoryPlaneLifecycleEventSchema,
+  ob1InstanceConfigSchema,
+  type MemoryPlaneLifecycleEventInput,
+} from "./memory-plane-event.js";
+export { isValidGoalStatusTransition } from "./goal.js";
+export { isValidRoutineStatusTransition } from "./routine.js";

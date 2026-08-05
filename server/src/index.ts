@@ -60,6 +60,7 @@ import {
   routineService,
   statusCardService,
   toolAccessService,
+  configureMemoryPlaneObserver,
 } from "./services/index.js";
 import { queueIssueAssignmentWakeup } from "./services/issue-assignment-wakeup.js";
 import { resolveWorktreeRunExecutionActivationState } from "./services/instance-settings.js";
@@ -722,6 +723,30 @@ export async function startServer(): Promise<StartedServer> {
     }
   };
   const pluginWorkerManager = createPluginWorkerManager();
+  // Configure memory plane observer from environment variables
+  // Supports up to 4 OB1 instances via OB1_INSTANCES (comma-separated URLs) and OB1_API_KEYS
+  const ob1Urls = process.env.OB1_INSTANCES ? process.env.OB1_INSTANCES.split(",").map((s) => s.trim()).filter(Boolean) : [];
+  const ob1Keys = process.env.OB1_API_KEYS ? process.env.OB1_API_KEYS.split(",").map((s) => s.trim()) : [];
+  const ob1Names = process.env.OB1_INSTANCE_NAMES ? process.env.OB1_INSTANCE_NAMES.split(",").map((s) => s.trim()) : [];
+  const ob1Instances = ob1Urls.map((url, i) => ({
+    name: ob1Names[i] || `ob1-${i + 1}`,
+    url,
+    apiKey: ob1Keys[i] || null,
+  }));
+  configureMemoryPlaneObserver({
+    ob1Instances,
+    hindsightUrl: process.env.HINDSIGHT_URL || null,
+    hindsightBank: process.env.HINDSIGHT_BANK || "hermes",
+    honchoUrl: process.env.HONCHO_URL || null,
+    honchoApiKey: process.env.HONCHO_API_KEY || null,
+    honchoWorkspaceId: process.env.HONCHO_WORKSPACE_ID || null,
+    holographicUrl: process.env.HOLOGRAPHIC_URL || null,
+    holographicApiKey: process.env.HOLOGRAPHIC_API_KEY || null,
+    maxRetries: Number(process.env.MEMORY_PLANE_MAX_RETRIES) || 3,
+    baseRetryDelayMs: Number(process.env.MEMORY_PLANE_BASE_RETRY_MS) || 1000,
+    enabled: process.env.MEMORY_PLANE_OBSERVER_ENABLED !== "false",
+  });
+
   const heartbeat = config.heartbeatSchedulerEnabled
     ? heartbeatService(db as any, { pluginWorkerManager })
     : null;

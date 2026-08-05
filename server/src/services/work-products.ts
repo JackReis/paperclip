@@ -28,6 +28,7 @@ function toIssueWorkProduct(row: IssueWorkProductRow): IssueWorkProduct {
     metadata: (row.metadata as Record<string, unknown> | null) ?? null,
     sourceTrust: row.sourceTrust ?? null,
     createdByRunId: row.createdByRunId ?? null,
+    publicationApprovalId: row.publicationApprovalId ?? null,
     createdAt: row.createdAt,
     updatedAt: row.updatedAt,
   };

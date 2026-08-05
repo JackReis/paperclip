@@ -84,6 +84,10 @@ function makeApproval(status: Approval["status"]): Approval {
     decisionNote: null,
     decidedByUserId: null,
     decidedAt: null,
+    artifactKind: null,
+    artifactPointer: null,
+    artifactSha256: null,
+    redactionState: "unredacted",
     createdAt: new Date("2026-03-11T00:00:00.000Z"),
     updatedAt: new Date("2026-03-11T00:00:00.000Z"),
   };

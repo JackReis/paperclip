@@ -455,6 +455,45 @@ The current implementation includes additional V1-control-plane tables beyond th
 - Plugins and routines: `plugins`, plugin config/state/entities/jobs/logs/webhooks, plugin database namespaces/migrations, plugin company settings, `routines`, `routine_revisions`, `routine_triggers`, and `routine_runs`.
 - Access and operations: company memberships, instance roles, principal permission grants, invites, join requests, board API keys, CLI auth challenges, budget policies/incidents, feedback exports/votes, company skills, sidebar preferences, and company logos.
 
+## 7.17 Publication Contract — Pointer Projection vs Canonical Ownership
+
+**Normative.** Paperclip and Ringer store **approval/evidence pointers, status summaries, and hashes only**. They do not store canonical full-content documents, raw transcripts, or private payloads as their authoritative copy. Canonical documents remain in Vault/OKF and versioned Agentic OS repositories.
+
+When Paperclip needs to reference a canonical document (a report, transcript, or private payload), it stores:
+- A **pointer**: an identifier or locator (e.g., Vault version ref, OKF document ID, workspace file path relative to a registered workspace).
+- A **hash**: SHA-256 of the referenced content for integrity verification.
+- A **status summary**: structured fields (verdict, pass/fail counts, token counts, timestamps, model/provider attribution) derived from the source.
+
+Paperclip may store full file content **only** as a cached attachment via the `assets`/`issue_attachments` mechanism, and only when:
+1. The attachment is explicitly approved for ingestion into Paperclip via a `publish_full_artifact` approval (see §7.17.2), AND
+2. The content is classified as non-sensitive (not raw prompts, not full private transcripts, not credentials or personal data).
+
+Copying any full report, raw transcript, or private payload into Paperclip or Ringer requires a **separate, explicit approval** — it must not happen implicitly via projection hooks, adapter output processing, or auto-projection. This approval is recorded in the `approvals` table with `type = 'publish_full_artifact'` and carries `artifact_kind`, `artifact_pointer`, `artifact_sha256`, and `redaction_state` columns. Work products created from an approved full-content publication carry `publication_approval_id` referencing the approval record.
+
+Paperclip's `publication_status` field (on `run_events`) tracks whether a run's cost/usage data is safe to publish downstream; the same fail-closed principle applies to full-content publication: `unknown` = blocked until explicit approval.
+
+**What NEVER enters Paperclip or Ringer as content (without explicit approval):**
+- Raw filesystem paths exposing the executor's home directory layout (`/Users/hermes/...`). Use content hashes + receipt references instead.
+- Full run-state `notes` field content (contains raw check output, spec text, missing-file lists).
+- Raw transcript text or full report body content.
+- Credentials, API keys, or personal data.
+- Localhost-bound dashboard URLs (non-portable, misleading to remote readers).
+- Aggregate `total_tokens` without per-agent decomposition (no safe zero per JAC-4530); project as `not_reported` with a pointer to per-agent breakdowns.
+
+### 7.17.1 Approval gate for full-content publication
+
+When a work product with `type = 'artifact'` and `provider = 'paperclip'` is created (i.e., an attachment-backed artifact), or when a full-content attachment (text/markdown, text/plain, text/csv, application/json, application/pdf, Office documents) is uploaded, Paperclip checks for an approved `publish_full_artifact` approval on the issue. If none exists, the request is rejected with `403 publish_full_artifact_approval_required`.
+
+Pointer-only references (`metadata.resourceRef.kind = 'workspace_file'`) and lightweight artifacts (images, zip, video) are exempt from this gate.
+
+### 7.17.2 `publish_full_artifact` approval type
+
+A new approval type `publish_full_artifact` is defined in `packages/shared/src/constants.ts` (`APPROVAL_TYPES`). The `approvals` table carries the following publication contract fields:
+- `artifact_kind`: `"full_report" | "raw_transcript" | "private_payload"`
+- `artifact_pointer`: source identifier (Vault ref, workspace path, etc.)
+- `artifact_sha256`: hash of the content for integrity verification
+- `redaction_state`: `"unredacted" | "partially_redacted" | "fully_redacted"` (reuses JAC-4533 enum)
+
 Decision-desk triage uses company-scoped sidecars rather than adding queue fields to every attention source:
 
 - `decision_queues` stores durable named queues, optional retention overrides, server-derived creator/run provenance, and data-backed seed rules.

@@ -13,7 +13,14 @@ import {
 } from "@paperclipai/shared";
 import { trackRoutineCreated } from "@paperclipai/shared/telemetry";
 import { validate } from "../middleware/validate.js";
-import { accessService, documentAnnotationService, logActivity, routineService } from "../services/index.js";
+import {
+  accessService,
+  createLifecycleEvent,
+  documentAnnotationService,
+  logActivity,
+  publishLifecycleEvent,
+  routineService,
+} from "../services/index.js";
 import { assertCompanyAccess, getAccessibleResource, getActorInfo, hasCompanyAccess } from "./authz.js";
 import { forbidden, unauthorized } from "../errors.js";
 import { getTelemetryClient } from "../telemetry.js";
@@ -188,6 +195,24 @@ export function routineRoutes(
       changeSummary: "Created routine",
       triggerCount: 0,
     });
+
+    // Publish lifecycle event to memory planes
+    const createEvent = createLifecycleEvent({
+      entityType: "routine",
+      entityId: created.id,
+      companyId,
+      oldStatus: null,
+      newStatus: created.status ?? "backlog",
+      agentId: actor.agentId,
+      actorType: actor.actorType,
+      actorId: actor.actorId,
+      runId: actor.runId ?? null,
+      metadata: { title: created.title, assigneeAgentId: created.assigneeAgentId },
+    });
+    publishLifecycleEvent(createEvent).catch(() => {
+      // Non-blocking — memory plane failures don't block the API response
+    });
+
     res.status(201).json(created);
   });
 
@@ -415,6 +440,26 @@ export function routineRoutes(
         triggerCount: null,
       });
     }
+
+    // Publish lifecycle event if status changed
+    if (req.body.status !== undefined && req.body.status !== routine.status) {
+      const updateEvent = createLifecycleEvent({
+        entityType: "routine",
+        entityId: routine.id,
+        companyId: routine.companyId,
+        oldStatus: routine.status ?? null,
+        newStatus: req.body.status,
+        agentId: actor.agentId,
+        actorType: actor.actorType,
+        actorId: actor.actorId,
+        runId: actor.runId ?? null,
+        metadata: { title: updated?.title ?? routine.title, changes: req.body },
+      });
+      publishLifecycleEvent(updateEvent).catch(() => {
+        // Non-blocking — memory plane failures don't block the API response
+      });
+    }
+
     res.json(updated);
   });
 
@@ -650,7 +695,66 @@ export function routineRoutes(
       entityId: run.id,
       details: { routineId: routine.id, source: run.source, status: run.status },
     });
+
+    // Publish lifecycle event for routine run
+    const runEvent = createLifecycleEvent({
+      entityType: "routine_run",
+      entityId: run.id,
+      companyId: routine.companyId,
+      oldStatus: null,
+      newStatus: run.status,
+      agentId: actor.agentId,
+      actorType: actor.actorType,
+      actorId: actor.actorId,
+      runId: actor.runId ?? null,
+      metadata: { routineId: routine.id, source: run.source },
+    });
+    publishLifecycleEvent(runEvent).catch(() => {
+      // Non-blocking
+    });
+
     res.status(202).json(run);
+  });
+
+  router.delete("/routines/:id", async (req, res) => {
+    const routine = await assertCanManageExistingRoutine(req, req.params.id as string);
+    if (!routine) {
+      res.status(404).json({ error: "Routine not found" });
+      return;
+    }
+    await assertBoardCanAssignTasks(req, routine.companyId);
+    await svc.delete(routine.id);
+    const actor = getActorInfo(req);
+    await logActivity(db, {
+      companyId: routine.companyId,
+      actorType: actor.actorType,
+      actorId: actor.actorId,
+      agentId: actor.agentId,
+      runId: actor.runId,
+      action: "routine.deleted",
+      entityType: "routine",
+      entityId: routine.id,
+      details: { title: routine.title },
+    });
+
+    // Publish lifecycle event for deletion
+    const deleteEvent = createLifecycleEvent({
+      entityType: "routine",
+      entityId: routine.id,
+      companyId: routine.companyId,
+      oldStatus: routine.status ?? null,
+      newStatus: "cancelled",
+      agentId: actor.agentId,
+      actorType: actor.actorType,
+      actorId: actor.actorId,
+      runId: actor.runId ?? null,
+      metadata: { title: routine.title, action: "deleted" },
+    });
+    publishLifecycleEvent(deleteEvent).catch(() => {
+      // Non-blocking
+    });
+
+    res.status(204).end();
   });
 
   router.post("/routine-triggers/public/:publicId/fire", async (req, res) => {

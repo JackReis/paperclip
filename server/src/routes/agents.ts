@@ -1544,6 +1544,10 @@ export function agentRoutes(
       details.changedRuntimeConfigKeys = Object.keys(runtimeConfigPatch).sort();
     }
 
+    if (Object.prototype.hasOwnProperty.call(patch, "errorReason")) {
+      details.errorReasonCleared = patch.errorReason === null;
+    }
+
     return details;
   }
 

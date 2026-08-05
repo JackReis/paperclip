@@ -108,6 +108,8 @@ export function signalRunningProcess(
 export const runningProcesses = new Map<string, RunningProcess>();
 export const MAX_CAPTURE_BYTES = 4 * 1024 * 1024;
 export const MAX_EXCERPT_BYTES = 32 * 1024;
+/** Preserve the first N bytes of captured stderr so init tracebacks are never truncated. */
+export const MAX_STDERR_HEAD_BYTES = 256 * 1024;
 const TERMINAL_RESULT_SCAN_OVERLAP_CHARS = 64 * 1024;
 const DEFAULT_PAPERCLIP_INSTANCE_ID = "default";
 const PATH_SEGMENT_RE = /^[a-zA-Z0-9_-]+$/;
@@ -1982,7 +1984,7 @@ export function buildPaperclipEnv(agent: { id: string; companyId: string }): Rec
   const runtimeHost = resolveHostForUrl(
     process.env.PAPERCLIP_LISTEN_HOST ?? process.env.HOST ?? "localhost",
   );
-  const runtimePort = process.env.PAPERCLIP_LISTEN_PORT ?? process.env.PORT ?? "3100";
+  const runtimePort = process.env.PAPERCLIP_LISTEN_PORT ?? process.env.PORT ?? "3101";
   const apiUrl =
     process.env.PAPERCLIP_RUNTIME_API_URL ??
     process.env.PAPERCLIP_API_URL ??
@@ -3341,12 +3343,25 @@ export async function runChildProcess(
             });
         });
 
+        let stderrHead = "";
+        let stderrTruncated = false;
+        const STDERR_HEAD_CAP = MAX_STDERR_HEAD_BYTES;
         child.stderr?.on("data", (chunk: unknown) => {
           const readable = child.stderr;
           if (!readable) return;
           readable.pause();
           const text = String(chunk);
+          const prevStderrLen = stderr.length;
           stderr = appendWithCap(stderr, text);
+          // Detect when appendWithCap discarded earlier content (truncation).
+          // If the new length is less than prev + chunk, the tail cap was hit.
+          if (!stderrTruncated && stderr.length < prevStderrLen + text.length) {
+            stderrTruncated = true;
+          }
+          // Preserve the head of stderr for init tracebacks (capped separately)
+          if (stderrHead.length < STDERR_HEAD_CAP) {
+            stderrHead = (stderrHead + text).slice(0, STDERR_HEAD_CAP);
+          }
           maybeArmTerminalResultCleanup();
           logChain = logChain
             .then(() => opts.onLog("stderr", text))
@@ -3397,7 +3412,12 @@ export async function runChildProcess(
                 signal,
                 timedOut,
                 stdout,
-                stderr,
+                // Merge stderr head (init tracebacks) + tail (recent output) so
+                // tracebacks at the beginning are never lost to truncation.
+                // Only merge head+tail when the tail actually truncated the head —
+                // otherwise stderr already contains everything and merging would
+                // duplicate the content.
+                stderr: stderrTruncated && stderrHead ? `${stderrHead}\n[--- stderr tail (truncated head preserved) ---]\n${stderr}` : stderr,
                 pid: child.pid ?? null,
                 startedAt,
                 terminalResultCleanup: terminalCleanupStarted

@@ -1,0 +1,509 @@
+/**
+ * Server-side execution logic for the Hermes Agent adapter.
+ *
+ * Spawns `hermes chat -q "..." -Q` as a child process, streams output,
+ * and returns structured results to Paperclip.
+ *
+ * Verified CLI flags (hermes chat):
+ *   -q/--query         single query (non-interactive)
+ *   -Q/--quiet         quiet mode (no banner/spinner, only response + session_id)
+ *   -m/--model         model name (e.g. anthropic/claude-sonnet-4)
+ *   -t/--toolsets      comma-separated toolsets to enable
+ *   --provider         inference provider (auto, openrouter, nous, etc.)
+ *   -r/--resume        resume session by ID
+ *   -w/--worktree      isolated git worktree
+ *   -v/--verbose       verbose output
+ *   --checkpoints      filesystem checkpoints
+ *   --yolo             bypass dangerous-command approval prompts (agents have no TTY)
+ *   --source           session source tag for filtering
+ */
+import fs from "node:fs/promises";
+import { runChildProcess, buildPaperclipEnv, renderTemplate, ensureAbsoluteDirectory, DEFAULT_PAPERCLIP_AGENT_PROMPT_TEMPLATE, joinPromptSections, renderPaperclipWakePrompt, stringifyPaperclipWakePayload, } from "@paperclipai/adapter-utils/server-utils";
+import { HERMES_CLI, DEFAULT_TIMEOUT_SEC, DEFAULT_GRACE_SEC, DEFAULT_MODEL, } from "../shared/constants.js";
+import { detectModel, resolveProvider, } from "./detect-model.js";
+// ---------------------------------------------------------------------------
+// Config helpers
+// ---------------------------------------------------------------------------
+function cfgString(v) {
+    return typeof v === "string" && v.length > 0 ? v : undefined;
+}
+function cfgNumber(v) {
+    return typeof v === "number" ? v : undefined;
+}
+function cfgBoolean(v) {
+    return typeof v === "boolean" ? v : undefined;
+}
+function cfgStringArray(v) {
+    return Array.isArray(v) && v.every((i) => typeof i === "string")
+        ? v
+        : undefined;
+}
+export function resolveHermesCommand(config) {
+    return cfgString(config.hermesCommand) || cfgString(config.command) || HERMES_CLI;
+}
+// ---------------------------------------------------------------------------
+// Wake-up prompt builder
+// ---------------------------------------------------------------------------
+const HERMES_DEFAULT_PROMPT_TEMPLATE = [
+    'You are "{{agent.name}}", an AI agent employee in a Paperclip-managed company.',
+    "",
+    "Paperclip runtime identity:",
+    "- Agent ID: {{agent.id}}",
+    "- Company ID: {{agent.companyId}}",
+    "- Run ID: {{run.id}}",
+    "- API base: {{paperclipApiUrl}}",
+    "",
+    "Paperclip API guidance:",
+    "- Use `curl` from the terminal for Paperclip API calls; browser/web extraction tools may not reach localhost.",
+    "- Use `$PAPERCLIP_API_URL`, `$PAPERCLIP_API_KEY`, and `$PAPERCLIP_RUN_ID`; do not hard-code local ports or copy secrets into comments.",
+    "- Displayed command logs may redact secrets; rely on environment variables instead of printed token values.",
+    "- Include `-H \"Authorization: Bearer $PAPERCLIP_API_KEY\"` on API requests.",
+    "- Include `-H \"X-Paperclip-Run-Id: $PAPERCLIP_RUN_ID\"` on mutating issue requests.",
+    "- For multiline comments or status updates, preserve newlines with `jq --arg` or a heredoc-fed helper rather than hand-escaping JSON.",
+    "",
+    "Safe multiline update pattern:",
+    "```bash",
+    "api=\"${PAPERCLIP_API_URL%/}\"",
+    "case \"$api\" in */api) ;; *) api=\"$api/api\" ;; esac",
+    "",
+    "body=$(cat <<'MD'",
+    "Summary line",
+    "",
+    "- Detail one",
+    "- Detail two",
+    "MD",
+    ")",
+    "jq -n --arg status done --arg comment \"$body\" '{status:$status, comment:$comment}' | \\",
+    "  curl -sS -X PATCH \"$api/issues/{{context.issueId}}\" \\",
+    "    -H \"Authorization: Bearer $PAPERCLIP_API_KEY\" \\",
+    "    -H \"X-Paperclip-Run-Id: $PAPERCLIP_RUN_ID\" \\",
+    "    -H \"Content-Type: application/json\" \\",
+    "    --data-binary @-",
+    "```",
+    "",
+    DEFAULT_PAPERCLIP_AGENT_PROMPT_TEMPLATE,
+].join("\n");
+function renderConditionalSections(template, vars) {
+    const isTruthy = (key) => {
+        if (key === "noTask")
+            return !vars.taskId;
+        const value = vars[key];
+        if (Array.isArray(value))
+            return value.length > 0;
+        return Boolean(value);
+    };
+    return template.replace(/\{\{#([a-zA-Z0-9_.-]+)\}\}([\s\S]*?)\{\{\/\1\}\}/g, (_match, key, body) => (isTruthy(key) ? body : ""));
+}
+export function buildPrompt(ctx, config, options = {}) {
+    const template = cfgString(config.promptTemplate) || HERMES_DEFAULT_PROMPT_TEMPLATE;
+    const context = ctx.context || {};
+    const taskId = cfgString(context.taskId) || cfgString(context.issueId) || cfgString(ctx.config?.taskId);
+    const taskTitle = cfgString(context.taskTitle) || cfgString(ctx.config?.taskTitle) || "";
+    const taskBody = cfgString(context.taskBody) || cfgString(ctx.config?.taskBody) || "";
+    const commentId = cfgString(context.commentId) || cfgString(context.wakeCommentId) || cfgString(ctx.config?.commentId) || "";
+    const wakeReason = cfgString(context.wakeReason) || cfgString(ctx.config?.wakeReason) || "";
+    const agentName = ctx.agent?.name || "Hermes Agent";
+    const companyName = cfgString(context.companyName) || cfgString(ctx.config?.companyName) || "";
+    const projectName = cfgString(context.projectName) || cfgString(ctx.config?.projectName) || "";
+    // Build API URL — ensure it has the /api path
+    let paperclipApiUrl = cfgString(config.paperclipApiUrl) ||
+        process.env.PAPERCLIP_API_URL ||
+        "http://127.0.0.1:3100/api";
+    // Ensure /api suffix
+    if (!paperclipApiUrl.endsWith("/api")) {
+        paperclipApiUrl = paperclipApiUrl.replace(/\/+$/, "") + "/api";
+    }
+    const wakePrompt = renderPaperclipWakePrompt(context.paperclipWake, {
+        resumedSession: options.resumedSession === true,
+    });
+    const paperclipTaskMarkdown = cfgString(context.paperclipTaskMarkdown)?.trim() || "";
+    const sessionHandoffMarkdown = cfgString(context.paperclipSessionHandoffMarkdown)?.trim() || "";
+    const wakePayloadJson = stringifyPaperclipWakePayload(context.paperclipWake) || "";
+    const vars = {
+        agentId: ctx.agent?.id || "",
+        agentName,
+        companyId: ctx.agent?.companyId || "",
+        companyName,
+        runId: ctx.runId || "",
+        agent: ctx.agent || {},
+        company: { id: ctx.agent?.companyId || "", name: companyName },
+        run: { id: ctx.runId || "", source: "on_demand" },
+        context,
+        taskId: taskId || "",
+        taskTitle,
+        taskBody,
+        commentId,
+        wakeReason,
+        projectName,
+        paperclipApiUrl,
+        paperclipWakePrompt: wakePrompt,
+        paperclipTaskMarkdown,
+        taskContext: paperclipTaskMarkdown,
+        paperclipWakeJson: wakePayloadJson,
+        wakePayloadJson,
+        paperclipApiKeyEnv: "PAPERCLIP_API_KEY",
+        paperclipRunIdEnv: "PAPERCLIP_RUN_ID",
+    };
+    const rendered = renderTemplate(renderConditionalSections(template, vars), vars);
+    return joinPromptSections([
+        wakePrompt,
+        sessionHandoffMarkdown,
+        paperclipTaskMarkdown,
+        rendered,
+    ]);
+}
+// ---------------------------------------------------------------------------
+// Output parsing
+// ---------------------------------------------------------------------------
+/** Regex to extract session ID from Hermes quiet-mode output: "session_id: <id>"
+ *  Requires the session_id to be the only non-whitespace content on the line
+ *  to avoid matching inline prose like "session_id: this is response text". */
+const SESSION_ID_REGEX = /^session_id:\s*(\S+)\s*$/m;
+/** Regex for legacy session output format — anchored to line start to avoid matching inline prose */
+const SESSION_ID_REGEX_LEGACY = /^session[_ ](?:id|saved)[:\s]+([a-zA-Z0-9_-]+)/im;
+/** Regex to extract token usage from Hermes output. */
+const TOKEN_USAGE_REGEX = /tokens?[:\s]+(\d+)\s*(?:input|in)\b.*?(\d+)\s*(?:output|out)\b/i;
+/** Regex to extract cost from Hermes output. */
+const COST_REGEX = /(?:cost|spent)[:\s]*\$?([\d.]+)/i;
+// ---------------------------------------------------------------------------
+// Response cleaning
+// ---------------------------------------------------------------------------
+/** Strip noise lines from a Hermes response (tool output, system messages, etc.) */
+function cleanResponse(raw) {
+    return raw
+        .split("\n")
+        .filter((line) => {
+        const t = line.trim();
+        if (!t)
+            return true; // keep blank lines for paragraph separation
+        if (t.startsWith("[tool]") || t.startsWith("[hermes]") || t.startsWith("[paperclip]"))
+            return false;
+        // Only strip lines that are pure session_id metadata (single token, end of line).
+        // Lines like "session_id: this is response text" are agent prose and must be preserved.
+        if (SESSION_ID_REGEX.test(t))
+            return false;
+        if (/^\[\d{4}-\d{2}-\d{2}T/.test(t))
+            return false;
+        if (/^\[done\]\s*┊/.test(t))
+            return false;
+        if (/^┊\s*[\p{Emoji_Presentation}]/u.test(t) && !/^┊\s*💬/.test(t))
+            return false;
+        if (/^\p{Emoji_Presentation}\s*(Completed|Running|Error)?\s*$/u.test(t))
+            return false;
+        return true;
+    })
+        .map((line) => {
+        let t = line.replace(/^[\s]*┊\s*💬\s*/, "").trim();
+        t = t.replace(/^\[done\]\s*/, "").trim();
+        return t;
+    })
+        .join("\n")
+        .replace(/\n{3,}/g, "\n\n")
+        .trim();
+}
+// ---------------------------------------------------------------------------
+// Output parsing
+// ---------------------------------------------------------------------------
+function parseHermesOutput(stdout, stderr) {
+    const combined = stdout + "\n" + stderr;
+    const result = {};
+    // Search combined output (stdout + stderr) for session_id.
+    // Hermes 0.18.2 may emit session_id on stderr (cancelled sessions)
+    // or before the response text in quiet mode. cleanResponse()
+    // already strips session_id lines, so we can pass the full stdout
+    // through it regardless of where session_id appears.
+    const sessionMatch = combined.match(SESSION_ID_REGEX);
+    if (sessionMatch?.[1]) {
+        result.sessionId = sessionMatch[1];
+    }
+    else {
+        // Legacy format (non-quiet mode) — search stdout only to avoid
+        // stderr false positives (e.g. "session saved: not-metadata" on stderr).
+        const legacyMatch = stdout.match(SESSION_ID_REGEX_LEGACY);
+        if (legacyMatch?.[1]) {
+            result.sessionId = legacyMatch[1];
+        }
+    }
+    // Extract response from stdout. cleanResponse() strips session_id
+    // lines, tool noise, and system messages, so the full stdout can
+    // be passed through regardless of where session_id appears.
+    const cleaned = cleanResponse(stdout);
+    if (cleaned.length > 0) {
+        result.response = cleaned;
+    }
+    // Extract token usage
+    const usageMatch = combined.match(TOKEN_USAGE_REGEX);
+    if (usageMatch) {
+        result.usage = {
+            inputTokens: parseInt(usageMatch[1], 10) || 0,
+            outputTokens: parseInt(usageMatch[2], 10) || 0,
+        };
+    }
+    // Extract cost
+    const costMatch = combined.match(COST_REGEX);
+    if (costMatch?.[1]) {
+        result.costUsd = parseFloat(costMatch[1]);
+    }
+    // Check for error patterns in stderr.
+    // Skip lines that are just the session_id metadata line
+    // (cancelled sessions may emit this on stderr).
+    if (stderr.trim()) {
+        const errorLines = stderr
+            .split("\n")
+            .map((line) => line.replace(/\r$/, ""))
+            .filter((line) => !/^session_id:\s*\S+/.test(line.trim()))
+            .filter((line) => /error|exception|traceback|failed/i.test(line))
+            .filter((line) => !/INFO|DEBUG|warn/i.test(line));
+        if (errorLines.length > 0) {
+            result.errorMessage = errorLines.slice(0, 5).join("\n");
+        }
+    }
+    return result;
+}
+// ---------------------------------------------------------------------------
+// Main execute
+// ---------------------------------------------------------------------------
+export async function execute(ctx) {
+    const config = (ctx.config ?? ctx.agent?.adapterConfig ?? {});
+    // ── Resolve configuration ──────────────────────────────────────────────
+    const hermesCmd = resolveHermesCommand(config);
+    const model = cfgString(config.model) || DEFAULT_MODEL;
+    const timeoutSec = cfgNumber(config.timeoutSec) || DEFAULT_TIMEOUT_SEC;
+    const graceSec = cfgNumber(config.graceSec) || DEFAULT_GRACE_SEC;
+    const maxTurns = cfgNumber(config.maxTurnsPerRun);
+    const toolsets = cfgString(config.toolsets) || cfgStringArray(config.enabledToolsets)?.join(",");
+    const extraArgs = cfgStringArray(config.extraArgs);
+    const persistSession = cfgBoolean(config.persistSession) !== false;
+    const worktreeMode = cfgBoolean(config.worktreeMode) === true;
+    const checkpoints = cfgBoolean(config.checkpoints) === true;
+    const prevSessionId = cfgString(ctx.runtime?.sessionParams?.sessionId);
+    // ── Resolve provider (defense in depth) ────────────────────────────────
+    // Priority chain:
+    //   1. Explicit provider in adapterConfig (user override)
+    //   2. Provider from ~/.hermes/config.yaml (detected at runtime)
+    //   3. Provider inferred from model name prefix
+    //   4. "auto" (let Hermes decide)
+    //
+    // This ensures that even if the agent was created before provider tracking
+    // was added, or if the model was changed without updating provider, the
+    // correct provider is still used.
+    let detectedConfig = null;
+    const explicitProvider = cfgString(config.provider);
+    if (!explicitProvider) {
+        try {
+            detectedConfig = await detectModel();
+        }
+        catch {
+            // Non-fatal — detection failure shouldn't block execution
+        }
+    }
+    const { provider: resolvedProvider, resolvedFrom } = resolveProvider({
+        explicitProvider,
+        detectedProvider: detectedConfig?.provider,
+        detectedModel: detectedConfig?.model,
+        detectedBaseUrl: detectedConfig?.baseUrl,
+        detectedHasApiKey: detectedConfig?.hasApiKey,
+        detectedApiMode: detectedConfig?.apiMode,
+        model,
+    });
+    // ── Load agent instructions file (Paperclip instruction bundles) ──────
+    // Paperclip can materialize managed instructions into instructionsFilePath;
+    // when present, inject that bundle into the Hermes prompt.
+    const instructionsFilePath = cfgString(config.instructionsFilePath);
+    let agentInstructions = "";
+    if (instructionsFilePath) {
+        try {
+            agentInstructions = await fs.readFile(instructionsFilePath, "utf-8");
+            const loadedInstructionsLength = agentInstructions.length;
+            agentInstructions +=
+                "\nThe above agent instructions came from the current Paperclip instruction document. " +
+                    "Resolve relative file references from the current Paperclip instruction bundle.";
+            await ctx.onLog("stdout", `[hermes] Loaded agent instructions from ${instructionsFilePath} (${loadedInstructionsLength} chars)\n`);
+        }
+        catch (err) {
+            const reason = err instanceof Error ? err.message : String(err);
+            // Non-fatal: log to stdout with an explicit "Warning:" prefix so the
+            // Paperclip UI doesn't render this as a red error (stderr output is
+            // surfaced as an error signal even when execution continues).
+            await ctx.onLog("stdout", `[hermes] Warning: could not read agent instructions file "${instructionsFilePath}": ${reason}\n`);
+        }
+    }
+    // ── Build prompt ───────────────────────────────────────────────────────
+    let prompt = buildPrompt(ctx, config, { resumedSession: Boolean(prevSessionId) });
+    if (agentInstructions) {
+        prompt = agentInstructions + "\n\n---\n\n" + prompt;
+    }
+    // ── Build command args ─────────────────────────────────────────────────
+    // Use -Q (quiet) to get clean output: just response + session_id line
+    const useQuiet = cfgBoolean(config.quiet) !== false; // schema default true; explicit false is supported
+    const args = ["chat", "-q", prompt];
+    if (useQuiet)
+        args.push("-Q");
+    // `auto` is an adapter sentinel: omitting -m lets Hermes resolve its configured model.
+    if (model !== "auto") {
+        args.push("-m", model);
+    }
+    // Always pass --provider when we have a resolved one (not "auto").
+    // "auto" means Hermes will decide on its own — no need to pass it.
+    if (resolvedProvider !== "auto") {
+        args.push("--provider", resolvedProvider);
+    }
+    if (toolsets) {
+        args.push("-t", toolsets);
+    }
+    if (maxTurns && maxTurns > 0) {
+        args.push("--max-turns", String(maxTurns));
+    }
+    if (worktreeMode)
+        args.push("-w");
+    if (checkpoints)
+        args.push("--checkpoints");
+    if (cfgBoolean(config.verbose) === true)
+        args.push("-v");
+    // Tag sessions as "tool" source so they don't clutter the user's session history.
+    // Requires hermes-agent >= PR #3255 (feat/session-source-tag).
+    args.push("--source", "tool");
+    // Bypass Hermes dangerous-command approval prompts.
+    // Paperclip agents run as non-interactive subprocesses with no TTY,
+    // so approval prompts would always timeout and deny legitimate commands
+    // (curl, python3 -c, etc.). Agents operate in a sandbox — the approval
+    // system is designed for human-attended interactive sessions.
+    args.push("--yolo");
+    if (persistSession && prevSessionId) {
+        args.push("--resume", prevSessionId);
+    }
+    if (extraArgs?.length) {
+        args.push(...extraArgs);
+    }
+    // ── Build environment ──────────────────────────────────────────────────
+    const userEnv = config.env;
+    const env = {
+        ...process.env,
+        ...(userEnv && typeof userEnv === "object" ? userEnv : {}),
+        ...buildPaperclipEnv(ctx.agent),
+    };
+    if (ctx.runId)
+        env.PAPERCLIP_RUN_ID = ctx.runId;
+    // BUG FIX: Inject authToken as PAPERCLIP_API_KEY (matches adapter-claude-local behavior)
+    if (ctx.authToken)
+        env.PAPERCLIP_API_KEY = ctx.authToken;
+    // BUG FIX: Read task context from ctx.context (wake context), not ctx.config (adapter config)
+    const ctxContext = ctx.context || {};
+    const envTaskId = cfgString(ctxContext.taskId) || cfgString(ctxContext.issueId) || cfgString(ctx.config?.taskId);
+    if (envTaskId)
+        env.PAPERCLIP_TASK_ID = envTaskId;
+    const envWakeReason = cfgString(ctxContext.wakeReason) || cfgString(ctx.config?.wakeReason);
+    if (envWakeReason)
+        env.PAPERCLIP_WAKE_REASON = envWakeReason;
+    const envCommentId = cfgString(ctxContext.commentId) || cfgString(ctxContext.wakeCommentId) || cfgString(ctx.config?.commentId);
+    if (envCommentId)
+        env.PAPERCLIP_WAKE_COMMENT_ID = envCommentId;
+    const wakePayloadJson = stringifyPaperclipWakePayload(ctxContext.paperclipWake);
+    if (wakePayloadJson)
+        env.PAPERCLIP_WAKE_PAYLOAD_JSON = wakePayloadJson;
+    // ── Resolve working directory ──────────────────────────────────────────
+    const cwd = cfgString(config.cwd) || cfgString(ctx.config?.workspaceDir) || ".";
+    try {
+        await ensureAbsoluteDirectory(cwd);
+    }
+    catch {
+        // Non-fatal
+    }
+    // ── Log start ──────────────────────────────────────────────────────────
+    await ctx.onLog("stdout", `[hermes] Starting Hermes Agent (model=${model}, provider=${resolvedProvider} [${resolvedFrom}], timeout=${timeoutSec}s${maxTurns ? `, max_turns=${maxTurns}` : ""})\n`);
+    if (prevSessionId) {
+        await ctx.onLog("stdout", `[hermes] Resuming session: ${prevSessionId}\n`);
+    }
+    // ── Execute ────────────────────────────────────────────────────────────
+    // Hermes writes non-error noise to stderr (MCP init, INFO logs, etc).
+    // Paperclip renders all stderr as red/error in the UI.
+    // Wrap onLog to reclassify benign stderr lines as stdout.
+    const wrappedOnLog = async (stream, chunk) => {
+        if (stream === "stderr") {
+            const trimmed = chunk.trimEnd();
+            // Benign patterns that should NOT appear as errors:
+            // - Structured log lines: [timestamp] INFO/DEBUG/WARN: ...
+            // - MCP server registration messages
+            // - Python import/site noise
+            const isBenign = /^\[?\d{4}[-/]\d{2}[-/]\d{2}T/.test(trimmed) || // structured timestamps
+                /^[A-Z]+:\s+(INFO|DEBUG|WARN|WARNING)\b/.test(trimmed) || // log levels
+                /Successfully registered all tools/.test(trimmed) ||
+                /MCP [Ss]erver/.test(trimmed) ||
+                /tool registered successfully/.test(trimmed) ||
+                /Application initialized/.test(trimmed);
+            if (isBenign) {
+                return ctx.onLog("stdout", chunk);
+            }
+        }
+        return ctx.onLog(stream, chunk);
+    };
+    const result = await runChildProcess(ctx.runId, hermesCmd, args, {
+        cwd,
+        env,
+        timeoutSec,
+        graceSec,
+        onLog: wrappedOnLog,
+        onSpawn: ctx.onSpawn,
+    });
+    // ── Parse output ───────────────────────────────────────────────────────
+    const stdout = result.stdout || "";
+    const stderr = result.stderr || "";
+    const parsed = parseHermesOutput(stdout, stderr);
+    // Older Hermes releases can return 0 after exhausting every provider. Require
+    // the complete terminal envelope so ordinary agent prose mentioning HTTP
+    // errors is not misclassified.
+    const combinedOutput = `${stdout}\n${stderr}`;
+    const terminalProviderExhaustion = /API call failed \(attempt \d+\/\d+\)/i.test(combinedOutput) &&
+        /model [\s\x27"]*auto[\s\x27"]* is not supported[^\n]*Codex provider/i.test(combinedOutput) &&
+        /fallback provider[^\n]*failed[^\n]*(?:HTTP 401 Unauthorized|non-retryable client error)/i.test(combinedOutput) &&
+        /(?:all fallback providers failed|no providers remain)/i.test(combinedOutput) &&
+        /Resume this session with:/i.test(combinedOutput);
+    const effectiveExitCode = result.exitCode === 0 && terminalProviderExhaustion ? 1 : result.exitCode;
+    if (terminalProviderExhaustion) {
+        parsed.errorMessage =
+            "Provider fallback exhaustion prevented Hermes from completing the request.";
+    }
+    await ctx.onLog("stdout", `[hermes] Exit code: ${effectiveExitCode ?? "null"}, timed out: ${result.timedOut}\n`);
+    if (parsed.sessionId) {
+        await ctx.onLog("stdout", `[hermes] Session: ${parsed.sessionId}\n`);
+    }
+    // ── Build result ───────────────────────────────────────────────────────
+    const executionResult = {
+        exitCode: effectiveExitCode,
+        signal: result.signal,
+        timedOut: result.timedOut,
+        provider: resolvedProvider,
+        model,
+    };
+    if (parsed.errorMessage) {
+        executionResult.errorMessage = parsed.errorMessage;
+    }
+    if (parsed.usage) {
+        executionResult.usage = parsed.usage;
+    }
+    if (parsed.costUsd !== undefined) {
+        executionResult.costUsd = parsed.costUsd;
+    }
+    // Summary from agent response
+    if (parsed.response) {
+        executionResult.summary = parsed.response.slice(0, 2000);
+    }
+    // Set resultJson so Paperclip can persist run metadata (used for UI display + auto-comments)
+    executionResult.resultJson = {
+        result: parsed.response || "",
+        session_id: parsed.sessionId || null,
+        usage: parsed.usage || null,
+        cost_usd: parsed.costUsd ?? null,
+    };
+    // Store session ID for next run
+    if (persistSession && parsed.sessionId) {
+        executionResult.sessionParams = { sessionId: parsed.sessionId };
+        executionResult.sessionDisplayId = parsed.sessionId.slice(0, 16);
+    }
+    return executionResult;
+}
+// ---------------------------------------------------------------------------
+// Exports for testing
+// ---------------------------------------------------------------------------
+export { parseHermesOutput, cleanResponse };
+//# sourceMappingURL=execute.js.map

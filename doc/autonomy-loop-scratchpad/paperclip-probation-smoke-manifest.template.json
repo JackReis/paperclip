@@ -1,0 +1,24 @@
+{
+  "run_name": "paperclip-autonomy-probation-smoke",
+  "workdir": "/tmp/paperclip-probation-{{_snapshot_id}}",
+  "max_parallel": 1,
+  "bead_id": "{{_bead_id}}",
+  "paperclip_issue": "{{_paperclip_issue}}",
+  "tasks": [
+    {
+      "key": "probation-smoke",
+      "engine": "{{CANDIDATE_ENGINE}}",
+      "model": "{{CANDIDATE_MODEL}}",
+      "task_type": "code-feature",
+      "timeout_s": 900,
+      "expect_files": [
+        "fizzbuzz.py",
+        "probation-pytest.txt",
+        "smoke-result.json"
+      ],
+      "spec": "Implement fizzbuzz in Python in ./fizzbuzz.py. The function signature must be exactly: def fizzbuzz(n: int) -> list[str]: Return list of strings for 1..n. Replace multiples of 3 with 'Fizz', multiples of 5 with 'Buzz', multiples of both 3 and 5 with 'FizzBuzz'. All other numbers as strings. Edge cases: n=0 returns [], n=1 returns ['1'], n=15 returns the full FizzBuzz sequence with 'FizzBuzz' at position 15, n=30 returns 30 elements. You may write additional tests in test_fizzbuzz_candidate.py if you wish, but admission is determined solely by the loop-owned reference suite (test_fizzbuzz_ref.py) which you will NOT see. Do NOT create conftest.py, pytest.ini, or any pytest configuration that could interfere with the reference suite. After implementing, run: python3 -m pytest test_fizzbuzz_ref.py -v 2>&1 | tee ./probation-pytest.txt. Write a JSON summary to ./smoke-result.json with: {\"candidate_model\": \"<actual model used>\", \"exit_code\": <int>, \"passed\": <bool>}.",
+      "check": "REF_TEST=$(mktemp -d); cp /Users/hermes/ringer/templates/probation-smoke/test_fizzbuzz_ref.py $REF_TEST/; cp /Users/hermes/ringer/templates/probation-smoke/conftest_ref.py $REF_TEST/ 2>/dev/null; cp fizzbuzz.py $REF_TEST/; cd $REF_TEST; python3 -m pytest test_fizzbuzz_ref.py -v 2>&1 | tee ./probation-pytest.txt; EXIT=$?; rm -rf $REF_TEST; if [ $EXIT -ne 0 ]; then echo FAIL_EXIT; exit 1; fi; PASSED=$(grep -c 'PASSED' ./probation-pytest.txt 2>/dev/null || echo 0); FAILED=$(grep -c 'FAILED\\|ERROR' ./probation-pytest.txt 2>/dev/null || echo 0); if [ $PASSED -lt 4 ]; then echo FAIL_ONLY; exit 1; fi; if [ $FAILED -gt 0 ]; then echo FAIL_FAILED; exit 1; fi; echo PASS_OK",
+      "verified": "Reference test suite passes with exit 0, at least 4 PASSED, 0 FAILED/ERROR. Candidate model in smoke-result.json matches {{CANDIDATE_MODEL}}."
+    }
+  ]
+}

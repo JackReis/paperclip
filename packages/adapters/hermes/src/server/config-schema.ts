@@ -103,6 +103,12 @@ export function getConfigSchema(): AdapterConfigSchema {
         type: "textarea",
         hint: "Optional custom prompt template with {{variable}} placeholders.",
       },
+      {
+        key: "cloudAdmissionWrapper",
+        label: "Ollama Cloud admission wrapper",
+        type: "text",
+        hint: "Optional path to ollama_cloud_admission.py. When set and the resolved provider is 'ollama-cloud', the Hermes invocation is wrapped with the counting semaphore. The state directory must also be configured via PAPERCLIP_OLLAMA_CLOUD_ADMISSION_STATE_DIR.",
+      },
     ],
   };
 }

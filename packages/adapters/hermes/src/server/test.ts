@@ -12,7 +12,8 @@ import type {
 } from "@paperclipai/adapter-utils";
 
 import { execFile } from "node:child_process";
-import { readFileSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
+import { dirname, isAbsolute, join } from "node:path";
 import { promisify } from "node:util";
 
 import { HERMES_CLI, DEFAULT_MODEL, ADAPTER_TYPE, VALID_PROVIDERS } from "../shared/constants.js";
@@ -23,6 +24,27 @@ const execFileAsync = promisify(execFile);
 
 function asString(v: unknown): string | undefined {
   return typeof v === "string" ? v : undefined;
+}
+
+function configEnvString(config: Record<string, unknown>, key: string): string | undefined {
+  const env = config.env;
+  if (!env || typeof env !== "object" || Array.isArray(env)) return undefined;
+
+  const rawValue = (env as Record<string, unknown>)[key];
+  if (typeof rawValue === "string" && rawValue.length > 0) return rawValue;
+  if (!rawValue || typeof rawValue !== "object" || Array.isArray(rawValue)) return undefined;
+
+  const resolvedValue = (rawValue as { value?: unknown }).value;
+  return typeof resolvedValue === "string" && resolvedValue.length > 0
+    ? resolvedValue
+    : undefined;
+}
+
+function resolveHermesHome(config: Record<string, unknown>): string {
+  return configEnvString(config, "HERMES_HOME") ?? join(
+    process.env.HOME || process.env.USERPROFILE || "/root",
+    ".hermes",
+  );
 }
 
 // ---------------------------------------------------------------------------
@@ -83,9 +105,11 @@ async function checkCliVersion(
   }
 }
 
-async function checkPython(): Promise<AdapterEnvironmentCheck | null> {
+async function checkPython(command: string): Promise<AdapterEnvironmentCheck | null> {
+  const siblingPython = isAbsolute(command) ? join(dirname(command), "python3") : null;
+  const pythonCommand = siblingPython && existsSync(siblingPython) ? siblingPython : "python3";
   try {
-    const { stdout } = await execFileAsync("python3", ["--version"], {
+    const { stdout } = await execFileAsync(pythonCommand, ["--version"], {
       timeout: 5_000,
     });
     const version = stdout.trim();
@@ -117,11 +141,11 @@ function checkModel(
   config: Record<string, unknown>,
 ): AdapterEnvironmentCheck | null {
   const model = asString(config.model);
-  if (!model) {
+  if (!model || model === "auto") {
     return {
       level: "info",
-      message: "No model specified — Hermes will use its configured default model",
-      hint: "Set a model explicitly in Paperclip only if you want to override your local Hermes configuration.",
+      message: `No model specified — adapter will use DEFAULT_MODEL (${DEFAULT_MODEL})`,
+      hint: "Set a model explicitly in Paperclip only if you want to override the built-in default.",
       code: "hermes_configured_default_model",
     };
   }
@@ -135,6 +159,7 @@ function checkModel(
 async function checkApiKeys(
   config: Record<string, unknown>,
   detectedConfig: Awaited<ReturnType<typeof detectModel>> | null,
+  hermesHome: string,
 ): Promise<AdapterEnvironmentCheck | null> {
   // The server resolves secret refs into config.env before calling testEnvironment,
   // so we check config.env first (adapter-configured secrets), then fall back to
@@ -151,8 +176,7 @@ async function checkApiKeys(
   // accurate results for keys that Hermes already knows about.
   const hermesEnvKeys: Record<string, string> = {};
   try {
-    const homeDir = process.env.HOME || process.env.USERPROFILE || "/root";
-    const hermesEnvPath = `${homeDir}/.hermes/.env`;
+    const hermesEnvPath = join(hermesHome, ".env");
     const content = readFileSync(hermesEnvPath, "utf-8");
     for (const line of content.split("\n")) {
       const trimmed = line.trim();
@@ -160,7 +184,14 @@ async function checkApiKeys(
       const eqIdx = trimmed.indexOf("=");
       if (eqIdx > 0) {
         const key = trimmed.substring(0, eqIdx).trim();
-        const value = trimmed.substring(eqIdx + 1).trim();
+        let value = trimmed.substring(eqIdx + 1).trim();
+        // Strip surrounding quotes if present
+        if (
+          (value.startsWith('"') && value.endsWith('"')) ||
+          (value.startsWith("'") && value.endsWith("'"))
+        ) {
+          value = value.slice(1, -1);
+        }
         if (value.length > 0) hermesEnvKeys[key] = value;
       }
     }
@@ -177,6 +208,7 @@ async function checkApiKeys(
   const hasZai = has("ZAI_API_KEY");
   const hasKimi = has("KIMI_API_KEY");
   const hasMiniMax = has("MINIMAX_API_KEY");
+  const hasNous = has("NOUS_API_KEY");
 
   const providers: string[] = [];
   if (hasAnthropic) providers.push("Anthropic");
@@ -185,6 +217,7 @@ async function checkApiKeys(
   if (hasZai) providers.push("Z.AI");
   if (hasKimi) providers.push("Kimi");
   if (hasMiniMax) providers.push("MiniMax");
+  if (hasNous) providers.push("Nous");
 
   if (providers.length > 0) {
     return {
@@ -237,7 +270,7 @@ async function checkApiKeys(
   return {
     level: "warn",
     message: "No LLM API keys found in environment",
-    hint: "Set API keys in the agent's env secrets or ~/.hermes/.env. Hermes supports: ANTHROPIC_API_KEY, OPENROUTER_API_KEY, OPENAI_API_KEY, ZAI_API_KEY, KIMI_API_KEY, MINIMAX_API_KEY",
+    hint: "Set API keys in the agent's env secrets or ~/.hermes/.env. Hermes supports: NOUS_API_KEY (Nous provider), ANTHROPIC_API_KEY, OPENROUTER_API_KEY, OPENAI_API_KEY, ZAI_API_KEY, KIMI_API_KEY, MINIMAX_API_KEY",
     code: "hermes_no_api_keys",
   };
 }
@@ -251,9 +284,18 @@ async function checkProviderConsistency(
   detectedConfig: Awaited<ReturnType<typeof detectModel>> | null,
 ): Promise<AdapterEnvironmentCheck | null> {
   const model = asString(config.model);
-  if (!model) return null;
-
   const explicitProvider = asString(config.provider);
+
+  if (model === "auto" || explicitProvider === "auto") {
+    return {
+      level: "info",
+      message: "Provider/model set to auto — deferring to the Hermes profile",
+      hint: "Hermes will resolve its configured model and provider at runtime.",
+      code: "hermes_provider_auto",
+    };
+  }
+
+  if (!model) return null;
 
   const { provider: resolved, resolvedFrom } = resolveProvider({
     explicitProvider,
@@ -330,6 +372,7 @@ export async function testEnvironment(
 ): Promise<AdapterEnvironmentTestResult> {
   const config = (ctx.config ?? {}) as Record<string, unknown>;
   const command = resolveHermesCommand(config);
+  const hermesHome = resolveHermesHome(config);
   const checks: AdapterEnvironmentCheck[] = [];
 
   // 1. CLI installed?
@@ -351,7 +394,7 @@ export async function testEnvironment(
   if (versionCheck) checks.push(versionCheck);
 
   // 3. Python available?
-  const pythonCheck = await checkPython();
+  const pythonCheck = await checkPython(command);
   if (pythonCheck) checks.push(pythonCheck);
 
   // 4. Model config
@@ -361,13 +404,13 @@ export async function testEnvironment(
   // 5. Detect Hermes config once for the remaining checks.
   let detectedConfig: Awaited<ReturnType<typeof detectModel>> | null = null;
   try {
-    detectedConfig = await detectModel();
+    detectedConfig = await detectModel(join(hermesHome, "config.yaml"));
   } catch {
     // Non-fatal
   }
 
   // 6. API keys (check config.env — server resolves secrets before calling us)
-  const apiKeyCheck = await checkApiKeys(config, detectedConfig);
+  const apiKeyCheck = await checkApiKeys(config, detectedConfig, hermesHome);
   if (apiKeyCheck) checks.push(apiKeyCheck);
 
   // 7. Provider/model consistency

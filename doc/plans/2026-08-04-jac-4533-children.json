@@ -1,0 +1,74 @@
+[
+  {
+    "title": "[JAC-4533-S1] Add privacy composite index to cost_events table",
+    "description": "Implement Step 1 of the JAC-4533 plan: add a composite privacy index to the `cost_events` table mirroring `run_events_privacy_idx`.\n\n**Plan reference:** doc/plans/2026-08-04-jac-4533-privacy-retention-schema-fields.md, Section 5, Step 1\n**Parent:** JAC-4533 [JAC-3929] P1: Privacy/retention first-class schema fields\n**Status:** planning\n**Depends on:** None (foundational)\n**Blocks:** Steps 2-9\n\n**Scope:**\n- File: `packages/db/src/schema/cost_events.ts`\n- Add composite index: `cost_events_company_privacy_idx` on (company_id, visibility_class, retention_class, redaction_state)\n- New migration: `0191_cost_events_privacy_index.sql` that CREATE INDEX on the same columns\n- These columns already exist from migration 0187\n\n**Verification:**\n- Migration file generated via `pnpm db:generate`\n- Typecheck passes: `pnpm -r typecheck`",
+    "status": "todo",
+    "workMode": "planning",
+    "priority": "high",
+    "assigneeAgentId": "8551a68a-c3f3-45f4-a847-628587c0c36e"
+  },
+  {
+    "title": "[JAC-4533-S2] Add privacy fields to createCostEventSchema Zod validator",
+    "description": "Implement Step 2 of the JAC-4533 plan: extend `createCostEventSchema` in `packages/shared/src/validators/cost.ts` to accept and validate all 9 privacy/retention fields (visibility_class, retention_class, redaction_state, source_permission_ref, tenant_ref_hash, subject_ref_hashes, source_deleted_at, tombstone_ref, policy_version).\n\n**Plan reference:** doc/plans/2026-08-04-jac-4533-privacy-retention-schema-fields.md, Section 5, Step 2\n**Parent:** JAC-4533 [JAC-3929] P1: Privacy/retention first-class schema fields\n**Status:** planning\n**Depends on:** Step 1 (cost_events privacy index)\n**Blocks:** Step 5 (createEvent service), Step 9 (tests)\n\n**Scope:**\n- Add Zod enum fields for visibility_class, retention_class, redaction_state with fail-closed defaults\n- Add nullable fields for source_permission_ref, tenant_ref_hash, subject_ref_hashes, source_deleted_at, tombstone_ref, policy_version\n- Add transform that validates tenant_ref_hash and subject_ref_hashes elements as SHA-256 hex (^[a-f0-9]{64}$)\n- Constants (VISIBILITY_CLASSES, RETENTION_CLASSES, REDACTION_STATES) already imported but unused — wire them in\n\n**Verification:**\n- Zod schema rejects invalid enum values\n- SHA-256 hex format enforced for hash fields\n- Defaults resolve to internal/standard/unredacted when omitted",
+    "status": "todo",
+    "workMode": "planning",
+    "priority": "high",
+    "assigneeAgentId": "8551a68a-c3f3-45f4-a847-628587c0c36e"
+  },
+  {
+    "title": "[JAC-4533-S3] Add privacy fields to createRunEventSchema Zod validator",
+    "description": "Implement Step 3 of the JAC-4533 plan: extend `createRunEventSchema` in `packages/shared/src/validators/cost.ts` to accept and validate all 9 privacy/retention fields.\n\n**Plan reference:** doc/plans/2026-08-04-jac-4533-privacy-retention-schema-fields.md, Section 5, Step 3\n**Parent:** JAC-4533 [JAC-3929] P1: Privacy/retention first-class schema fields\n**Status:** planning\n**Depends on:** Step 1 (can proceed in parallel with Step 2)\n**Blocks:** Step 4 (createRunEvent service), Step 9 (tests)\n\n**Scope:**\n- Same 9 fields as Step 2, added to createRunEventSchema\n- Same SHA-256 hex validation for tenant_ref_hash and subject_ref_hashes\n- Same fail-closed defaults (internal/standard/unredacted)\n\n**Verification:**\n- Zod schema rejects invalid enum values\n- SHA-256 hex format enforced for hash fields\n- Defaults resolve correctly when omitted",
+    "status": "todo",
+    "workMode": "planning",
+    "priority": "high",
+    "assigneeAgentId": "8551a68a-c3f3-45f4-a847-628587c0c36e"
+  },
+  {
+    "title": "[JAC-4533-S4] Update createRunEvent() service to accept privacy fields",
+    "description": "Implement Step 4 of the JAC-4533 plan: update `createRunEvent()` in `server/src/services/costs.ts` to accept and pass through all 9 privacy/retention fields with fail-closed defaults, replacing the current hardcoded defaults.\n\n**Plan reference:** doc/plans/2026-08-04-jac-4533-privacy-retention-schema-fields.md, Section 5, Step 4\n**Parent:** JAC-4533 [JAC-3929] P1: Privacy/retention first-class schema fields\n**Status:** planning\n**Depends on:** Steps 2-3 (Zod schema extensions)\n**Blocks:** Step 7 (heartbeat callers), Step 9 (tests)\n\n**Scope:**\n- File: server/src/services/costs.ts (lines 132-227)\n- Replace hardcoded visibilityClass/retentionClass/redactionState defaults with data-driven values\n- Add pass-through for the 6 nullable fields (sourcePermissionRef, tenantRefHash, subjectRefHashes, sourceDeletedAt, tombstoneRef, policyVersion)\n- Use fail-closed defaults from constants (DEFAULT_VISIBILITY_CLASS, DEFAULT_RETENTION_CLASS, DEFAULT_REDACTION_STATE)\n\n**Verification:**\n- Service accepts privacy fields from caller with correct defaults\n- DB insert includes all 9 fields\n- Fail-closed enforcement: visibility_class cannot be escalated to public by external adapter",
+    "status": "todo",
+    "workMode": "planning",
+    "priority": "high",
+    "assigneeAgentId": "8551a68a-c3f3-45f4-a847-628587c0c36e"
+  },
+  {
+    "title": "[JAC-4533-S5] Update createEvent() service to accept privacy fields",
+    "description": "Implement Step 5 of the JAC-4533 plan: update `createEvent()` in `server/src/services/costs.ts` to accept and pass through all 9 privacy/retention fields with fail-closed defaults.\n\n**Plan reference:** doc/plans/2026-08-04-jac-4533-privacy-retention-schema-fields.md, Section 5, Step 5\n**Parent:** JAC-4533 [JAC-3929] P1: Privacy/retention first-class schema fields\n**Status:** planning\n**Depends on:** Step 2 (createCostEventSchema extension)\n**Blocks:** Step 9 (tests)\n\n**Scope:**\n- File: server/src/services/costs.ts (lines 58-121)\n- Currently sets no privacy fields — they all fall to DB defaults\n- Add pass-through for all 9 fields with fail-closed defaults\n\n**Verification:**\n- Service accepts privacy fields from caller with correct defaults\n- DB insert includes all 9 fields",
+    "status": "todo",
+    "workMode": "planning",
+    "priority": "high",
+    "assigneeAgentId": "8551a68a-c3f3-45f4-a847-628587c0c36e"
+  },
+  {
+    "title": "[JAC-4533-S6] Remove stale CreateRunEventInput interface from types/run-event.ts",
+    "description": "Implement Step 6 of the JAC-4533 plan: remove the stale, unused `CreateRunEventInput` interface from `packages/shared/src/types/run-event.ts` (line 166) that risks drift. The actual input type used by the service layer is the Zod-inferred type from `validators/cost.ts` (line 496). No separate type file changes needed — the Zod schema extensions in Steps 2-3 automatically update the inferred input types.\n\n**Plan reference:** doc/plans/2026-08-04-jac-4533-privacy-retention-schema-fields.md, Section 5, Step 6\n**Parent:** JAC-4533 [JAC-3929] P1: Privacy/retention first-class schema fields\n**Status:** planning\n**Depends on:** Steps 2-3 (Zod schema extensions)\n**Blocks:** Step 7 (heartbeat callers)\n\n**Scope:**\n- File: packages/shared/src/types/run-event.ts\n- Remove dead interface CreateRunEventInput (line 166) — confirmed NOT re-exported from types/index.ts and NOT imported by service layer\n\n**Verification:**\n- No references to the removed interface anywhere in codebase (grep for CreateRunEventInput in types/run-event.ts)\n- Typecheck passes after removal",
+    "status": "todo",
+    "workMode": "planning",
+    "priority": "high",
+    "assigneeAgentId": "8551a68a-c3f3-45f4-a847-628587c0c36e"
+  },
+  {
+    "title": "[JAC-4533-S7] Update heartbeat.ts callers to pass privacy fields",
+    "description": "Implement Step 7 of the JAC-4533 plan: update heartbeat.ts callers of createRunEvent() to pass privacy fields. For normal Paperclip adapter runs, the defaults (internal/standard/unredacted) are appropriate, but the service layer should derive sourcePermissionRef from the agent's permission context, tenantRefHash from the company's tenant context (for multi-tenant), and policyVersion from the company's current privacy policy version.\n\n**Plan reference:** doc/plans/2026-08-04-jac-4533-privacy-retention-schema-fields.md, Section 5, Step 7\n**Parent:** JAC-4533 [JAC-3929] P1: Privacy/retention first-class schema fields\n**Status:** planning\n**Depends on:** Steps 4-6\n**Blocks:** Step 9 (tests)\n\n**Scope:**\n- File: server/src/services/heartbeat.ts (lines 11770-11781, 14319-14331)\n- Pass through privacy fields from the run context if available\n- Derive sourcePermissionRef from agent permission context\n- Derive tenantRefHash from company tenant context (for multi-tenant deployments)\n- Derive policyVersion from company's current privacy policy version\n\n**Verification:**\n- Heartbeat callers pass privacy fields to createRunEvent()\n- Default values (internal/standard/unredacted) applied when no context available",
+    "status": "todo",
+    "workMode": "planning",
+    "priority": "high",
+    "assigneeAgentId": "8551a68a-c3f3-45f4-a847-628587c0c36e"
+  },
+  {
+    "title": "[JAC-4533-S8] Add validation + fail-closed enforcement in API routes",
+    "description": "Implement Step 8 of the JAC-4533 plan: add fail-closed enforcement in API routes. The Zod validation (Steps 2-3) already enforces the value sets. Add a server-side guard: reject visibility_class = public from external (non-board) actors unless a publish_full_artifact-style approval exists on the issue.\n\n**Plan reference:** doc/plans/2026-08-04-jac-4533-privacy-retention-schema-fields.md, Section 5, Step 8\n**Parent:** JAC-4533 [JAC-3929] P1: Privacy/retention first-class schema fields\n**Status:** planning\n**Depends on:** Steps 2-3, 4-5\n**Blocks:** Step 9 (tests)\n\n**Scope:**\n- File: server/src/routes/costs.ts\n- POST /companies/:companyId/run-events — clamp visibility_class to internal for non-board actors\n- POST /companies/:companyId/cost-events — same enforcement\n- Activity log entries for rejected visibility escalations\n\n**Verification:**\n- External adapter (bearer token) submitting visibility_class=public is clamped to internal or rejected\n- Board actor can still set public visibility\n- Activity log records enforcement actions",
+    "status": "todo",
+    "workMode": "planning",
+    "priority": "high",
+    "assigneeAgentId": "8551a68a-c3f3-45f4-a847-628587c0c36e"
+  },
+  {
+    "title": "[JAC-4533-S9] Add tests for privacy/retention field validation",
+    "description": "Implement Step 9 of the JAC-4533 plan: add tests covering privacy/retention field validation and fail-closed enforcement.\n\n**Plan reference:** doc/plans/2026-08-04-jac-4533-privacy-retention-schema-fields.md, Section 5, Step 9\n**Parent:** JAC-4533 [JAC-3929] P1: Privacy/retention first-class schema fields\n**Status:** planning\n**Depends on:** Steps 2-8\n\n**Scope:**\n- packages/shared/src/validators/cost.test.ts:\n  - Test createRunEventSchema and createCostEventSchema default privacy fields to fail-closed values when omitted\n  - Test tenantRefHash and subjectRefHashes elements validated as SHA-256 hex\n  - Test invalid visibilityClass/retentionClass/redactionState values rejected\n- server/src/__tests__/costs-service.test.ts:\n  - Test createRunEvent() persists all 9 privacy fields with correct defaults\n  - Test createEvent() persists all 9 privacy fields\n  - Test fail-closed: external adapter cannot escalate to visibility_class=public\n\n**Verification:**\n- All new tests pass: pnpm test\n- Typecheck passes: pnpm -r typecheck",
+    "status": "todo",
+    "workMode": "planning",
+    "priority": "high",
+    "assigneeAgentId": "8551a68a-c3f3-45f4-a847-628587c0c36e"
+  }
+]

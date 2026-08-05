@@ -17,6 +17,12 @@ export const approvals = pgTable(
     decidedAt: timestamp("decided_at", { withTimezone: true }),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+    // Publication contract fields (JAC-4538):
+    // When type = "publish_full_artifact", these carry the artifact metadata.
+    artifactKind: text("artifact_kind"),
+    artifactPointer: text("artifact_pointer"),
+    artifactSha256: text("artifact_sha256"),
+    redactionState: text("redaction_state").notNull().default("unredacted"),
   },
   (table) => ({
     companyStatusTypeIdx: index("approvals_company_status_type_idx").on(

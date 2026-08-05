@@ -188,6 +188,7 @@ function sampleOutput(
     isPrimary: Boolean(opts.isPrimary),
     healthStatus: "unknown",
     summary: null,
+    publicationApprovalId: null,
     createdByRunId: null,
     createdAt: new Date(opts.createdAt),
     updatedAt: new Date(opts.createdAt),

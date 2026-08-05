@@ -2,6 +2,7 @@ import { type AnyPgColumn, pgTable, uuid, text, timestamp, jsonb, index, integer
 import { companies } from "./companies.js";
 import { agents } from "./agents.js";
 import { agentWakeupRequests } from "./agent_wakeup_requests.js";
+import { agentSessions } from "./agent_sessions.js";
 
 export const heartbeatRuns = pgTable(
   "heartbeat_runs",
@@ -23,6 +24,7 @@ export const heartbeatRuns = pgTable(
     resultJson: jsonb("result_json").$type<Record<string, unknown>>(),
     sessionIdBefore: text("session_id_before"),
     sessionIdAfter: text("session_id_after"),
+    sessionId: uuid("session_id").references(() => agentSessions.id, { onDelete: "set null" }),
     logStore: text("log_store"),
     logRef: text("log_ref"),
     logBytes: bigint("log_bytes", { mode: "number" }),

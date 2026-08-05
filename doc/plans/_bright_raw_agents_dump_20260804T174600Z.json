@@ -1,0 +1,152 @@
+{
+  "captured_at": "2026-08-04T17:46:00Z",
+  "agent": "Bright (8b6ea7f8-781e-49ce-8c37-4f5564fc7481)",
+  "api": "GET /api/companies/87c32b8e-f131-4df8-ad8e-963d01b458e7/agents (bearer auth)",
+  "server": "~/.hermes/node/lib/node_modules/paperclipai/dist/index.js (npm v2026.722.0, mtime 2026-08-01T14:59:00Z)",
+  "all_10_errored_agents": [
+    {
+      "name": "Researcher",
+      "status": "error",
+      "errorReason": "Traceback (most recent call last):",
+      "errorReason_length": 34,
+      "provider": null,
+      "model": null,
+      "adapterConfig": {},
+      "adapterType": null,
+      "executionLane": null,
+      "currentRunId": null
+    },
+    {
+      "name": "Quill Med S",
+      "status": "error",
+      "errorReason": "Traceback (most recent call last):",
+      "errorReason_length": 34,
+      "provider": null,
+      "model": null,
+      "adapterConfig": {},
+      "adapterType": null,
+      "executionLane": null,
+      "currentRunId": null
+    },
+    {
+      "name": "Operator",
+      "status": "error",
+      "errorReason": "11:52:47 - agent.chat_completion_helpers - ERROR - Streaming failed before delivery: Connection error.\nTraceback (most recent call last):\n  File \"/Users/hermes/.hermes/hermes-agent/venv/lib/python3.11/site-packages/httpx/_transports/default.py\", line 101, in map_httpcore_exceptions\n    raise RemoteProtocolError(msg)\nhttpcore.RemoteProtocolError: Server disconnected without sending a response.",
+      "errorReason_length": 395,
+      "provider": null,
+      "model": null,
+      "adapterConfig": {},
+      "adapterType": null,
+      "executionLane": null,
+      "currentRunId": null
+    },
+    {
+      "name": "Oracle-2",
+      "status": "error",
+      "errorReason": null,
+      "errorReason_length": 0,
+      "provider": null,
+      "model": null,
+      "adapterConfig": {},
+      "adapterType": null,
+      "executionLane": null,
+      "currentRunId": null
+    },
+    {
+      "name": "Fable",
+      "status": "error",
+      "errorReason": "Traceback (most recent call last):",
+      "errorReason_length": 34,
+      "provider": null,
+      "model": null,
+      "adapterConfig": {},
+      "adapterType": null,
+      "executionLane": null,
+      "currentRunId": null
+    },
+    {
+      "name": "Herald",
+      "status": "error",
+      "errorReason": "Traceback (most recent call last):",
+      "errorReason_length": 34,
+      "provider": null,
+      "model": null,
+      "adapterConfig": {},
+      "adapterType": null,
+      "executionLane": null,
+      "currentRunId": null
+    },
+    {
+      "name": "Sentry",
+      "status": "error",
+      "errorReason": "Traceback (most recent call last):",
+      "errorReason_length": 34,
+      "provider": null,
+      "model": null,
+      "adapterConfig": {},
+      "adapterType": null,
+      "executionLane": null,
+      "currentRunId": null
+    },
+    {
+      "name": "Valeera",
+      "status": "error",
+      "errorReason": "Traceback (most recent call last):",
+      "errorReason_length": 34,
+      "provider": null,
+      "model": null,
+      "adapterConfig": {},
+      "adapterType": null,
+      "executionLane": null,
+      "currentRunId": null
+    },
+    {
+      "name": "Paperclip Agent Auditor",
+      "status": "error",
+      "errorReason": "Traceback (most recent call last):",
+      "errorReason_length": 34,
+      "provider": null,
+      "model": null,
+      "adapterConfig": {},
+      "adapterType": null,
+      "executionLane": null,
+      "currentRunId": null
+    },
+    {
+      "name": "Omnigent Router",
+      "status": "error",
+      "errorReason": "Traceback (most recent call last):",
+      "errorReason_length": 34,
+      "provider": null,
+      "model": null,
+      "adapterConfig": {},
+      "adapterType": null,
+      "executionLane": null,
+      "currentRunId": null
+    }
+  ],
+  "fleet_wide_status_distribution": {
+    "error": 10,
+    "idle": 30,
+    "running": 42,
+    "paused": 1,
+    "total": 83
+  },
+  "error_reason_breakdown": {
+    "34char_truncated_traceback": 9,
+    "full_395_char_error": 1,
+    "null_error_reason": 1,
+    "stale_truncated_in_running_status": 1
+  },
+  "adapter_config_analysis": {
+    "all_83_agents_empty_adapterConfig": true,
+    "completeness": "0% — every agent has adapterConfig={}",
+    "impact": "Without explicit model in adapterConfig, resolution depends on DEFAULT_MODEL constant. Running npm package still has DEFAULT_MODEL='auto' which resolves to OpenRouter → 404 for qwen3-coder:30b → Hermes CLI crash → 34-char truncated traceback."
+  },
+  "local_repo_verification": {
+    "file": "packages/adapters/hermes/src/shared/constants.ts:39",
+    "fix_commit": "2f5ff6345",
+    "fix_present": "export const DEFAULT_MODEL = \"ollama-launch/qwen3-coder:30b\";",
+    "npm_bundle_occurrences": 0
+  }
+}

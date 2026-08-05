@@ -40,6 +40,17 @@ in a project or execution workspace, such as source files, committed markdown
 plans, or generated files whose meaning depends on the checkout. Workspace-only
 references are useful signposts, but they are not durable uploads.
 
+**Full-content publication policy (JAC-4538):** Paperclip stores only
+approval/evidence pointers, status summaries, and hashes. Uploading the full
+content of a report, raw transcript, or private payload (e.g. `text/*` files,
+PDFs, or Office documents) as an attachment-backed artifact work product
+requires an approved `publish_full_artifact` approval on the issue. Without
+that approval, the upload or work-product creation is rejected with
+`403 publish_full_artifact_approval_required`. Pointer-only references
+(`metadata.resourceRef.kind = "workspace_file"`) and lightweight artifacts
+(images, zip, video) are exempt. See §7.17 of SPEC-implementation.md for the
+full publication contract.
+
 Expected work product metadata shape:
 
 ```json

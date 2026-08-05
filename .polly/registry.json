@@ -1,0 +1,138 @@
+{
+  "session_start": "2026-07-26T00:00:00Z",
+  "final_status": "3 of 4 agent-resolvable tasks COMPLETED; 1 in progress; 6 strictly human blockers remain",
+  "summary": {
+    "agent_resolvable_total": 4,
+    "completed": 3,
+    "in_progress": 1,
+    "unable_to_dispatch": 0,
+    "human_blockers": 6
+  },
+  "completed_tasks": [
+    {
+      "id": "hermes-04ps.1.2-design",
+      "title": "Design compact Hermes profile for Paperclip canaries",
+      "beads_id": "hermes-04ps.1.2",
+      "priority": "P1",
+      "worker": "opencode",
+      "task_id": "78de98ccbffa4fe896d8188e2b8bd3eb",
+      "status": "✅ COMPLETED",
+      "deliverable": "~/.hermes/profiles/paperclip-compact/config.yaml (24% smaller, validated)",
+      "memory_savings": "10-20KB prompt reduction vs aegis profile; removed: 2x MCP servers, 15 cloud APIs, 12 personalities, 4 memory providers"
+    },
+    {
+      "id": "hermes-9lz3.2-complete",
+      "title": "Complete brain search wiring for hermes_local agents",
+      "beads_id": "hermes-9lz3.2",
+      "priority": "P1",
+      "worker": "claude_code",
+      "task_id": "7557b425c50647ebb5e534d50fe1049e",
+      "status": "✅ COMPLETED",
+      "deliverables": [
+        "doc/HERMES-BRAIN-WIRING.md — comprehensive integration guide",
+        "doc/HERMES-BRAIN-WIRING-VERIFICATION.md — 15-point verification checklist",
+        "doc/hermes-mcp-brain-config-template.yaml — reusable template"
+      ],
+      "key_finding": "Toolsets allowlist gotcha documented: agents with enabled_toolsets must explicitly include 'mcp-open-brain' to access brain search tools",
+      "affected_agents": ["Bright", "Ringsmith", "Wings (awaiting Paperclip adapterConfig update)"],
+      "pr_branch": "polly/hermes-9lz3.2-complete (fork/JackReis/paperclip)",
+      "pr_status": "Ready for human review"
+    },
+    {
+      "id": "hermes-04ps.1.2-design-claude-version",
+      "title": "Design compact Hermes profile (claude_code version)",
+      "beads_id": "hermes-04ps.1.2",
+      "priority": "P1",
+      "worker": "claude_code",
+      "task_id": "6de938e10c7d47cc9178011942990c4a",
+      "status": "✅ COMPLETED (secondary validation)",
+      "deliverable": "~/.hermes/profiles/paperclip-compact/ — comprehensive documentation + design rationale",
+      "commits": [
+        "398a396 feat: add paperclip-compact Hermes profile",
+        "e4a68a3 docs: add profiles/ to Hermes federated config sync"
+      ],
+      "pushed_to": "talaris:~/agent-config-backups/aegis/"
+    }
+  ],
+  "in_progress_tasks": [
+    {
+      "id": "hermes-qkls-fix",
+      "title": "Fix Paperclip config-read secret leakage",
+      "beads_id": "hermes-qkls",
+      "priority": "P2-SECURITY",
+      "worker": "claude_code",
+      "task_id": "c607c56fb7e54008989ebb1ce36009a7",
+      "status": "🔄 RUNNING",
+      "worktree": ".worktrees/hermes-qkls-fix",
+      "eta": "Next to complete after current batch"
+    }
+  ],
+  "human_blockers": [
+    {
+      "id": "hermes-04ps.1.3",
+      "title": "Board approval for admission semaphore deployment",
+      "priority": "P1",
+      "gate": "Requires board confirmation before live deployment"
+    },
+    {
+      "id": "hermes-aeoc",
+      "title": "Gate and apply merge-safe Paperclip agent reroutes",
+      "priority": "P1",
+      "gate": "Requires human approval of merge-safe reroutes"
+    },
+    {
+      "id": "hermes-9ad",
+      "title": "Fleet orchestration architecture decision",
+      "priority": "P1",
+      "gate": "Strategic decision needed: Sol/Fable/Ringer/Paperclip integration path"
+    },
+    {
+      "id": "hermes-ti0h",
+      "title": "Approve JAC-3690 revision 4 publication-only contract",
+      "priority": "P1",
+      "gate": "Contract revision approval required"
+    },
+    {
+      "id": "hermes-jiqi",
+      "title": "Approve first local Git commit for JAC-3698 family-beads",
+      "priority": "P1",
+      "gate": "Initial commit approval required"
+    },
+    {
+      "id": "hermes-04ps.1.3.1",
+      "title": "Wire + deploy cloud admission semaphore",
+      "priority": "P1",
+      "gate": "Blocked by parent approval (hermes-04ps.1.3)"
+    }
+  ],
+  "blockers_resolved": {
+    "agent_resolvable_blockers": "From ~10 to 1 (security fix in progress)",
+    "human_only_blockers": 6,
+    "quota_issue": "OpenAI (codex/pi exhausted) but claude_code has capacity; not blocking current work"
+  },
+  "next_actions": [
+    {
+      "priority": 1,
+      "action": "Monitor claude_code secret-fix completion (P2 SECURITY blocker)",
+      "owner": "automated"
+    },
+    {
+      "priority": 2,
+      "action": "Human review: brain-search PR (polly/hermes-9lz3.2-complete)",
+      "owner": "human",
+      "gate": "hermes-9lz3.2 completion"
+    },
+    {
+      "priority": 3,
+      "action": "Update Paperclip adapterConfig for Bright/Ringsmith/Wings agents to add 'mcp-open-brain' to enabled_toolsets",
+      "owner": "human",
+      "gate": "hermes-9lz3.2 review completion"
+    },
+    {
+      "priority": 4,
+      "action": "Resolve 6 human blockers (board approvals, architecture decisions, contract approvals)",
+      "owner": "human",
+      "impact": "Unblocks hermes-04ps.1.3, hermes-9ad, hermes-aeoc, and dependent tasks"
+    }
+  ]
+}

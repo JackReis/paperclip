@@ -344,7 +344,7 @@ export const ChatComposer = forwardRef<ChatComposerHandle, ChatComposerProps>(fu
               disabled={disabled || attaching}
               aria-label="Attach files"
               title="Attach files"
-              className="grid h-7 w-7 shrink-0 place-items-center rounded-md text-muted-foreground transition-colors duration-150 hover:bg-accent hover:text-foreground disabled:cursor-not-allowed disabled:opacity-50"
+              className="grid h-11 w-11 shrink-0 place-items-center rounded-md text-muted-foreground transition-colors duration-150 hover:bg-accent hover:text-foreground disabled:cursor-not-allowed disabled:opacity-50"
             >
               {attaching ? <Loader2 className="h-4 w-4 animate-spin" /> : <Paperclip className="h-4 w-4" />}
             </button>
@@ -366,7 +366,7 @@ export const ChatComposer = forwardRef<ChatComposerHandle, ChatComposerProps>(fu
           aria-label={sendLabel}
           title={sendLabel}
           className={cn(
-            "grid h-7 w-7 shrink-0 place-items-center rounded-md transition-colors duration-150 disabled:cursor-not-allowed",
+            "grid h-11 w-11 shrink-0 place-items-center rounded-md transition-colors duration-150 disabled:cursor-not-allowed",
             canSend
               ? "bg-foreground text-background hover:opacity-90"
               : "bg-accent text-muted-foreground",

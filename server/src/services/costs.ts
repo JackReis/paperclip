@@ -1,10 +1,15 @@
 import { and, desc, eq, gte, isNotNull, isNull, lt, lte, sql } from "drizzle-orm";
 import { alias } from "drizzle-orm/pg-core";
 import type { Db } from "@paperclipai/db";
-import { activityLog, agents, companies, costEvents, heartbeatRuns, issues, projects } from "@paperclipai/db";
+import { activityLog, agents, companies, costEvents, heartbeatRuns, issues, projects, runEvents } from "@paperclipai/db";
 import { notFound, unprocessable } from "../errors.js";
 import { budgetService, type BudgetServiceHooks } from "./budgets.js";
 import { visibleIssueCondition } from "./issue-visibility.js";
+import { resolveCoverageState, resolveSafeStatus, resolveLedgerCoverageForRun, resolveRunCoverageForError, computeCoverageWarning } from "@paperclipai/shared";
+import type { CostStatus, CoverageState, SafeStatus, SourceStatus, CoverageTotals, CoverageWarning, CoverageByAdapterRow, CoverageWarningsResponse, CoverageByAgent } from "@paperclipai/shared";
+import type { RunCoverageResolution } from "@paperclipai/shared";
+import { DEFAULT_VISIBILITY_CLASS, DEFAULT_RETENTION_CLASS, DEFAULT_REDACTION_STATE, DEFAULT_ATTEMPT_INDEX, type RunEventSourceSystem, type RunEventKind } from "@paperclipai/shared";
+import { computePaperclipRunEventKey, computePayloadHash, computeSourceEventId } from "@paperclipai/shared/utils/event-identity";
 
 export interface CostDateRange {
   from?: Date;
@@ -52,7 +57,7 @@ async function getMonthlySpendTotal(
 export function costService(db: Db, budgetHooks: BudgetServiceHooks = {}) {
   const budgets = budgetService(db, budgetHooks);
   return {
-    createEvent: async (companyId: string, data: Omit<typeof costEvents.$inferInsert, "companyId">) => {
+    createEvent: async (companyId: string, data: Omit<typeof costEvents.$inferInsert, "companyId" | "ingestId"> & { ingestId?: string | null }) => {
       const agent = await db
         .select()
         .from(agents)
@@ -64,6 +69,43 @@ export function costService(db: Db, budgetHooks: BudgetServiceHooks = {}) {
         throw unprocessable("Agent does not belong to company");
       }
 
+      // Apply fail-closed resolution for coverage-aware fields, mirroring the
+      // Zod schema transform in shared/validators/cost.ts. When the adapter did
+      // not expose usage reporting (source_status defaults to "unavailable"),
+      // coverage_state resolves to "uncovered" and safe_status to "unavailable".
+      const sourceStatus = (data.sourceStatus ?? "unavailable") as SourceStatus;
+      const resolvedCoverageState = resolveCoverageState(
+        (data.coverageState ?? "unknown") as CoverageState,
+        sourceStatus,
+      );
+      const resolvedSafeStatus: SafeStatus = resolveSafeStatus(resolvedCoverageState);
+
+      // JAC-4532: Compute deterministic identity fields for idempotency when
+      // the caller does not supply them. Cost events derive their source_event_id
+      // from the heartbeat run + provider + model, enabling deterministic
+      // re-ingest deduplication.
+      const occurredAtIso = data.occurredAt.toISOString();
+      const computedSourceEventId = data.sourceEventId ??
+        (data.heartbeatRunId
+          ? `paperclip:${data.heartbeatRunId}:${occurredAtIso}:${data.provider ?? "unknown"}:${data.model ?? "unknown"}`
+          : null);
+      const computedPayloadHash = data.payloadHash ?? computePayloadHash({
+        inputTokens: data.inputTokens,
+        outputTokens: data.outputTokens,
+        cachedInputTokens: data.cachedInputTokens,
+        costCents: data.costCents,
+        currency: data.currency ?? "USD",
+        provider: data.provider ?? "unknown",
+        model: data.model ?? "unknown",
+        billingCode: data.billingCode,
+        billingType: data.billingType,
+      });
+      const computedIngestId = data.ingestId ?? computePaperclipRunEventKey({
+        runId: data.heartbeatRunId ?? "unknown",
+        usageUpdatedAt: occurredAtIso,
+        payloadHash: computedPayloadHash,
+      });
+
       const event = await db
         .insert(costEvents)
         .values({
@@ -72,6 +114,34 @@ export function costService(db: Db, budgetHooks: BudgetServiceHooks = {}) {
           biller: data.biller ?? data.provider,
           billingType: data.billingType ?? "unknown",
           cachedInputTokens: data.cachedInputTokens ?? 0,
+          sourceStatus,
+          coverageState: resolvedCoverageState,
+          safeStatus: resolvedSafeStatus,
+          coverageWarning: data.coverageWarning ?? null,
+          // JAC-4533: fail-closed privacy/retention defaults.
+          // External adapters cannot escalate visibility_class to "public".
+          visibilityClass: data.visibilityClass ?? DEFAULT_VISIBILITY_CLASS,
+          retentionClass: data.retentionClass ?? DEFAULT_RETENTION_CLASS,
+          redactionState: data.redactionState ?? DEFAULT_REDACTION_STATE,
+          // JAC-4532: deterministic identity fields for idempotent re-ingest.
+          sourceEventId: computedSourceEventId,
+          sourceSystem: data.sourceSystem ?? "paperclip",
+          eventKind: data.eventKind ?? "cost_report",
+          attemptIndex: data.attemptIndex ?? DEFAULT_ATTEMPT_INDEX,
+          ingestId: computedIngestId,
+          payloadHash: data.payloadHash ?? computedPayloadHash,
+        })
+        // JAC-4532: Idempotent re-ingest — ON CONFLICT DO NOTHING on the
+        // (company_id, source_system, source_event_id, event_kind, attempt_index)
+        // composite prevents duplicate writes for the same logical cost event.
+        .onConflictDoNothing({
+          target: [
+            costEvents.companyId,
+            costEvents.sourceSystem,
+            costEvents.sourceEventId,
+            costEvents.eventKind,
+            costEvents.attemptIndex,
+          ],
         })
         .returning()
         .then((rows) => rows[0]);
@@ -98,6 +168,171 @@ export function costService(db: Db, budgetHooks: BudgetServiceHooks = {}) {
         .where(eq(companies.id, companyId));
 
       await budgets.evaluateCostEvent(event);
+
+      return event;
+    },
+
+    /**
+     * Emit a normalized run event into the run_events table.
+     *
+     * Unlike createEvent (which writes cost_events tied to spend), this writes
+     * a coverage-aware run event for EVERY heartbeat run — including zero-spend
+     * runs (process/http adapters) and pre-execution failures. Coverage fields
+     * are resolved via fail-closed semantics from the UsageReportedState and
+     * token values, so callers cannot override coverageState/safeStatus.
+     */
+    createRunEvent: async (
+      companyId: string,
+      data: {
+        agentId: string;
+        issueId?: string | null;
+        runId: string;
+        adapterType: string;
+        model?: string;
+        provider?: string;
+        status: "success" | "error" | "timeout" | "canceled";
+        occurredAt: Date;
+        coverage: RunCoverageResolution;
+        eventKind?: "adapter_execution" | "cost_report" | "usage_report" | "lifecycle";
+        sourceSystem?: "paperclip" | "adapter" | "provider" | "external";
+        sourceEventId?: string | null;
+        sourceEventVersion?: string | null;
+        attemptIndex?: number;
+        observedSequence?: number | null;
+        supersedesEventId?: string | null;
+        usageReportedState?: string;
+        payloadHash?: string | null;
+        /** Optional pricing-version reference for cost provenance (JAC-4530). */
+        pricingVersionRef?: string | null;
+        /** Privacy / retention fields (JAC-4533). Fail-closed defaults when not provided. */
+        visibilityClass?: "public" | "internal" | "private" | "redacted";
+        retentionClass?: "short_lived" | "standard" | "long_term" | "permanent";
+        redactionState?: "unredacted" | "partially_redacted" | "fully_redacted";
+        sourcePermissionRef?: string | null;
+        tenantRefHash?: string | null;
+        subjectRefHashes?: string[] | null;
+        sourceDeletedAt?: Date | null;
+        tombstoneRef?: string | null;
+        policyVersion?: string | null;
+      },
+    ) => {
+      const agent = await db
+        .select()
+        .from(agents)
+        .where(eq(agents.id, data.agentId))
+        .then((rows) => rows[0] ?? null);
+
+      if (!agent) throw notFound("Agent not found");
+      if (agent.companyId !== companyId) {
+        throw unprocessable("Agent does not belong to company");
+      }
+
+      const usageReportedState = (data.usageReportedState ??
+        data.coverage.usageReportedState) as RunCoverageResolution["usageReportedState"];
+
+      const costStatus: CostStatus =
+        data.coverage.costCents != null ? "reported" : "unpriced";
+
+      const coverageWarning = computeCoverageWarning(
+        usageReportedState,
+        data.coverage.coverageState,
+        data.coverage.sourceStatus,
+        costStatus,
+      );
+
+      // JAC-4532: Compute deterministic identity fields when caller does not supply them.
+      const sourceSystem = data.sourceSystem ?? "paperclip";
+      const eventKind = data.eventKind ?? "adapter_execution";
+      const usageTimestamp = data.occurredAt.toISOString();
+      const computedSourceEventId = data.sourceEventId ?? computeSourceEventId({
+        runId: data.runId,
+        usageUpdatedAt: usageTimestamp,
+      });
+      const computedPayloadHash = data.payloadHash ?? computePayloadHash({
+        runId: data.runId,
+        agentId: data.agentId,
+        status: data.status,
+        ...data.coverage,
+      });
+      const computedIngestId = computePaperclipRunEventKey({
+        runId: data.runId,
+        usageUpdatedAt: usageTimestamp,
+        payloadHash: computedPayloadHash,
+      });
+      const computedAttemptIndex = data.attemptIndex ?? DEFAULT_ATTEMPT_INDEX;
+
+      const event = await db
+        .insert(runEvents)
+        .values({
+          companyId,
+          agentId: data.agentId,
+          issueId: data.issueId ?? null,
+          runId: data.runId,
+          adapterType: data.adapterType,
+          model: data.model ?? "unknown",
+          provider: data.provider ?? "unknown",
+          status: data.status,
+          inputTokens: data.coverage.inputTokens ?? null,
+          outputTokens: data.coverage.outputTokens ?? null,
+          cachedInputTokens: data.coverage.cachedInputTokens ?? null,
+          reasoningTokens: data.coverage.reasoningTokens ?? null,
+          toolCallTokens: data.coverage.toolCallTokens ?? null,
+          costCents: data.coverage.costCents ?? null,
+          currency: "USD",
+          usageReportedState,
+          usageSourceField: data.coverage.usageReportedState === "not_reported" ? null : "usage",
+          coverageState: data.coverage.coverageState,
+          sourceStatus: data.coverage.sourceStatus,
+          safeStatus: data.coverage.safeStatus,
+          confidence: data.coverage.confidence,
+          // JAC-4530: persist cost-provenance metadata resolved via fail-closed
+          // semantics in resolveLedgerCoverageForRun / resolveRunCoverageForError.
+          priceBasis: data.coverage.priceBasis,
+          costConfidence: data.coverage.costConfidence,
+          pricingVersionRef: data.pricingVersionRef ?? null,
+          nativeTotalTokens: data.coverage.nativeTotalTokens ?? null,
+          recomputedTotalTokens: data.coverage.recomputedTotalTokens ?? null,
+          isSubscriptionIncluded: data.coverage.isSubscriptionIncluded,
+          visibilityClass: data.visibilityClass ?? DEFAULT_VISIBILITY_CLASS,
+          retentionClass: data.retentionClass ?? DEFAULT_RETENTION_CLASS,
+          redactionState: data.redactionState ?? DEFAULT_REDACTION_STATE,
+          sourcePermissionRef: data.sourcePermissionRef ?? null,
+          tenantRefHash: data.tenantRefHash ?? null,
+          subjectRefHashes: data.subjectRefHashes ?? null,
+          sourceDeletedAt: data.sourceDeletedAt ?? null,
+          tombstoneRef: data.tombstoneRef ?? null,
+          policyVersion: data.policyVersion ?? null,
+          sourceSystem,
+          sourceEventId: computedSourceEventId,
+          sourceEventVersion: data.sourceEventVersion ?? null,
+          eventKind,
+          attemptIndex: computedAttemptIndex,
+          observedSequence: data.observedSequence ?? null,
+          supersedesEventId: data.supersedesEventId ?? null,
+          ingestId: computedIngestId,
+          payloadHash: computedPayloadHash,
+          observedAt: data.occurredAt,
+          routingStatus: data.coverage.safeStatus === "available" ? "routable" : "unroutable",
+          quotaStatus: "unknown",
+          publicationStatus: "published",
+          workStateConfidence: data.coverage.confidence,
+          pauseEligibleScope: "none",
+          operatorDecisionRequired: false,
+        })
+        // JAC-4532: Idempotent re-ingest — ON CONFLICT DO NOTHING on the
+        // (company_id, source_system, source_event_id, event_kind, attempt_index)
+        // composite prevents duplicate writes for the same logical run event.
+        .onConflictDoNothing({
+          target: [
+            runEvents.companyId,
+            runEvents.sourceSystem,
+            runEvents.sourceEventId,
+            runEvents.eventKind,
+            runEvents.attemptIndex,
+          ],
+        })
+        .returning()
+        .then((rows) => rows[0]);
 
       return event;
     },
@@ -506,6 +741,133 @@ export function costService(db: Db, budgetHooks: BudgetServiceHooks = {}) {
         .where(and(...conditions, sql`${effectiveProjectId} is not null`))
         .groupBy(effectiveProjectId, projects.name)
         .orderBy(desc(costCentsExpr));
+    },
+
+    /** Aggregate coverage totals and warnings for a company over a time window.
+     * Fail-closed: runs with no adapter usage reporting are counted as uncovered. */
+    async coverageSummary(companyId: string, range: CostDateRange = {}): Promise<CoverageWarningsResponse> {
+      const conditions = [eq(costEvents.companyId, companyId)];
+      if (range.from) conditions.push(gte(costEvents.occurredAt, range.from));
+      if (range.to) conditions.push(lte(costEvents.occurredAt, range.to));
+
+      const rows = await db
+        .select({
+          coverageState: costEvents.coverageState,
+          runCount: sql<number>`count(*)::integer`,
+        })
+        .from(costEvents)
+        .where(and(...conditions))
+        .groupBy(costEvents.coverageState);
+
+      const totals: CoverageTotals = {
+        totalRuns: 0,
+        coveredRuns: 0,
+        uncoveredRuns: 0,
+        partialCoverageRuns: 0,
+        unknownRuns: 0,
+      };
+      const byAdapterMap = new Map<string, CoverageByAdapterRow>();
+      const warnings: CoverageWarning[] = [];
+
+      for (const row of rows) {
+        totals.totalRuns += Number(row.runCount);
+        if (row.coverageState === "covered") totals.coveredRuns += Number(row.runCount);
+        else if (row.coverageState === "uncovered") totals.uncoveredRuns += Number(row.runCount);
+        else if (row.coverageState === "partial") totals.partialCoverageRuns += Number(row.runCount);
+        else totals.unknownRuns += Number(row.runCount);
+      }
+
+      // Per-adapter coverage breakdown
+      const adapterRows = await db
+        .select({
+          adapterType: costEvents.biller,
+          coverageState: costEvents.coverageState,
+          runCount: sql<number>`count(*)::integer`,
+        })
+        .from(costEvents)
+        .where(and(...conditions))
+        .groupBy(costEvents.biller, costEvents.coverageState);
+
+      for (const row of adapterRows) {
+        const key = `${row.adapterType}:${row.coverageState}`;
+        byAdapterMap.set(key, {
+          adapterType: row.adapterType,
+          sourceStatus: row.coverageState === "covered" ? "available" : "unavailable",
+          coverageState: row.coverageState as CoverageState,
+          safeStatus: row.coverageState === "covered" ? "available" : "unavailable",
+          runCount: Number(row.runCount),
+        });
+      }
+
+      // Build coverage warnings from uncovered/partial runs with coverage_warning text
+      const warningRows = await db
+        .select({
+          coverageWarning: costEvents.coverageWarning,
+          runCount: sql<number>`count(*)::integer`,
+          safeStatus: costEvents.safeStatus,
+        })
+        .from(costEvents)
+        .where(
+          and(
+            ...conditions,
+            isNotNull(costEvents.coverageWarning),
+            sql`${costEvents.coverageState} IN ('uncovered', 'partial')`,
+          ),
+        )
+        .groupBy(costEvents.coverageWarning, costEvents.safeStatus);
+
+      for (const row of warningRows) {
+        warnings.push({
+          severity: row.coverageWarning ? "warning" : "info",
+          adapterType: "unknown",
+          reason: row.coverageWarning ?? "no usage reported",
+          runCount: Number(row.runCount),
+          safeStatus: row.safeStatus as SafeStatus,
+        });
+      }
+
+      return {
+        companyId,
+        generatedAt: new Date(),
+        totals,
+        byAdapter: Array.from(byAdapterMap.values()),
+        warnings,
+      };
+    },
+
+    /** Coverage augmentation for cost-by-agent results when include_coverage=true. */
+    async coverageByAgent(companyId: string, range: CostDateRange = {}): Promise<CoverageByAgent[]> {
+      const conditions = [eq(costEvents.companyId, companyId)];
+      if (range.from) conditions.push(gte(costEvents.occurredAt, range.from));
+      if (range.to) conditions.push(lte(costEvents.occurredAt, range.to));
+
+      const rows = await db
+        .select({
+          agentId: costEvents.agentId,
+          coverageState: costEvents.coverageState,
+          runCount: sql<number>`count(*)::integer`,
+        })
+        .from(costEvents)
+        .where(and(...conditions))
+        .groupBy(costEvents.agentId, costEvents.coverageState);
+
+      const result = new Map<string, CoverageByAgent>();
+      for (const row of rows) {
+        const existing = result.get(row.agentId);
+        if (existing) {
+          if (row.coverageState === "covered") existing.coveredRuns += Number(row.runCount);
+          else if (row.coverageState === "uncovered") existing.uncoveredRuns += Number(row.runCount);
+          else if (row.coverageState === "partial") existing.partialRuns += Number(row.runCount);
+        } else {
+          result.set(row.agentId, {
+            coveredRuns: row.coverageState === "covered" ? Number(row.runCount) : 0,
+            uncoveredRuns: row.coverageState === "uncovered" ? Number(row.runCount) : 0,
+            partialRuns: row.coverageState === "partial" ? Number(row.runCount) : 0,
+            safeStatus: row.coverageState === "covered" ? "available" : "unavailable",
+          });
+        }
+      }
+      return Array.from(result.values());
     },
   };
 }

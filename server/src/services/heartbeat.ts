@@ -7,13 +7,16 @@ import { and, asc, desc, eq, getTableColumns, gt, gte, inArray, isNull, lt, lte,
 import type { Db } from "@paperclipai/db";
 import {
   AGENT_DEFAULT_MAX_CONCURRENT_RUNS,
+  MAX_AGENT_ERROR_REASON_CHARS,
   ISSUE_CONTINUATION_SUMMARY_DOCUMENT_KEY,
   MODEL_PROFILE_KEYS,
   PROVIDER_QUOTA_MONITOR_SERVICE_NAME,
   envBindingSchema,
   isEnvironmentDriverSupportedForAdapter,
   type BillingType,
+  type ConfidenceLevel,
   type CostStatus,
+  type CoverageState,
   type EnvironmentLeaseStatus,
   type ExecutionWorkspace,
   type ExecutionWorkspaceConfig,
@@ -25,7 +28,15 @@ import {
   type RequestConfirmationResult,
   type RoutineRevisionSnapshotV1,
   type RunLivenessState,
+  type SafeStatus,
+  type SourceStatus,
   type SourceTrustMetadata,
+  resolveLedgerCoverageForRun,
+  resolveRunCoverageForError,
+  type RunCoverageResolution,
+  DEFAULT_VISIBILITY_CLASS,
+  DEFAULT_RETENTION_CLASS,
+  DEFAULT_REDACTION_STATE,
 } from "@paperclipai/shared";
 import {
   agents,
@@ -61,12 +72,14 @@ import {
   routineRevisions,
   routineRuns,
   routines,
+  runEvents,
   toolMcpGateways,
   toolMcpGatewayTokens,
   toolConnections,
   toolProfiles,
   workspaceOperations,
 } from "@paperclipai/db";
+
 import { conflict, HttpError, notFound } from "../errors.js";
 import { getStartupTraceContext } from "../instrumentation.js";
 import { logger } from "../middleware/logger.js";
@@ -94,7 +107,7 @@ import type {
   UsageSummary,
 } from "../adapters/index.js";
 import { createLocalAgentJwt } from "../agent-auth-jwt.js";
-import { parseObject, asBoolean, asNumber, appendWithByteCap, MAX_EXCERPT_BYTES } from "../adapters/utils.js";
+import { parseObject, asBoolean, asNumber, asString, appendWithByteCap, MAX_EXCERPT_BYTES } from "../adapters/utils.js";
 import { costService } from "./costs.js";
 import { trackAgentFirstHeartbeat } from "@paperclipai/shared/telemetry";
 import { getTelemetryClient } from "../telemetry.js";
@@ -3697,6 +3710,73 @@ export function resolveLedgerCostStatus(input: {
 }): CostStatus {
   const hasTokenUsage = input.inputTokens > 0 || input.cachedInputTokens > 0 || input.outputTokens > 0;
   return input.costUsd == null && hasTokenUsage ? "unpriced" : "reported";
+}
+
+/**
+ * Resolve coverage-aware fields for a cost event from adapter execution results.
+ *
+ * Fail-closed semantics:
+ * - When the adapter did not expose usage reporting at all (no `result.usage` object),
+ *   source_status is "unavailable" and coverage_state is "uncovered".
+ * - When the adapter reported usage but token counts are all zero, coverage is "partial"
+ *   (the source reported, but no tokens were captured).
+ * - When the adapter reported usage with non-zero token counts, coverage is "covered".
+ * - safeStatus is derived from coverageState: only "covered" maps to "available";
+ *   everything else (partial, uncovered, unknown) maps to "unavailable".
+ * - confidence is "high" when cost and tokens are both present, "medium" when only
+ *   tokens are present, "low" when coverage is partial or uncached.
+ */
+type CoverageResolution = {
+  coverageState: CoverageState;
+  sourceStatus: SourceStatus;
+  safeStatus: SafeStatus;
+  confidence: ConfidenceLevel;
+};
+
+export function resolveLedgerCoverage(
+  result: Pick<AdapterExecutionResult, "usage" | "costUsd">,
+  usage: { inputTokens: number; cachedInputTokens: number; outputTokens: number } | null,
+): CoverageResolution {
+  const hasUsageObject = result.usage != null;
+  const hasTokenUsage =
+    usage != null &&
+    (usage.inputTokens > 0 || usage.cachedInputTokens > 0 || usage.outputTokens > 0);
+  const hasCost = result.costUsd != null && Number.isFinite(result.costUsd) && result.costUsd > 0;
+
+  if (!hasUsageObject) {
+    return {
+      coverageState: "uncovered",
+      sourceStatus: "unavailable",
+      safeStatus: "unavailable",
+      confidence: "low",
+    };
+  }
+
+  if (hasTokenUsage && hasCost) {
+    return {
+      coverageState: "covered",
+      sourceStatus: "available",
+      safeStatus: "available",
+      confidence: "high",
+    };
+  }
+
+  if (hasTokenUsage) {
+    return {
+      coverageState: "covered",
+      sourceStatus: "available",
+      safeStatus: "available",
+      confidence: "medium",
+    };
+  }
+
+  // Adapter reported a usage object but no tokens were captured.
+  return {
+    coverageState: "partial",
+    sourceStatus: "available",
+    safeStatus: "unavailable",
+    confidence: "low",
+  };
 }
 
 export function resolveCacheAdjustedCostUsd(input: {
@@ -12717,7 +12797,9 @@ export function heartbeatService(db: Db, options: HeartbeatServiceOptions = {}) 
     if (!reason) return null;
     const trimmed = reason.trim();
     if (!trimmed) return null;
-    return trimmed.length > 500 ? `${trimmed.slice(0, 499)}…` : trimmed;
+    return trimmed.length > MAX_AGENT_ERROR_REASON_CHARS
+      ? `${trimmed.slice(0, MAX_AGENT_ERROR_REASON_CHARS - 1)}…`
+      : trimmed;
   }
 
   async function finalizeAgentStatus(
@@ -13285,12 +13367,14 @@ export function heartbeatService(db: Db, options: HeartbeatServiceOptions = {}) 
     const billedCostUsd = resolveCacheAdjustedCostUsd(result);
     const additionalCostCents = normalizeBilledCostCents(billedCostUsd, billingType);
     const hasTokenUsage = inputTokens > 0 || outputTokens > 0 || cachedInputTokens > 0;
+    const hasUsageObject = result.usage != null;
     const costStatus = resolveLedgerCostStatus({
       costUsd: billedCostUsd,
       inputTokens,
       cachedInputTokens,
       outputTokens,
     });
+    const coverage = resolveLedgerCoverage(result, usage);
     const provider = result.provider ?? "unknown";
     const biller = resolveLedgerBiller(result);
     const ledgerScope = await resolveLedgerScopeForRun(db, agent.companyId, run);
@@ -13311,26 +13395,59 @@ export function heartbeatService(db: Db, options: HeartbeatServiceOptions = {}) 
       })
       .where(eq(agentRuntimeState.agentId, agent.id));
 
-    if (additionalCostCents > 0 || hasTokenUsage) {
-      const costs = costService(db, budgetHooks);
-      await costs.createEvent(agent.companyId, {
-        heartbeatRunId: run.id,
-        agentId: agent.id,
-        issueId: ledgerScope.issueId,
-        projectId: ledgerScope.projectId,
-        billingCode: ledgerScope.billingCode,
-        provider,
-        biller,
-        billingType,
-        costStatus,
-        model: result.model ?? "unknown",
-        inputTokens,
-        cachedInputTokens,
-        outputTokens,
-        costCents: additionalCostCents,
-        occurredAt: new Date(),
-      });
-    }
+    // Emit a cost event for every run regardless of whether it produced spend.
+    // Fail-closed coverage fields (coverage_state, source_status, safe_status)
+    // are always resolved so zero-spend runs are still tracked for coverage auditing.
+    const costs = costService(db, budgetHooks);
+    const coverageWarning =
+      coverage.coverageState === "uncovered"
+        ? "adapter did not expose usage reporting; coverage fail-closed to uncovered"
+        : coverage.coverageState === "partial"
+          ? "adapter reported usage but no tokens were captured"
+          : null;
+    await costs.createEvent(agent.companyId, {
+      heartbeatRunId: run.id,
+      agentId: agent.id,
+      issueId: ledgerScope.issueId,
+      projectId: ledgerScope.projectId,
+      billingCode: ledgerScope.billingCode,
+      provider,
+      biller,
+      billingType,
+      costStatus,
+      model: result.model ?? "unknown",
+      inputTokens,
+      cachedInputTokens,
+      outputTokens,
+      costCents: additionalCostCents,
+      occurredAt: new Date(),
+      ...coverage,
+      coverageWarning,
+    });
+
+    // Emit a normalized run event for every run (JAC-4529). Unlike cost_events,
+    // run_events are always written — including zero-spend runs (process/http
+    // adapters) — so coverage auditing is fail-closed for all runs.
+    const runCoverage = resolveLedgerCoverageForRun(result, usage);
+    await costs.createRunEvent(agent.companyId, {
+      agentId: agent.id,
+      issueId: ledgerScope.issueId ?? null,
+      runId: run.id,
+      adapterType: agent.adapterType,
+      model: result.model ?? "unknown",
+      provider,
+      status: run.status === "succeeded" ? "success" : "error",
+      occurredAt: new Date(),
+      coverage: runCoverage,
+      // JAC-4533: pass privacy/retention fields from agent context.
+      // sourcePermissionRef is derived from the agent's Paperclip adapter type
+      // and company scope — this is an opaque pointer, never a credential.
+      sourcePermissionRef: `agent:${agent.id}:scope:usage.report`,
+      // Fail-closed defaults for the remaining privacy fields (V1 single-tenant).
+      visibilityClass: DEFAULT_VISIBILITY_CLASS,
+      retentionClass: DEFAULT_RETENTION_CLASS,
+      redactionState: DEFAULT_REDACTION_STATE,
+    });
   }
 
   async function startNextQueuedRunForAgent(agentId: string) {
@@ -14959,9 +15076,16 @@ export function heartbeatService(db: Db, options: HeartbeatServiceOptions = {}) 
 
       // Pause Durability: flip to "running" ONLY if the agent is still invokable.
       // Atomic conditional UPDATE is the sole gate (no read-then-write); 0 rows => abort.
+      // Clear any stale errorReason (e.g. a prior "Process lost" entry) so that an
+      // agent recovering from `error` into actively running does not retain a
+      // false-positive failure signal that blocks downstream fleet health checks.
       const runningAgent = await db
         .update(agents)
-        .set({ status: "running", updatedAt: new Date() })
+        .set({
+          status: "running",
+          errorReason: null,
+          updatedAt: new Date(),
+        })
         .where(and(eq(agents.id, agent.id), notInArray(agents.status, [...DIRECT_NON_INVOKABLE_STATUSES])))
         .returning()
         .then((rows) => rows[0] ?? null);
@@ -15697,6 +15821,7 @@ export function heartbeatService(db: Db, options: HeartbeatServiceOptions = {}) 
                 outputTokens: normalizedUsage?.outputTokens ?? 0,
               }),
               billingType: normalizeLedgerBillingType(adapterResult.billingType),
+              ...resolveLedgerCoverage(adapterResult, normalizedUsage),
             } as Record<string, unknown>)
           : null;
 
@@ -15903,7 +16028,10 @@ export function heartbeatService(db: Db, options: HeartbeatServiceOptions = {}) 
       await finalizeAgentStatus(
         agent.id,
         outcome,
-        outcome === "succeeded" ? null : (adapterResult.errorMessage ?? null),
+        outcome === "succeeded"
+          ? null
+          : (adapterResult.errorMessage ??
+            `Process lost — no stderr or run output captured (exit code ${run.exitCode ?? "unknown"}, timed out: ${!!adapterResult.timedOut}). This typically indicates a bootstrap failure before Paperclip could capture adapter output.`),
         {
           keepIdleOnFailure:
             outcome === "failed" &&
@@ -16110,8 +16238,36 @@ export function heartbeatService(db: Db, options: HeartbeatServiceOptions = {}) 
               level: "error",
               message,
             }).catch(() => undefined);
+
+            // Emit a normalized run_event with fail-closed coverage for the failed
+            // run (JAC-4529). These runs never reached updateRuntimeState (which
+            // emits run events for successful/executed runs), so we record them
+            // here to ensure coverage auditing covers pre-execution failures.
+            const setupFailureCosts = costService(db, budgetHooks);
+            const setupFailureIssueId = readNonEmptyString(parseObject(failedRun.contextSnapshot).issueId);
+            const setupFailureRunCoverage = resolveRunCoverageForError();
+            await setupFailureCosts.createRunEvent(run.companyId, {
+              agentId: run.agentId,
+              issueId: setupFailureIssueId ?? null,
+              runId: failedRun.id,
+              adapterType: setupFailureAgent?.adapterType ?? asString(parseObject(failedRun.resultJson).adapterType, "unknown"),
+              model: asString(parseObject(failedRun.resultJson).model, "unknown"),
+              provider: asString(parseObject(failedRun.resultJson).provider, "unknown"),
+              status: failedRun.errorCode === "timeout" ? "timeout" : "error",
+              occurredAt: new Date(),
+              coverage: setupFailureRunCoverage,
+              eventKind: "lifecycle",
+              // JAC-4533: fail-closed privacy/retention defaults for pre-execution
+              // failure events. sourcePermissionRef derived from agent context.
+              sourcePermissionRef: setupFailureAgent
+                ? `agent:${setupFailureAgent.id}:scope:usage.report`
+                : null,
+              visibilityClass: DEFAULT_VISIBILITY_CLASS,
+              retentionClass: DEFAULT_RETENTION_CLASS,
+              redactionState: DEFAULT_REDACTION_STATE,
+            }).catch(() => undefined);
+
             const livenessRun = await classifyAndPersistRunLiveness(failedRun).catch(() => failedRun);
-            const setupFailureIssueId = readNonEmptyString(parseObject(livenessRun.contextSnapshot).issueId);
             if (setupFailureIssueId) {
               await completeSkillTestRunForHeartbeatOutcome({
                 run: livenessRun,

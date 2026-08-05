@@ -51,6 +51,9 @@ export interface IssueWorkProduct {
   metadata: Record<string, unknown> | null;
   sourceTrust?: import("../trust-policy.js").SourceTrustMetadata | null;
   createdByRunId: string | null;
+  // Publication contract (JAC-4538): set when created from an approved
+  // publish_full_artifact approval.
+  publicationApprovalId: string | null;
   createdAt: Date;
   updatedAt: Date;
 }

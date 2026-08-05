@@ -38,6 +38,36 @@ describe("skill policy source locators", () => {
       sourceLocator: "https://docs.example/skill#installation",
     })).toEqual({ sourceLocator: "https://docs.example/skill#installation" });
   });
+
+  it("rejects URLs with duplicate credential query parameters", () => {
+    // URLSearchParams.keys() can return duplicate keys; the credential check
+    // must iterate all of them, not just deduplicated keys.
+    const locator = "https://example.com/?token=a&token=b";
+    expect(() => skillPolicyDocumentSchema.parse({
+      schemaVersion: 1,
+      defaultEffect: "allow",
+      rules: [{
+        id: "deny-secret-source",
+        priority: 1,
+        effect: "deny",
+        subject: { type: "all_agents" },
+        actions: ["skills.import"],
+        resources: { sourceLocators: [locator] },
+      }],
+    })).toThrow(/credentials or secret query or fragment parameters/i);
+  });
+
+  it("rejects credentials when a non-secret param appears alongside", () => {
+    const locator = "https://example.com/skill?ref=main&api_key=sk-1234";
+    expect(() => skillPolicyEvaluationResourceSchema.parse({ sourceLocator: locator }))
+      .toThrow(/credentials or secret query or fragment parameters/i);
+  });
+
+  it("allows multiple distinct non-credential query parameters", () => {
+    const locator = "https://github.com/owner/repo/tree/main/skills?ref=main&path=subdir";
+    expect(skillPolicyEvaluationResourceSchema.parse({ sourceLocator: locator }))
+      .toEqual({ sourceLocator: locator });
+  });
 });
 
 describe("normalizeSkillPolicySourceLocator", () => {

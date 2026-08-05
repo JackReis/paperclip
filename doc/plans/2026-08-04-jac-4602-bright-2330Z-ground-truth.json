@@ -1,0 +1,45 @@
+{
+  "issue": "JAC-4602",
+  "title": "[JAC-4575-1] Diagnostic: Enumerate all 20 errored hermes_local agents with full error details",
+  "verifier": "Bright (8b6ea7f8, hermes_local)",
+  "snapshot_time": "2026-08-04T23:30Z",
+  "method": "Fresh independent authenticated GET /api/companies/87c32b8e-f131-4df8-ad8e-963d01b458e7/agents, Paperclip v2026.722.0, bearer=$PAPERCLIP_API_KEY",
+  "summary": {
+    "total_agents": 68,
+    "hermes_local_agents": 60,
+    "status_error_total": 6,
+    "hermes_local_status_error": 6,
+    "non_empty_errorReason": 1,
+    "empty_null_errorReason": 5,
+    "truncated_34char_tracebacks": 0,
+    "operator_live_error": "sqlite3 OperationalError: database is locked (211 chars, full traceback preserved — not truncated)",
+    "empty_adapterConfig": 68,
+    "fix_deployed_in_running_server": true,
+    "note": "Discrepancy: final wake comment claimed 0 errored agents with non-empty errorReason at 23:24Z. Fresh query finds 6 hermes_local errors, 1 with a new non-truncated traceback. Enumeration objective itself is satisfied (agents enumerated with full errorReason/provider/model/adapterConfig/lane). However the 'near-zero, stable' claim in the wake comment does not match this snapshot."
+  },
+  "fix_deployment_verification": {
+    "local_repo": {
+      "path": "packages/adapters/hermes/src/shared/constants.ts",
+      "DEFAULT_MODEL": "ollama-launch/qwen3-coder:30b"
+    },
+    "npm_subpackage_runtime": {
+      "path": "/Users/hermes/.hermes/node/lib/node_modules/paperclipai/node_modules/@paperclipai/hermes-paperclip-adapter/dist/shared/constants.js",
+      "DEFAULT_MODEL": "ollama-launch/qwen3-coder:30b",
+      "mtime": "2026-08-04T15:32Z"
+    },
+    "server_process": "PID 24359, started 2026-08-04T17:43Z (post-deployment; running server uses fixed sub-package)"
+  },
+  "errored_agents": [
+    {"name":"Karax","adapterType":"hermes_local","status":"error","errorReason":null,"errorReasonLen":0,"adapterConfigKeys":0,"provider":null,"model":null,"lane":"none"},
+    {"name":"Operator","adapterType":"hermes_local","status":"error","errorReason":"Traceback (most recent call last):\n  File \"/Users/hermes/.hermes/hermes-agent/hermes_state.py\", line 2512, in _execute_write\n    self._conn.execute(\"BEGIN IMMEDIATE\")\nsqlite3.OperationalError: database is locked","errorReasonLen":211,"adapterConfigKeys":0,"provider":null,"model":null,"lane":"none"},
+    {"name":"Hermes Coder","adapterType":"hermes_local","status":"error","errorReason":null,"errorReasonLen":0,"adapterConfigKeys":0,"provider":null,"model":null,"lane":"none"},
+    {"name":"Forge","adapterType":"hermes_local","status":"error","errorReason":null,"errorReasonLen":0,"adapterConfigKeys":0,"provider":null,"model":null,"lane":"none"},
+    {"name":"Goblin","adapterType":"hermes_local","status":"error","errorReason":null,"errorReasonLen":0,"adapterConfigKeys":0,"provider":null,"model":null,"lane":"none"},
+    {"name":"Rohana","adapterType":"hermes_local","status":"error","errorReason":null,"errorReasonLen":0,"adapterConfigKeys":0,"provider":null,"model":null,"lane":"none"}
+  ],
+  "truncation_analysis": {
+    "char_34_truncation_claim": "Per JAC-4575 audit, 19 of 20 errored agents showed a 34-char truncated 'Traceback (most recent call last):' prefix at 02:56Z. In prior Bright dumps this class had shrunk to 0 by 23:06Z. The current snapshot instead shows a NEW full 211-char traceback (sqlite 'database is locked') on Operator, plus 5 null errorReason errors. The 34-char truncation behavior is no longer reproducing in live state, but a different error class (sqlite lock) is now appearing.",
+    "stale_errorReason_note": "5 of 6 error agents have null errorReason — consistent with stale-errorReason / transient-heartbeat-blip diagnosis rather than active crashes."
+  },
+  "gate_verdict": "PARTIAL — enumeration objective COMPLETE, but the wake comment's '0 non-empty errorReason / stable' claim is refuted by fresh ground truth. Fix deployment (DEFAULT_MODEL) confirmed present in the running server."
+}

@@ -6,6 +6,7 @@ import {
   ROUTINE_CATCH_UP_POLICIES,
   ROUTINE_CONCURRENCY_POLICIES,
   ROUTINE_STATUSES,
+  ROUTINE_STATUS_TRANSITIONS,
   ROUTINE_TRIGGER_KINDS,
   ROUTINE_TRIGGER_SIGNING_MODES,
   ROUTINE_VARIABLE_TYPES,
@@ -61,6 +62,15 @@ export const routineVariableSchema = z.object({
   }
 });
 
+export const routineSyncMetadataSchema = z.object({
+  beadId: z.string().nullable().optional(),
+  linearLabel: z.string().nullable().optional(),
+  ringerManifestRef: z.string().nullable().optional(),
+  externalRefs: z.record(z.string(), z.string()).optional(),
+}).nullable().optional();
+
+export type RoutineSyncMetadataInput = z.infer<typeof routineSyncMetadataSchema>;
+
 export const createRoutineSchema = z.object({
   projectId: z.string().uuid().optional().nullable(),
   folderId: z.string().uuid().optional().nullable(),
@@ -77,6 +87,7 @@ export const createRoutineSchema = z.object({
   activityGateScope: z.enum(ROUTINE_ACTIVITY_GATE_SCOPES).optional(),
   variables: z.array(routineVariableSchema).optional().default([]),
   env: envConfigSchema.optional().nullable(),
+  syncMetadata: routineSyncMetadataSchema,
 });
 
 export type CreateRoutine = z.infer<typeof createRoutineSchema>;
@@ -181,3 +192,15 @@ export type RunRoutine = z.infer<typeof runRoutineSchema>;
 
 export const rotateRoutineTriggerSecretSchema = z.object({});
 export type RotateRoutineTriggerSecret = z.infer<typeof rotateRoutineTriggerSecretSchema>;
+
+/**
+ * Validate that a routine status transition is allowed by the transition map.
+ * Returns true if the transition is valid, false otherwise.
+ * Terminal state (archived) allows no transitions.
+ */
+export function isValidRoutineStatusTransition(from: string, to: string): boolean {
+  if (from === to) return true;
+  const allowed = ROUTINE_STATUS_TRANSITIONS[from as keyof typeof ROUTINE_STATUS_TRANSITIONS];
+  if (!allowed) return false;
+  return allowed.includes(to as never);
+}

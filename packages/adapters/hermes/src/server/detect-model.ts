@@ -98,17 +98,30 @@ export function parseModelFromConfig(content: string): DetectedModel | null {
 /**
  * Infer a provider from the model name using prefix-based hints.
  *
- * For example:
- *   "gpt-5.4"       → "copilot"
- *   "claude-sonnet-4" → "anthropic"
- *   "glm-5-turbo"   → "zai"
+ * Priority:
+ *   1. Explicit provider/model prefix (e.g. "ollama-launch/qwen3-coder:30b" → "ollama-launch")
+ *      — if the prefix before "/" is a known valid provider, use it directly.
+ *   2. Bare model name prefix hints (e.g. "gpt-5.4" → "copilot", "claude-…" → "anthropic")
  *
  * Returns undefined if no hint matches (caller should fall back to "auto").
  */
 export function inferProviderFromModel(model: string): string | undefined {
   const lower = model.toLowerCase();
 
-  // Strip provider/ prefix if present (e.g. "anthropic/claude-sonnet-4")
+  // 1. Check for explicit "provider/model" prefix (e.g. "ollama-launch/qwen3-coder:30b")
+  if (lower.includes("/")) {
+    const [providerPrefix, ...rest] = lower.split("/");
+    if (
+      (VALID_PROVIDERS as readonly string[]).includes(providerPrefix) &&
+      rest.length > 0
+    ) {
+      return providerPrefix;
+    }
+  }
+
+  // 2. Strip provider/ prefix and fall back to prefix hints (e.g. "anthropic/claude-sonnet-4")
+  //    Only reached if the prefix wasn't a recognized provider — we still want
+  //    bare-name inference for models like "qwen3-coder:30b".
   const bareName = lower.includes("/") ? lower.split("/").pop()! : lower;
 
   for (const [prefix, hint] of MODEL_PREFIX_PROVIDER_HINTS) {

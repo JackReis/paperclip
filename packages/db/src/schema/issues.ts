@@ -17,6 +17,7 @@ import { companies } from "./companies.js";
 import { heartbeatRuns } from "./heartbeat_runs.js";
 import { projectWorkspaces } from "./project_workspaces.js";
 import { executionWorkspaces } from "./execution_workspaces.js";
+import { agentSessions } from "./agent_sessions.js";
 import type { SourceTrustMetadata } from "@paperclipai/shared";
 import type { IssueUnblockDescriptor } from "@paperclipai/shared";
 
@@ -39,6 +40,7 @@ export const issues = pgTable(
     assigneeUserId: text("assignee_user_id"),
     checkoutRunId: uuid("checkout_run_id").references(() => heartbeatRuns.id, { onDelete: "set null" }),
     executionRunId: uuid("execution_run_id").references(() => heartbeatRuns.id, { onDelete: "set null" }),
+    sessionId: uuid("session_id").references(() => agentSessions.id, { onDelete: "set null" }),
     executionAgentNameKey: text("execution_agent_name_key"),
     executionLockedAt: timestamp("execution_locked_at", { withTimezone: true }),
     createdByAgentId: uuid("created_by_agent_id").references(() => agents.id),
@@ -65,6 +67,8 @@ export const issues = pgTable(
       .references((): AnyPgColumn => executionWorkspaces.id, { onDelete: "set null" }),
     executionWorkspacePreference: text("execution_workspace_preference"),
     executionWorkspaceSettings: jsonb("execution_workspace_settings").$type<Record<string, unknown>>(),
+    productivityReviewOverride: jsonb("productivity_review_override")
+      .$type<{ triggerSnoozes?: Array<{ trigger: string; snoozedUntil: string; reason?: string }> } | null>(),
     sourceTrust: jsonb("source_trust").$type<SourceTrustMetadata | null>(),
     unblockDescriptor: jsonb("unblock_descriptor").$type<IssueUnblockDescriptor | null>(),
     blockedTransitionAt: timestamp("blocked_transition_at", { withTimezone: true }),

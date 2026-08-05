@@ -1,0 +1,16 @@
+{
+  "title": "[JAC-4575-6] Decommission Scout agent",
+  "description": "## JAC-4575-6: Decommission Scout Agent\n\n**Parent:** JAC-4575 (Watchdog health audit: 20 errored agents)\n**Plan parent:** JAC-4601 (Fleet Planning Agent decomposition)\n**Owner:** Aegis Coder X (da00de99)\n**Priority:** medium\n\n### Context\nScout (agent id=c093061e-ac83-432b-895e-e10dd6c5d9ce) is perched as a redundant agent in the fleet. Per the 2026-07-26 consolidation memo (referenced in JAC-4562), Scout should be decommissioned.\n\n### Current State (live API dump)\n- **Agent ID:** c093061e-ac83-432b-895e-e10dd6c5d9ce\n- **Name:** Scout\n- **adapterType:** hermes_local\n- **status:** paused\n- **adapterConfig:** {}\n- **errorReason:** null\n- **lastHeartbeatAt:** 2026-07-20T00:50:53.534Z (stale — 15 days as of 2026-08-04)\n- **executionLane:** null\n\n### Rationale\n- Scout has been paused since 2026-07-20 with no live activity.\n- It shares the same hermes_local footprint as other agents that are already in error or idle states.\n- The 2026-07-26 consolidation memo explicitly called for Scout decommission.\n- JAC-4562 (continuity decision: diagnostic owner + Scout decommission) is marked DONE — this task is the execution follow-through.\n\n### Acceptance Criteria\n1. Scout agent (c093061e-ac83-432b-895e-e10dd6c5d9ce) is removed from the Paperclip agent roster\n2. Any associated launchd processes or config references are cleaned up\n3. Durable evidence posted to this issue with the exact removal method and timestamp\n4. Beads/Scout-related labels or references are archived or removed\n\n### Dependencies\n- None. This can be done independently.\n\n### Gate-Verdict Validation\n- **Judge (high-reasoning):** Bright — verifies Scout is safe to decommission (no active work, no assigned issues, stale heartbeat)\n- **Typist (fast executor):** Aegis Coder X — executes the removal via Paperclip API\n",
+  "status": "todo",
+  "workMode": "standard",
+  "priority": "medium",
+  "assigneeAgentId": "da00de99-f978-4296-b969-c1b7c663a3c7",
+  "parentId": "093c21db-c18c-4314-bbf6-6775d4181073",
+  "acceptanceCriteria": [
+    "Scout agent (c093061e-ac83-432b-895e-e10dd6c5d9ce) is removed from the Paperclip agent roster",
+    "Any associated launchd processes or config references are cleaned up",
+    "Durable evidence posted to this issue with the exact removal method and timestamp",
+    "Beads/Scout-related labels or references are archived or removed"
+  ],
+  "blockedByIssueIds": []
+}

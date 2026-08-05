@@ -2547,3 +2547,102 @@ describe("appendWithByteCap", () => {
     expect(Buffer.byteLength(output, "utf8")).toBeLessThanOrEqual(7);
   });
 });
+
+describe("stderr head preservation in runChildProcess", () => {
+  it("preserves init traceback at the head of stderr even when total exceeds cap", async () => {
+    // Spawn a process that writes a traceback to stderr first, then floods stderr
+    // with noise that would exceed MAX_CAPTURE_BYTES if we only kept the tail.
+    // Use a small amount of noise to keep the test fast — the cap is 4MB but
+    // we can verify the head-preservation behavior with a controlled test.
+    const script = [
+      "import sys",
+      "sys.stderr.write('Traceback (most recent call last):\\n  File \"init\", line 42, in <module>\\n    raise RuntimeError(\"adapter init failed\")\\nRuntimeError: adapter init failed\\n')",
+      "sys.stderr.write('NOISE\\n' * 100000)",
+      "sys.stdout.write('response text\\nsession_id: test-session-123\\n')",
+    ].join("\n");
+
+    const result = await runChildProcess("test-run-stderr-head", "python3", ["-c", script], {
+      cwd: os.tmpdir(),
+      env: Object.fromEntries(Object.entries(process.env).filter(([, v]) => v !== undefined)) as Record<string, string>,
+      timeoutSec: 30,
+      graceSec: 5,
+      onLog: async () => {},
+    });
+
+    // The traceback at the head must be preserved
+    expect(result.stderr).toContain("Traceback (most recent call last)");
+    expect(result.stderr).toContain("RuntimeError: adapter init failed");
+    // The tail noise should also be present
+    expect(result.stderr).toContain("NOISE");
+    expect(result.stdout).toContain("session_id: test-session-123");
+    expect(result.exitCode).toBe(0);
+  });
+
+  it("does not duplicate stderr content when total is under the capture cap", async () => {
+    // When stderr is small (under MAX_CAPTURE_BYTES / 4MB), the head and tail
+    // are the same content. The merge must NOT duplicate it with a separator.
+    const script = [
+      "import sys",
+      'sys.stderr.write("Traceback (most recent call last):\\n")',
+      'sys.stderr.write("  File \\"init\\", line 42, in <module>\\n")',
+      'sys.stderr.write("    raise RuntimeError(\\"adapter init failed\\")\\n")',
+      'sys.stderr.write("RuntimeError: adapter init failed\\n")',
+      'sys.stdout.write("response text\\nsession_id: small-test-1\\n")',
+    ].join("\n");
+
+    const result = await runChildProcess("test-run-stderr-small", "python3", [
+      "-c",
+      script,
+    ], {
+      cwd: os.tmpdir(),
+      env: Object.fromEntries(
+        Object.entries(process.env).filter(([, v]) => v !== undefined),
+      ) as Record<string, string>,
+      timeoutSec: 10,
+      graceSec: 5,
+      onLog: async () => {},
+    });
+
+    // No separator should appear — stderr was under cap, no truncation occurred
+    expect(result.stderr).not.toContain("[--- stderr tail");
+    // The traceback should appear exactly once, not duplicated
+    const count = (result.stderr.match(/Traceback/g) || []).length;
+    expect(count).toBe(1);
+    expect(result.stderr).toContain("RuntimeError: adapter init failed");
+    expect(result.exitCode).toBe(0);
+  });
+
+  it("preserves head traceback AND tail content when stderr exceeds capture cap", async () => {
+    // Generate >4MB of stderr so appendWithCap truncates the tail, verifying
+    // that the head (traceback) is preserved via the merge.
+    const script = [
+      "import sys",
+      'sys.stderr.write("Traceback (most recent call last):\\n  File \\"init\\", line 42, in <module>\\n    raise RuntimeError(\\"adapter init failed\\")\\nRuntimeError: adapter init failed\\n")',
+      // Write ~5MB of noise so total exceeds MAX_CAPTURE_BYTES (4MB)
+      "sys.stderr.write('X' * 5_000_000 + '\\n')",
+      'sys.stdout.write("response text\\nsession_id: large-test-1\\n")',
+    ].join("\n");
+
+    const result = await runChildProcess("test-run-stderr-large", "python3", [
+      "-c",
+      script,
+    ], {
+      cwd: os.tmpdir(),
+      env: Object.fromEntries(
+        Object.entries(process.env).filter(([, v]) => v !== undefined),
+      ) as Record<string, string>,
+      timeoutSec: 30,
+      graceSec: 5,
+      onLog: async () => {},
+    });
+
+    // The traceback at the head must be preserved after truncation
+    expect(result.stderr).toContain("Traceback (most recent call last):");
+    expect(result.stderr).toContain("RuntimeError: adapter init failed");
+    // The separator must be present (truncation happened)
+    expect(result.stderr).toContain("[--- stderr tail (truncated head preserved) ---]");
+    // The tail (X's) should also be present
+    expect(result.stderr).toContain("X");
+    expect(result.exitCode).toBe(0);
+  });
+});
