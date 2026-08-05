@@ -11,7 +11,7 @@ This script:
      a. executionLane metadata.model / executionLane metadata.provider
      b. Special-case fleet overrides (known agent model assignments)
      c. Agent name-based inference for known patterns
-     d. The Aegis profile default: provider=nous, model=poolside/laguna-s-2.1:free
+     d. The OpenRouter fallback (provider=openrouter, model=poolside/laguna-s-2.1:free)
   3. PATCHes each agent's adapterConfig with explicit provider/model
   4. Verifies the PATCHes succeeded
 
@@ -40,25 +40,42 @@ COMPANY_ID = os.environ.get("PAPERCLIP_COMPANY_ID", "")
 ADAPTER_TYPE = "hermes_local"
 
 # Default for Aegis-host agents (the fleet's primary runtime).
-# All hermes_local agents on Aegis use profiles that default to provider=nous
-# with OAuth authentication (not NOUS_API_KEY — the profiles use oauth auth_mode).
-# The model is poolside/laguna-s-2.1:free, accessible via the Nous inference API
-# using OAuth bearer tokens (see JAC-4565-2).
-DEFAULT_PROVIDER = "nous"
+# The adapter's DEFAULT_MODEL is "openrouter/poolside/laguna-s-2.1:free"
+# and inferProviderFromConfig extracts "openrouter" from the model prefix.
+# OpenRouter is verified working — OPENROUTER_API_KEY is present in ~/.hermes/.env.
+# NOTE: NOUS_API_KEY is present but unreliable. The adapter code already falls
+# back to OpenRouter when adapterConfig is empty, so this patch is only needed
+# for agents that require a non-default provider/model (see SPECIAL_CASE_OVERRIDES).
+# Patching all agents with the default is unnecessary and was shown to NOT persist
+# (JAC-4657). Use --only-errored to target agents that need it.
+DEFAULT_PROVIDER = "openrouter"
 DEFAULT_MODEL = "poolside/laguna-s-2.1:free"
 
 # Agents with specific executionLane overrides (from their metadata).
 # These take priority over the default and are also discoverable via
 # executionLane metadata in the Paperclip API.
+#
+# Provider/model assignments verified against live config (2026-08-05):
+# - ollama-cloud: 401 (requires fresh key per JAC-4503) — do NOT route new
+#   agents here until resolved; fall through to openrouter default instead.
+# - ollama-launch: REMOVED from VALID_PROVIDERS — the Hermes CLI does not
+#   recognize this alias; use openrouter default.
+# - nous: NOUS_API_KEY present but unverified; safe fallback is openrouter.
 SPECIAL_CASE_OVERRIDES = {
-    "Luna High Planner": ("xai-oauth", "grok-4-fast-reasoning"),
+    "Luna High Planner": ("openrouter", "poolside/laguna-s-2.1:free"),
     "Klaude Pi": ("kimi-coding", "k2p7"),
-    "Flash": ("ollama-cloud", "deepseek-v4-flash"),
-    "Hermes Mistral": ("ollama-cloud", "deepseek-v4-pro"),
-    "Watchdog": ("ollama-launch", "qwen3-coder:30b"),
-    "Analyst-Sonnet": ("nous", "poolside/laguna-s-2.1:free"),
-    "Analyst-Opus": ("nous", "poolside/laguna-s-2.1:free"),
-    "Flash Executor": ("nous", "poolside/laguna-s-2.1:free"),
+    "Flash": ("openrouter", "poolside/laguna-s-2.1:free"),
+    "Hermes Mistral": ("openrouter", "poolside/laguna-s-2.1:free"),
+    "Watchdog": ("openrouter", "poolside/laguna-s-2.1:free"),
+    "Analyst-Sonnet": ("openrouter", "poolside/laguna-s-2.1:free"),
+    "Analyst-Opus": ("openrouter", "poolside/laguna-s-2.1:free"),
+    "Flash Executor": ("openrouter", "poolside/laguna-s-2.1:free"),
+    "Dinkelspiel": ("openrouter", "poolside/laguna-s-2.1:free"),
+    "Soak Test Agent": ("openrouter", "poolside/laguna-s-2.1:free"),
+    "Summarizer": ("openrouter", "poolside/laguna-s-2.1:free"),
+    "Hermes Coder": ("openrouter", "poolside/laguna-s-2.1:free"),
+    "Reflection Coach": ("openrouter", "poolside/laguna-s-2.1:free"),
+    "Researcher": ("openrouter", "poolside/laguna-s-2.1:free"),
 }
 
 # ---------------------------------------------------------------------------
@@ -70,7 +87,7 @@ def api_get(path):
     url = f"{API_URL}{path}"
     cmd = [
         "curl", "-sS", url,
-        "-H", f"Authorization: Bearer {API_KEY}",
+        "-H", "Authorization: Bearer ***",
     ]
     run_id = os.environ.get("PAPERCLIP_RUN_ID", "")
     if run_id:
@@ -91,7 +108,7 @@ def api_patch(path, data):
     body = json.dumps(data)
     cmd = [
         "curl", "-sS", "-X", "PATCH", url,
-        "-H", f"Authorization: Bearer {API_KEY}",
+        "-H", "Authorization: Bearer ***",
         "-H", "Content-Type: application/json",
         "--data-binary", body,
     ]
@@ -119,7 +136,7 @@ def infer_config_from_agent(agent):
       1. executionLane metadata (authoritative, set by Wings/Luna)
       2. Special-case overrides (known fleet model assignments)
       3. Agent name-based inference (klaude/sonnet -> kimi-coding)
-      4. Aegis profile default (nous/poolside/laguna-s-2.1:free)
+      4. OpenRouter fallback (provider=openrouter, model=poolside/laguna-s-2.1:free)
     """
     name = agent.get("name", "")
     meta = agent.get("metadata") or {}
@@ -144,7 +161,7 @@ def infer_config_from_agent(agent):
     if "opus" in name_lower:
         return (DEFAULT_PROVIDER, DEFAULT_MODEL, "name-inference")
 
-    # 4. Fall back to Aegis profile default
+    # 4. Fall back to OpenRouter default
     return (DEFAULT_PROVIDER, DEFAULT_MODEL, "default")
 
 # ---------------------------------------------------------------------------
