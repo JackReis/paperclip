@@ -55,6 +55,7 @@ const CONFIG_REVISION_FIELDS = [
   "adapterConfig",
   "runtimeConfig",
   "defaultEnvironmentId",
+  "folderId",
   "budgetMonthlyCents",
   "metadata",
 ] as const;
@@ -123,6 +124,7 @@ function buildConfigSnapshot(
     adapterConfig,
     runtimeConfig,
     defaultEnvironmentId: row.defaultEnvironmentId,
+    folderId: row.folderId,
     budgetMonthlyCents: row.budgetMonthlyCents,
     metadata,
   };
