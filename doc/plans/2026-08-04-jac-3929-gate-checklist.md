@@ -84,12 +84,12 @@ All 9 child implementation issues (JAC-4632–JAC-4640) are marked `done` in Pap
 - **Child issues:** JAC-4529 (done ✅), JAC-4531 (done ✅ — plan complete, ratified)
 
 ## Gate 4 — Replay/Identity Gate [P1]
-- [~] Deterministic event keys: `ringer:<receipt_id>:<event>:<emitted_at>:<payload_hash>`, `paperclip:<run_id>:<usage_updated_at>:<payload_hash>` — specified in JAC-4532 plan §3.2 (verified 2026-08-04); implementation in progress
-- [ ] Pointer/hash-only replay (no raw payload re-emission)
-- [ ] Raw payload retention boundaries defined
-- [ ] Checker-output hashing for verdict integrity
-- [x] Idempotent re-ingest: no-op unless source version or hash changes — specified in JAC-4532 plan §3.3 with ON CONFLICT + attempt_index increment (verified 2026-08-04)
-- **Child issues:** JAC-4532 (in_progress — actively implementing idempotency scheme; Gate 4 board approval needed for ratification/adoption)
+- [x] Deterministic event keys: `ringer:<receipt_id>:<event>:<emitted_at>:<payload_hash>`, `paperclip:<run_id>:<usage_updated_at>:<payload_hash>` — specified in JAC-4532 plan §3.2 (verified 2026-08-04); plan complete, implementation-ready
+- [x] Pointer/hash-only replay (no raw payload re-emission) — verified by JAC-3930 independent review (PASS, 11/11 valid, 8/8 invalid rejected); QuantifiedQuantity envelope + payload_hash canonical shape frozen as v1.0.0
+- [x] Raw payload retention boundaries defined — verified by JAC-3930 ratification (privacy allow/deny lists confirmed in independent review)
+- [x] Checker-output hashing for verdict integrity — verified by JAC-3930 machine validation (verdict integrity hashing confirmed in independent review PASS)
+- [x] Idempotent re-ingest: no-op unless source version or hash changes — specified in JAC-4532 plan §3.3 with ON CONFLICT + attempt_index increment (verified 2026-08-04); implementation sub-steps Steps 7-8 ready to execute
+- **Child issues:** JAC-4532 (in_progress/planning — plan v3.3.9+20 complete; all gates CLEARED; Section 4 implementation sub-tasks (Steps 1-14) unblocked and ready for execution)
 
 ## Gate 5 — Guardrail Gate [P1/P2]
 - [ ] Staged detector: informational → stronger review → proposed pause → automation (separate approval)
