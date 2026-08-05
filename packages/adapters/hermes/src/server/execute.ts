@@ -447,7 +447,7 @@ export async function execute(
   const config = (ctx.config ?? ctx.agent?.adapterConfig ?? {}) as Record<string, unknown>;
 
   // ── Resolve configuration ──────────────────────────────────────────────
-  const hermesCmd = resolveHermesCommand(config);
+  const baseHermesCmd = resolveHermesCommand(config);
   const model = cfgString(config.model) || DEFAULT_MODEL;
   const timeoutSec = cfgNumber(config.timeoutSec) || DEFAULT_TIMEOUT_SEC;
   const graceSec = cfgNumber(config.graceSec) || DEFAULT_GRACE_SEC;
@@ -644,7 +644,29 @@ export async function execute(
     return ctx.onLog(stream, chunk);
   };
 
-  const result = await runChildProcess(ctx.runId, hermesCmd, args, {
+  // ── Cloud admission wrapper wiring (hermes-04ps.1.3.1) ──────────────────
+  // When the resolved provider is "ollama-cloud" AND the admission state dir
+  // is configured, wrap the Hermes CLI invocation with the counting semaphore.
+  // The wrapper acquires a flock slot before exec'ing the child, capping
+  // concurrent cloud requests under the Ollama Cloud ceiling.
+  let effectiveCmd = baseHermesCmd;
+  let effectiveArgs = args;
+  const stateDir = process.env[OLLAMA_CLOUD_ADMISSION_STATE_DIR_ENV];
+  if (resolvedProvider === OLLAMA_CLOUD_PROVIDER && stateDir) {
+    const wrapperPath =
+      cfgString(config.cloudAdmissionWrapper) ||
+      process.env[OLLAMA_CLOUD_ADMISSION_WRAPPER_ENV] ||
+      DEFAULT_CLOUD_ADMISSION_WRAPPER;
+    // Build: wrapper.py passthrough -- <baseHermesCmd> [chat -q ... ...]
+    effectiveCmd = wrapperPath;
+    effectiveArgs = ["passthrough", "--", baseHermesCmd, ...args];
+    await ctx.onLog(
+      "stdout",
+      `[hermes] Cloud admission wrapper active (provider=ollama-cloud, state_dir=${stateDir}, route_class=${CLOUD_ADMISSION_ROUTE_CLASS}). Wrapping: ${wrapperPath} passthrough -- ${baseHermesCmd}\n`,
+    );
+  }
+
+  const result = await runChildProcess(ctx.runId, effectiveCmd, effectiveArgs, {
     cwd,
     env,
     timeoutSec,

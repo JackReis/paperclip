@@ -184,7 +184,14 @@ async function checkApiKeys(
       const eqIdx = trimmed.indexOf("=");
       if (eqIdx > 0) {
         const key = trimmed.substring(0, eqIdx).trim();
-        const value = trimmed.substring(eqIdx + 1).trim();
+        let value = trimmed.substring(eqIdx + 1).trim();
+        // Strip surrounding quotes if present
+        if (
+          (value.startsWith('"') && value.endsWith('"')) ||
+          (value.startsWith("'") && value.endsWith("'"))
+        ) {
+          value = value.slice(1, -1);
+        }
         if (value.length > 0) hermesEnvKeys[key] = value;
       }
     }
@@ -201,6 +208,7 @@ async function checkApiKeys(
   const hasZai = has("ZAI_API_KEY");
   const hasKimi = has("KIMI_API_KEY");
   const hasMiniMax = has("MINIMAX_API_KEY");
+  const hasNous = has("NOUS_API_KEY");
 
   const providers: string[] = [];
   if (hasAnthropic) providers.push("Anthropic");
@@ -209,6 +217,7 @@ async function checkApiKeys(
   if (hasZai) providers.push("Z.AI");
   if (hasKimi) providers.push("Kimi");
   if (hasMiniMax) providers.push("MiniMax");
+  if (hasNous) providers.push("Nous");
 
   if (providers.length > 0) {
     return {
@@ -261,7 +270,7 @@ async function checkApiKeys(
   return {
     level: "warn",
     message: "No LLM API keys found in environment",
-    hint: "Set API keys in the agent's env secrets or ~/.hermes/.env. Hermes supports: ANTHROPIC_API_KEY, OPENROUTER_API_KEY, OPENAI_API_KEY, ZAI_API_KEY, KIMI_API_KEY, MINIMAX_API_KEY",
+    hint: "Set API keys in the agent's env secrets or ~/.hermes/.env. Hermes supports: NOUS_API_KEY (Nous provider), ANTHROPIC_API_KEY, OPENROUTER_API_KEY, OPENAI_API_KEY, ZAI_API_KEY, KIMI_API_KEY, MINIMAX_API_KEY",
     code: "hermes_no_api_keys",
   };
 }

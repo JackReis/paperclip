@@ -75,3 +75,4 @@ tests/storybook-visual/playwright-report/
 *.db
 .beads-credential-key
 .beads/proxieddb/
+.worktrees/

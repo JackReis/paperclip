@@ -1,0 +1,90 @@
+{
+  "issue": "JAC-4602",
+  "title": "[JAC-4575-1] Diagnostic: Enumerate all 20 errored hermes_local agents",
+  "uuid": "577cf51d-d7c5-492e-bfe6-1d18418ca83e",
+  "verifier": "Bright (8b6ea7f8-781e-49ce-8c37-4f5564fc7481, hermes_local)",
+  "snapshot_time": "2026-08-04T20:17:46Z",
+  "verifying_process": "FRESH independent live API call (not the 19:43Z wake-comment snapshot). Bearer token = $PAPERCLIP_API_KEY, endpoint = $PAPERCLIP_API_URL.",
+  "source_of_truth": "GET /api/companies/87c32b8e-f131-4df8-ad8e-963d01b458e7/agents",
+  "snapshot_20_17Z": {
+    "total_agents": 68,
+    "fleet_note": "right-sized from 83 → 68 (consistent with wake comment)",
+    "status_breakdown": { "running": 33, "idle": 27, "error": 7, "paused": 1 },
+    "status_error": 7,
+    "non_empty_errorReason": 7,
+    "truncated_34char_traceback_count": 6,
+    "empty_adapterConfig_total": 68,
+    "empty_adapterConfig_completeness": "0% — every agent has adapterConfig={}"
+  },
+  "disputed_claims_in_wake_comment": {
+    "wake_comment_by": "local-board (ids 7f684ffe @19:46Z, 62d39d47 @19:49Z)",
+    "claims": {
+      "total_agents_68": "TRUE — confirmed 68",
+      "status_error_0": "FALSE — fresh API shows 7 errored agents at 20:17Z, NOT 0",
+      "stale_34char_tracebacks_0": "FALSE — 6 agents still hold the 34-char 'Traceback (most recent call last):' string",
+      "status_running_30_idle_37": "STALE — at 20:17Z it is running:33, idle:27 (counts shifted; wake comment's 30/37 was from 19:43Z snapshot which is no longer current)",
+      "DEFAULT_MODEL_fix_deployed": "PARTIALLY TRUE on disk, FALSE at runtime — see below"
+    }
+  },
+  "on_the_fix_deployment_claim": {
+    "wake_comment_assertion": "The fix IS deployed in the running npm sub-package @paperclipai/hermes-paperclip-adapter/dist/shared/constants.js (mtime Aug 4 09:14:07). The 17:46Z artifact had a false negative (checked dist/index.js instead of the dynamically-imported sub-package).",
+    "filesystem_reality": {
+      "subpackage_constants_js": "/Users/hermes/.hermes/node/lib/node_modules/paperclipai/node_modules/@paperclipai/hermes-paperclip-adapter/dist/shared/constants.js",
+      "subpackage_mtime": "2026-08-04T09:14:07",
+      "subpackage_contains_fix": true,
+      "subpackage_DEFAULT_MODEL_value": "ollama-launch/qwen3-coder:30b",
+      "subpackage_VALID_PROVIDERS_includes_ollama-launch": true
+    },
+    "runtime_reality": {
+      "running_server_bundle": "/Users/hermes/.hermes/node/lib/node_modules/paperclipai/dist/index.js",
+      "bundle_mtime": "2026-08-04T13:43 (fresher than the sub-package patch)",
+      "bundle_DEFAULT_MODEL_refs": 0,
+      "bundle_ollama-launch_refs": 0,
+      "bundle_qwen3-coder_refs": 0,
+      "bundle_inferProviderFromModel_refs": 0,
+      "bundle_require_import_of_subpackage": 0,
+      "bundle_createServerAdapter_refs": 0,
+      "bundle_hermes_paperclip_adapter_import_refs": 0,
+      "hermes_adapter_in_bundle": "hermesLocalCLIAdapter (line 22625) — CLI-only registration: type + formatStdoutEvent only. NO model/provider/resolution logic inlined. NO dynamic import of the sub-package constants.",
+      "cli_vs_server_note": "dist/index.js is the CLI bundle. getCLIAdapter/hermesLocalCLIAdapter only wire up stdout formatting. The server-side execution adapter that spawns 'hermes chat' with -m/--provider flags is NOT this CLI registry — it lives where the server resolves adapters. The bundle contains ZERO references to the sub-package path, DEFAULT_MODEL, ollama-launch, or qwen3-coder, so the claim that the server 'dynamically imports the hermes adapter from the npm sub-package' is NOT substantiated by inspecting the running artifact."
+    },
+    "conclusion": "The sub-package file on disk has the fix, but the running server bundle does not reference or import it. Agents continue to crash with truncated tracebacks. The fix is NOT demonstrably active in the live process. The wake comment's confidence that 'the fix is active and the oscillation has stopped' is NOT borne out by ground truth: 7 agents in error at 20:17Z, 6 with the 34-char traceback."
+  },
+  "operator_error_evolved": {
+    "17_46Z": "RemoteProtocolError / OpenRouter 404 (transport-level streaming failure, 395 chars)",
+    "20_17Z": "sqlite3.OperationalError: database is locked (219 chars) — a DIFFERENT failure mode. Indicates the crashes are no longer purely the OpenRouter 404 chain; DB lock contention is now a separate contributing defect. This further undermines the 'oscillation stopped, 0 errored' claim."
+  },
+  "full_dump_of_7_errored_agents_at_20_17Z": [
+    { "name": "Summarizer",      "status": "error", "errorReason": "Traceback (most recent call last):", "errorReason_length": 34, "provider": null, "model": null, "adapterConfig": {}, "executionLane": null },
+    { "name": "Press",           "status": "error", "errorReason": "Traceback (most recent call last):", "errorReason_length": 34, "provider": null, "model": null, "adapterConfig": {}, "executionLane": null },
+    { "name": "Herald",          "status": "error", "errorReason": "Traceback (most recent call last):", "errorReason_length": 34, "provider": null, "model": null, "adapterConfig": {}, "executionLane": null },
+    { "name": "Hermes Coder",    "status": "error", "errorReason": "Traceback (most recent call last):", "errorReason_length": 34, "provider": null, "model": null, "adapterConfig": {}, "executionLane": null },
+    { "name": "Forge",           "status": "error", "errorReason": "Traceback (most recent call last):", "errorReason_length": 34, "provider": null, "model": null, "adapterConfig": {}, "executionLane": null },
+    { "name": "Operator",        "status": "error", "errorReason": "Traceback (most recent call last):\\nsqlite3.OperationalError: database is locked\\nThe above exception was the direct cause of the following exception:\\nTraceback (most recent call last):\\n    raise sqlite3.OperationalError(", "errorReason_length": 219, "provider": null, "model": null, "adapterConfig": {}, "executionLane": null },
+    { "name": "Kimi Code via Ringer", "status": "error", "errorReason": "Traceback (most recent call last):", "errorReason_length": 34, "provider": null, "model": null, "adapterConfig": {}, "executionLane": null }
+  ],
+  "truncation_analysis": {
+    "34char_truncated_count": 6,
+    "truncated_text": "Traceback (most recent call last):",
+    "full_error_count": 1,
+    "null_error_count": 0,
+    "note": "All errored agents now show the 34-char truncation at 20:17Z. Paperclip stores errorReason truncated to 34 chars server-side. Operator evolved from a 395-char RemoteProtocolError (17:46Z) to a 219-char sqlite3.OperationalError (20:17Z) — still a real failure, not recovered."
+  },
+  "root_cause": {
+    "confirmed": true,
+    "fix_in_local_repo": "packages/adapters/hermes/src/shared/constants.ts:39 — export const DEFAULT_MODEL = \"ollama-launch/qwen3-coder:30b\";",
+    "fix_in_running_bundle": "NOT present — dist/index.js (mtime 2026-08-04T13:43) contains 0 references to DEFAULT_MODEL, ollama-launch, qwen3-coder, or any dynamic import of @paperclipai/hermes-paperclip-adapter.",
+    "required_remediation": "The npm sub-package file was patched in-place at 09:14, but the running server bundle (rebuilt 13:43) does NOT import that file. Two paths to actually deploy the fix: (1) rebuild the bundle so DEFAULT_MODEL is inlined into dist/index.js (pnpm --filter @paperclipai/server build), OR (2) ensure the server's adapter loader dynamically resolves the sub-package constants (currently it does not reference the sub-package path in the bundle). Then restart the paperclipai node process (current PID 48272, started 09:20) so it re-imports the patched constant. The 17:46Z artifact's FAIL verdict stands CORRECTED to FAIL (re-confirmed): fix is NOT demonstrably deployed to the live runtime."
+  },
+  "oscillation_table_corrected": [
+    { "time": "2026-08-04T15:17:00Z", "status_error": 3, "source": "Bright bearer-token query" },
+    { "time": "2026-08-04T16:52:00Z", "status_error": 26, "source": "Bright bearer-token query" },
+    { "time": "2026-08-04T17:07:00Z", "status_error": 3, "source": "Bright bearer-token query" },
+    { "time": "2026-08-04T17:22:00Z", "status_error": 9, "source": "Bright bearer-token query" },
+    { "time": "2026-08-04T17:46:00Z", "status_error": 10, "source": "Bright bearer-token query (FINAL 17:46Z artifact)" },
+    { "time": "2026-08-04T19:33:00Z", "status_error": 0, "source": "wake comment assertion (run 3dfbde05) — NOT independently verified by Bright" },
+    { "time": "2026-08-04T19:43:00Z", "status_error": 0, "source": "wake comment assertion — NOT independently verified by Bright" },
+    { "time": "2026-08-04T20:17:00Z", "status_error": 7, "source": "Bright FRESH independent re-verification (current)" }
+  ],
+  "gate_verdict": "FAIL (re-confirmed, corrected). The diagnostic ENUMERATION objective is COMPLETE — errored agents have been enumerated across 6 independent snapshots (15:17, 16:52, 17:07, 17:22, 17:46, 20:17) with durable artifacts. However: (1) The wake comment's core claim of '0 errored agents' is FALSE — fresh 20:17Z API shows 7 errored agents, 6 with the 34-char truncated traceback. (2) The claim that 'the fix is deployed and active' is NOT substantiated — the running bundle dist/index.js contains zero references to DEFAULT_MODEL/ollama-launch/qwen3-coder and does not import the sub-package whose constants.js file was patched in-place. The 17:46Z artifact's FAIL verdict was CORRECT, not a false negative. (3) Operator's error evolved from RemoteProtocolError (17:46Z) to sqlite3.OperationalError: database is locked (20:17Z) — a separate defect, further disproving 'recovery + oscillation stopped.' JAC-4602 must NOT remain done. Status should revert to in_review pending actual rebuild+redeploy+restart verification. Remediation deployment is tracked in JAC-4575-2 / JAC-4575-3."
+}

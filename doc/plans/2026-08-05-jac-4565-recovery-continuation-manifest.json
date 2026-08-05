@@ -1,0 +1,204 @@
+{
+  "name": "hermes-local-recovery-continuation-jac-4565",
+  "description": "Ringer manifest for the remaining hermes_local lane recovery after errorReason fixes deployed + Scout decommissioned. 10 hermes_local agents remain in error with empty adapterConfig={} (the original JAC-4575 failure mode that resurfaced). This manifest decomposes the remaining work into bounded child issues with gate-verdict validation.",
+  "judge": {
+    "engine": "claude-code",
+    "model": "opus-4-8",
+    "provider": "anthropic",
+    "role": "plan_review_and_approval"
+  },
+  "typist": {
+    "engine": "claude-code",
+    "model": "sonnet-4-5",
+    "provider": "anthropic",
+    "role": "implementation_execution"
+  },
+  "engines": {
+    "codex": {
+      "provider": "openai-codex",
+      "model": "gpt-5.3-codex-spark"
+    },
+    "openrouter": {
+      "provider": "openrouter",
+      "model": "poolside/laguna-s-2.1:free"
+    }
+  },
+  "postRunHooks": [
+    "paperclip_projector",
+    "preflight_talaris"
+  ],
+  "paperclip_issue": "JAC-4565",
+  "bead_id": "hermes-9tz",
+  "tasks": [
+    {
+      "name": "JAC-4565-2: Inject NOUS_API_KEY and correct provider routing for errored hermes_local agents",
+      "paperclip_issue": "JAC-4655",
+      "bead_id": "hermes-9tz",
+      "owner": "Zatara",
+      "owner_agent_id": "f83be6e5-ccc8-4689-a4a8-ec1dcef9b667",
+      "description": "Inject NOUS_API_KEY via Paperclip secret store into global ~/.hermes/.env or per-agent adapterConfig secret_ref. Correct provider routing so fallback chain routes to Ollama :11434 before OpenRouter. Addresses the credential/provider root cause for 3 of the 3 remaining failure modes.",
+      "status": "in_progress",
+      "paperclip_issue_uuid": "ffd30397-7824-4ef8-9770-339e1c14c46c",
+      "depends_on": [],
+      "gate_verdict": {
+        "status": "pending",
+        "judge": "Bright",
+        "verdict": "AWAITING VERIFICATION: JAC-4655 is in_progress under Zatara. The errorReason recovery fixed the visibility problem (stale errorReason clearing + 2000-char cap), but the underlying credential/provider injection for the 10 errored agents with empty adapterConfig={} is still in progress. Must verify: (a) NOUS_API_KEY present in ~/.hermes/.env or secret_ref injected, (b) fallback chain routes to Ollama :11434 first.",
+        "artifacts": []
+      }
+    },
+    {
+      "name": "JAC-4565-4: Batch-patch adapterConfig for all errored hermes_local agents with explicit provider+model",
+      "paperclip_issue": "JAC-4657",
+      "bead_id": "hermes-9tz",
+      "owner": "Zatara",
+      "owner_agent_id": "f83be6e5-ccc8-4689-a4a8-ec1dcef9b667",
+      "description": "Batch-PATCH adapterConfig for all 10 errored hermes_local agents (Coordinator, Operator, Karax, Hermes Coder, Forge, Fenix, Goblin, Kimi Code via Ringer, Summarizer, Oracle-2, Task Rabbit) with explicit provider+model entries. Empty adapterConfig={} is the root cause — agents fall through to DEFAULT_MODEL resolution which now resolves to ollama-launch/qwen3-coder:30b, but the agents still error with process lifecycle failures and DB contention. Explicit adapterConfig pins the routing.",
+      "status": "in_progress",
+      "paperclip_issue_uuid": "224bf9fc-7f46-4c7c-a6ef-db16867b43c5",
+      "depends_on": ["JAC-4655"],
+      "gate_verdict": {
+        "status": "pending",
+        "judge": "Bright",
+        "verdict": "AWAITING VERIFICATION: JAC-4657 is in_progress under Zatara. The batch-patch has not yet been applied or verified. Must verify: all 10 errored agents have populated adapterConfig with explicit provider+model, no longer falling through to DEFAULT_MODEL resolution.",
+        "artifacts": []
+      }
+    },
+    {
+      "name": "JAC-4565-3: Resolve Hermes CLI bootstrap hang (zle/TTY init non-interactive runtime path)",
+      "paperclip_issue": "JAC-4656",
+      "bead_id": "hermes-9tz",
+      "owner": "Fenix",
+      "owner_agent_id": "5056439a-ff75-46aa-95ca-57bc507eb9e8",
+      "description": "Diagnose and fix the Hermes CLI bootstrap hang: 'hermes chat -q hello -Q' hangs >20s with no output. Root cause appears to be zle/TTY init attempting interactive mode in non-interactive (subprocess) runtime context. Process lifecycle errors (child pid no longer running) are the primary error category after credential fixes.",
+      "status": "todo",
+      "paperclip_issue_uuid": "2d5ed4e0-2571-4675-ba5c-546e2193b261",
+      "depends_on": ["JAC-4575"],
+      "gate_verdict": {
+        "status": "pending",
+        "judge": "Bright",
+        "verdict": "AWAITING VERIFICATION: JAC-4656 is in todo under Fenix. The CLI smoke test gate (per recovery playbook §1 Step 1) is FAIL — CLI hangs >15s. This blocks the process-lifecycle fixes for Fenix/Wings/Rohana/Artanis agents.",
+        "artifacts": []
+      }
+    },
+    {
+      "name": "JAC-4565-FU: Investigate SQLite DB write contention (Operator agent)",
+      "paperclip_issue": "JAC-4686",
+      "bead_id": "hermes-9tz",
+      "owner": "Forge",
+      "owner_agent_id": "0b902be0-2365-4599-b86d-bf177caf5550",
+      "description": "Investigate the persistent sqlite3.OperationalError: database is locked at hermes_state.py:2512 for the Operator agent. Uses BEGIN IMMEDIATE under 60+ concurrent hermes_local heartbeats. Connection timeout=1.0s with 20s _WRITE_PATIENCE_S retry. Under severe contention, the write lock is exhausted. Propose PGlite WAL mode, connection pool sizing, or heartbeat write batching.",
+      "status": "backlog",
+      "paperclip_issue_uuid": "d909671e-8e5d-4d8c-8f4b-caebbd18a571",
+      "depends_on": ["JAC-4657"],
+      "gate_verdict": {
+        "status": "pending",
+        "judge": "Bright",
+        "verdict": "AWAITING INVESTIGATION: JAC-4686 is in backlog under Forge. The Operator agent's DB lock contention is a distinct failure mode (DB write contention, not adapterConfig). Must investigate: PGlite WAL mode, connection pool size, heartbeat write batching under concurrent load.",
+        "artifacts": []
+      }
+    },
+    {
+      "name": "JAC-4565-6: Verify all errored hermes_local agents recover to running/idle",
+      "paperclip_issue": "JAC-4659",
+      "bead_id": "hermes-9tz",
+      "owner": "Watchdog",
+      "owner_agent_id": "3fad92dc-255f-4223-8899-ce8516a1c99e",
+      "description": "Multi-snapshot verification per recovery playbook §3 protocol. Confirm: 0 agents with adapterConfig={}, 0 agents with errorReason containing openrouter/404/nous (old JAC-4575 pattern), Bright (8b6ea7f8) has executionLane verified and completes test invocation. Take snapshots at T+0, T+5min, T+10min.",
+      "status": "todo",
+      "paperclip_issue_uuid": "46e8ae10-e3a2-4aa3-8e17-38fe0f65487a",
+      "depends_on": ["JAC-4657", "JAC-4656"],
+      "gate_verdict": {
+        "status": "pending",
+        "judge": "Bright",
+        "verdict": "AWAITING EXECUTION: JAC-4659 is in todo under Watchdog. Cannot begin verification until JAC-4657 (adapterConfig patch) and JAC-4656 (CLI fix) complete. Will perform multi-snapshot protocol per the recovery playbook.",
+        "artifacts": []
+      }
+    },
+    {
+      "name": "JAC-4565-7: Post recovery receipts to JAC-4552 for audit reconciliation",
+      "paperclip_issue": "JAC-4660",
+      "bead_id": "hermes-9tz",
+      "owner": "Wings",
+      "owner_agent_id": "80284e06-41ab-415a-ba1c-6c3121debd0d",
+      "description": "After verification passes, post final receipts to parent JAC-4552 so Coordinator can reconcile and close the audit. Include: live agent snapshot, resolved root causes, deployed fixes, and remaining follow-up issues.",
+      "status": "todo",
+      "paperclip_issue_uuid": "08912a38-ad92-424b-bf13-5b30089f2b61",
+      "depends_on": ["JAC-4659"],
+      "gate_verdict": {
+        "status": "pending",
+        "judge": "Bright",
+        "verdict": "BLOCKED by JAC-4659 verification. Cannot write receipts until the fleet-wide verification confirms 0 errored agents with the old failure pattern.",
+        "artifacts": []
+      }
+    }
+  ],
+  "gate_policy": {
+    "judge_review_required_for": "all_tasks",
+    "typist_execution": "after_judge_approval",
+    "post_run_hooks": ["paperclip_projector", "preflight_talaris"],
+    "verification_threshold": "pass"
+  },
+  "dependency_graph": {
+    "edges": [
+      "JAC-4656 -> JAC-4659",
+      "JAC-4657 -> JAC-4659",
+      "JAC-4659 -> JAC-4660",
+      "JAC-4657 -> JAC-4686"
+    ],
+    "sequencing": [
+      "1. JAC-4655 (credential fix, in_progress, Zatara) — inject NOUS_API_KEY + correct provider routing",
+      "2. JAC-4657 (batch adapterConfig patch, in_progress, Zatara) — pins explicit provider+model on 10 errored agents, depends on JAC-4655",
+      "3. JAC-4656 (CLI bootstrap hang, todo, Fenix) — fix 'hermes chat -q' hang, blocks process-lifecycle recovery",
+      "4. JAC-4686 (DB contention, backlog, Forge) — investigate Operator SQLite write lock, depends on JAC-4657",
+      "5. JAC-4659 (verification, todo, Watchdog) — multi-snapshot, depends on JAC-4657 + JAC-4656",
+      "6. JAC-4660 (receipts to JAC-4552, todo, Wings) — final audit reconciliation, depends on JAC-4659"
+    ],
+    "critical_path": [
+      "JAC-4655 -> JAC-4657 -> JAC-4659 -> JAC-4660"
+    ],
+    "parallel_opportunities": [
+      "JAC-4655 (credential fix) and JAC-4657 (adapterConfig batch patch) can execute in parallel under Zatara as both involve agent config updates",
+      "JAC-4656 (CLI fix, Fenix) runs in parallel with JAC-4655/JAC-4657 but blocks JAC-4659 verification",
+      "JAC-4686 (DB contention, Forge) can begin investigation in parallel with JAC-4655/JAC-4657"
+    ]
+  },
+  "root_cause": {
+    "file": "packages/adapters/hermes/src/shared/constants.ts",
+    "line": 28,
+    "field": "DEFAULT_MODEL",
+    "value": "auto",
+    "impact": "All hermes_local agents had empty adapterConfig, so model resolution delegated to Hermes config.yaml. The config's fallback_providers listed OpenRouter before local Ollama, causing qwen3-coder:30b 404s. Fixed by changing DEFAULT_MODEL to ollama-launch/qwen3-coder:30b. However, 10 agents remain errored with empty adapterConfig even after the fix — the runtime bootstrap fails before model resolution completes (CLI hang + DB contention). The credential/provider injection (JAC-4655) and adapterConfig pinning (JAC-4657) are the remaining recovery steps.",
+    "resolution": "DEFAULT_MODEL changed to 'ollama-launch/qwen3-coder:30b' (commit 2f5ff6345), deployed in npm package v2026.722.0. ErrorReason truncation fixed (81da996fa). Remaining: JAC-4655 (credential injection), JAC-4657 (adapterConfig batch patch), JAC-4656 (CLI bootstrap hang fix)."
+  },
+  "re_verification": {
+    "timestamp": "2026-08-05T01:02Z",
+    "judge": "Bright",
+    "summary": "Fresh live verification at 01:02Z confirms: 68 total agents, 10 hermes_local in error (oscillating 6-9), all with adapterConfig={}. 3 root causes persist: (1) DB write contention (Operator sqlite3.OperationalError database is locked), (2) process lifecycle failures (Coordinator 'Process lost'), (3) null errorReason (5 agents — error before errorReason is set). ErrorReason fixes are deployed and verified working (0 stale entries on running/idle). Scout decommission complete. Remaining recovery under JAC-4655 (in_progress), JAC-4657 (in_progress), JAC-4656 (todo), JAC-4686 (backlog).",
+    "final_live_state": {
+      "timestamp": "2026-08-05T01:02Z",
+      "judge": "Bright",
+      "total_agents": 68,
+      "errored": 10,
+      "idle": 17,
+      "running": 43,
+      "paused": 1,
+      "hermes_local_total": 61,
+      "hermes_local_errored": 10,
+      "bright_status": "in_progress",
+      "bright_errorReason": null
+    }
+  },
+  "resolution": {
+    "commit": "81da996fa",
+    "status": "in_progress",
+    "remaining_work": [
+      "JAC-4655: Credential/provider routing fix for errored agents (in_progress, Zatara)",
+      "JAC-4657: Batch-patch adapterConfig with explicit provider+model (in_progress, Zatara)",
+      "JAC-4656: Hermes CLI bootstrap hang fix (todo, Fenix)",
+      "JAC-4686: SQLite DB write contention investigation (backlog, Forge)",
+      "JAC-4659: Multi-snapshot verification (todo, Watchdog)",
+      "JAC-4660: Receipts to JAC-4552 (todo, Wings)"
+    ]
+  }
+}
