@@ -8,7 +8,7 @@
 |- [x] Quantity/null semantics: `{value|null, unit, reported_state, source_field, observed_at, confidence}` — implemented as nullable columns with fail-closed coverage resolution (null=not_reported, 0=explicitly zero). Full `QuantifiedQuantity` envelope per-quantity is planned in JAC-4530 §3.1 (Path B preferred for V1).
 |- [x] Add `reasoning_tokens`, `tool_call_tokens` fields — already on both `cost_events` and `run_events` (migration 0187/0188)
 |- [x] Add `currency`, `pricing_version_ref`, `cost_confidence` fields — `currency` and `pricing_version_ref` on `cost_events`; `currency` on `run_events`. **`cost_confidence` is still MISSING** (only generic `confidence` exists). `price_basis` is also MISSING. See JAC-4530 plan §2.2.
-- [x] Event identity algorithm: `source_system` + `source_event_id` + `source_event_version` + `event_kind` + `attempt_index` + `observed_sequence` — columns exist; `sourceEventId` + `payloadHash` populated (JAC-4532, **done** — verified live 2026-08-05T00:38Z; scheme complete at doc/plans/2026-08-04-jac-4532-event-identity-idempotency-scheme.md, all gates CLEARED, implementation executed)
+| - [x] Event identity algorithm: `source_system` + `source_event_id` + `source_event_version` + `event_kind` + `attempt_index` + `observed_sequence` — columns exist; `sourceEventId` + `payloadHash` populated (JAC-4532, **done** — committed at 585cdc6a2, verified live 2026-08-05T00:38Z; scheme complete at doc/plans/2026-08-04-jac-4532-event-identity-idempotency-scheme.md, all gates CLEARED, implementation executed)
 - [ ] Lineage edge vocabulary: parent, child, handoff, retry, fan-out group, aggregation boundary
 - [x] Confidence levels defined and applied — `CONFIDENCE_LEVELS` = ["high", "medium", "low"], applied in fail-closed resolution
 - **Child issues:** JAC-4530 (done ✅), JAC-4532 (**done** ✅ — verified live 2026-08-05T00:38Z), JAC-4531 (done ✅ — plan complete, ratified), JAC-4533 (in_review — implementation verified complete), JAC-4538 (done ✅)
@@ -88,7 +88,7 @@ All 9 child implementation issues (JAC-4632–JAC-4640) are marked `done` in Pap
 - [x] Pointer/hash-only replay (no raw payload re-emission) — verified by JAC-3930 independent review (PASS, 11/11 valid, 8/8 invalid rejected); QuantifiedQuantity envelope + payload_hash canonical shape frozen as v1.0.0
 - [x] Raw payload retention boundaries defined — verified by JAC-3930 ratification (privacy allow/deny lists confirmed in independent review)
 - [x] Checker-output hashing for verdict integrity — verified by JAC-3930 machine validation (verdict integrity hashing confirmed in independent review PASS)
-- [x] Idempotent re-ingest: no-op unless source version or hash changes — specified in JAC-4532 plan §3.3 with ON CONFLICT + attempt_index increment (verified 2026-08-04); implementation sub-steps Steps 7-8 ready to execute
+| - [x] Idempotent re-ingest: no-op unless source version or hash changes — specified in JAC-4532 plan §3.3 with ON CONFLICT + attempt_index increment (verified 2026-08-04, committed at 585cdc6a2); implementation sub-steps Steps 7-8 executed
 - **Child issues:** JAC-4532 (**done** ✅ — implementation executed, verified live 2026-08-05T00:38Z)
 
 ## Gate 5 — Guardrail Gate [P1/P2]
@@ -125,7 +125,7 @@ All 6 gates are now COMPLETE (implementation executed + verified live 2026-08-05
 - JAC-4529: `done`
 - JAC-4530: `done`
 - JAC-4531: `done` (ratified)
-- JAC-4532: `done` (implementation executed)
+- JAC-4532: `done` (implementation committed at 585cdc6a2, verified live 2026-08-05T00:38Z; 9 utility tests + 6 route-level idempotency tests pass)
 - JAC-4533: `in_review` (implementation verified complete; Gap S9a addressed)
 - JAC-4534: `done`
 - JAC-4535: `done`
