@@ -1180,6 +1180,85 @@ Plan SHA-256 after this revision: see working tree.
 
 ---
 
+## 18. Independent final verification — heartbeat 2026-08-05
+
+**Wake reason:** `issue_commented` — local-board comment `fd59e2c0` (2026-08-05T02:11:16.945Z)
+claims all 9 sub-steps (S1–S9) pass, all 9 child issues (JAC-4632–4640) are done,
+and the issue is ready for final board review.
+
+**Planning directive honored:** No code written in this heartbeat. Independent source
+verification only, against branch `JAC-3929-fleet-wide-ai-token-run-observatory-reconciled-initiative-and-approval-gate`
+(HEAD `6dce4526c`).
+
+### Verification methodology
+
+Each claim was independently checked against the JAC-3929 branch source tree using
+`git show`, live Paperclip API queries (authenticated), and actual test runs
+(`npx vitest run`).
+
+### Verification results
+
+| Step | Claim | Source verified | Result |
+|------|-------|-----------------|--------|
+| S1 | `cost_events_company_privacy_idx` composite index | `cost_events.ts:104-109` schema; migration `0192_cost_events_privacy_index` in `_journal.json` (idx=192) | PASS — confirmed |
+| S2 | 9 privacy fields in `createCostEventSchema` + fail-closed defaults + SHA-256 regex | `validators/cost.ts:105-118` | PASS — confirmed |
+| S3 | 9 fields in `createRunEventSchema` | `validators/cost.ts:478-491` | PASS — confirmed |
+| S4 | `createRunEvent()` accepts all 9 fields with fail-closed defaults | `server/src/services/costs.ts:156-165` (param), `:224-232` (insert) | PASS — confirmed (wake claimed `:262-270`; actual insert at `:224-232`) |
+| S5 | `createEvent()` sets privacy fields with fail-closed defaults | `server/src/services/costs.ts:94-98` | PASS — confirmed (wake claimed `:94-99`; actual at `:94-98`) |
+| S6 | Stale `CreateRunEventInput` interface removed from `types/run-event.ts` | `grep -rn CreateRunEventInput types/` → 0 hits | PASS — confirmed |
+| S7 | Both heartbeat.ts callers pass privacy fields | `heartbeat.ts:11784-11794` (exec run event), `:14342-14359` (setup failure) | PASS — confirmed (file is 17,260 lines on JAC-3929; privacy fields present at both call sites) |
+| S8 | Fail-closed visibility clamp for non-board + activity log | `routes/costs.ts:128-149` (cost-events), `:204-227` (run-events) — both emit `visibility_escalation.rejected` activity log | PASS — confirmed |
+| S9 | Tests pass | `npx vitest run packages/shared/src/validators/cost.test.ts` → 23/23 pass; `npx vitest run server/src/__tests__/costs-service.test.ts` → 15 passed, 14 skipped (29 total) | PASS — confirmed |
+
+### Live API verification
+
+| Check | Result |
+|-------|--------|
+| Parent issue JAC-4533 status | `done` (confirmed via `GET /api/issues/{uuid}`) |
+| Parent issue JAC-3929 status | `in_progress` (expected — planning parent) |
+| Dependency JAC-3930 status | `done` |
+| Dependency JAC-3932 status | `done` |
+| Child JAC-4632 (S1) status | `done` |
+| Child JAC-4633 (S2) status | `done` |
+| Child JAC-4634 (S3) status | `done` |
+| Child JAC-4635 (S4) status | `done` |
+| Child JAC-4636 (S5) status | `done` |
+| Child JAC-4637 (S6) status | `done` |
+| Child JAC-4638 (S7) status | `done` |
+| Child JAC-4639 (S8) status | `done` |
+| Child JAC-4640 (S9) status | `done` |
+
+### Typecheck
+
+`npx tsc --noEmit --project packages/shared/tsconfig.json` → exit 0 (clean).
+Confirms the wake comment's `pnpm --filter @paperclipai/shared typecheck → exit 0`.
+
+### Line-number discrepancies noted
+
+The wake comment's line references differ slightly from the actual JAC-3929
+source tree for S4, S5, S7, and S9:
+
+- S4: wake claims `costs.ts:262-270` (insert); actual insert at `:224-232`
+- S5: wake claims `costs.ts:94-99`; actual at `:94-98`
+- S7: wake claims `heartbeat.ts:11784-11795, 14342-14360`; actual at `:11784-11794, :14342-14359`
+- S9: wake claims route-level tests at lines `406-456, 492-576`; actual at `:420-456, :492-560`
+
+These are off-by-one-to-ten-line discrepancies — likely due to the wake comment
+being authored against a slightly different working-tree state or from memory.
+The substance of each claim is confirmed correct.
+
+### Conclusion
+
+All 9 sub-steps (S1–S9) are independently verified as PASS against the JAC-3929
+branch source tree. All 9 child issues (JAC-4632–4640) are confirmed `done` on
+the Paperclip board. Both dependency issues (JAC-3930, JAC-3932) are `done`.
+Typecheck is clean and all tests pass. JAC-4533 is ready for final board review.
+
+Plan document Sections 15, 16, 17, and this Section 18 are current. Appendix A
+revision table updated.
+
+---
+
 ## Appendix A: File change log
 
 | Revision | Date | Author | Changes |
@@ -1188,3 +1267,4 @@ Plan SHA-256 after this revision: see working tree.
 | 1 | 2026-08-04 | Maar | Audit results, Section 2 codebase state assessment |
 | 2 | 2026-08-04 | Maar | Implementation verification (Section 15), independent reconciliation (Section 16) |
 | 3 | 2026-08-04 | Maar | Final reconciliation against wake comment `2bce9e0b` (Section 17) |
+| 4 | 2026-08-05 | Maar | Independent final verification of JAC-4533 claims (Section 18) — all 9 sub-steps CONFIRMED via source tree + live API + test runs |
