@@ -9,13 +9,15 @@
 # Updates OLLAMA_API_KEY in all fleet profiles that use the ollama-cloud provider.
 set -euo pipefail
 
-if [ $# -lt 1 ] || [ -z "${1:-}" ]; then
+if [ $# -ge 1 ] && [ -n "${1:-}" ]; then
+  NEW_KEY="$1"
+elif [ -n "${OLLAMA_NEW_KEY:-}" ]; then
+  NEW_KEY="$OLLAMA_NEW_KEY"
+else
   echo "ERROR: new API key required as arg 1 (or set OLLAMA_NEW_KEY env)"
   echo "Usage: $0 <new-ollama-api-key>"
   exit 1
 fi
-
-NEW_KEY="$1"
 TS="$(date -u +%Y%m%dT%H%M%SZ)"
 PROFILES_DIR="/Users/hermes/.hermes/profiles"
 SOPS_FILE="/Users/hermes/.secrets/llm-providers.env"
@@ -70,7 +72,7 @@ if [ -f "$SOPS_FILE" ]; then
       echo "Backed up: $SOPS_FILE -> $SOPS_FILE.bak-$TS"
 
       # Decrypt, replace key, re-encrypt
-      sops -d "$SOPS_FILE" | sed "s|^OLLAMA_API_KEY=.*|OLLAMA_API_KEY=$NEW_KEY|" | sops -e --input-type=env --output-type=env - "$SOPS_FILE" > "$SOPS_FILE.tmp"
+      sops -d "$SOPS_FILE" | sed "s|^OLLAMA_API_KEY=.*|OLLAMA_API_KEY=$NEW_KEY|" | sops -e --input-type=env --output-type=env "$SOPS_FILE" > "$SOPS_FILE.tmp"
       mv "$SOPS_FILE.tmp" "$SOPS_FILE"
       echo "Updated OLLAMA_API_KEY in SOPS secrets: $SOPS_FILE"
       CHANGED=$((CHANGED + 1))
@@ -88,7 +90,7 @@ echo ""
 echo "=== Verifying new key against ollama.com/v1/chat/completions ==="
 HTTP_CODE=$(curl -sS -o /dev/null -w "%{http_code}" \
   -X POST \
-  -H "Authorization: Bearer ***" \
+  -H "Authorization: Bearer $NEW_KEY" \
   -H "Content-Type: application/json" \
   "https://ollama.com/v1/chat/completions" \
   -d '{"model":"gpt-oss:20b","messages":[{"role":"user","content":"hi"}]}')
