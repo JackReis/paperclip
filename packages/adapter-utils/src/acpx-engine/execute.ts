@@ -136,6 +136,7 @@ type AcpxAgentProcessIdentity = { pid: number; startedAt: string };
 
 type PaperclipAcpRuntimeOptions = AcpRuntimeOptions & {
   onAgentSpawn?: (meta: AcpxAgentProcessIdentity) => Promise<void>;
+  spawnCwd?: string;
 };
 
 type AcpxProcessIdentitySink = {

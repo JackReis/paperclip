@@ -9,7 +9,7 @@ import { resolveCoverageState, resolveSafeStatus, resolveLedgerCoverageForRun, r
 import type { CostStatus, CoverageState, SafeStatus, SourceStatus, CoverageTotals, CoverageWarning, CoverageByAdapterRow, CoverageWarningsResponse, CoverageByAgent } from "@paperclipai/shared";
 import type { RunCoverageResolution } from "@paperclipai/shared";
 import { DEFAULT_VISIBILITY_CLASS, DEFAULT_RETENTION_CLASS, DEFAULT_REDACTION_STATE, DEFAULT_ATTEMPT_INDEX, type RunEventSourceSystem, type RunEventKind } from "@paperclipai/shared";
-import { computePaperclipRunEventKey, computePayloadHash, computeSourceEventId } from "@paperclipai/shared";
+import { computePaperclipRunEventKey, computePayloadHash, computeSourceEventId } from "@paperclipai/shared/utils/event-identity";
 
 export interface CostDateRange {
   from?: Date;
@@ -57,7 +57,7 @@ async function getMonthlySpendTotal(
 export function costService(db: Db, budgetHooks: BudgetServiceHooks = {}) {
   const budgets = budgetService(db, budgetHooks);
   return {
-    createEvent: async (companyId: string, data: Omit<typeof costEvents.$inferInsert, "companyId">) => {
+    createEvent: async (companyId: string, data: Omit<typeof costEvents.$inferInsert, "companyId" | "ingestId"> & { ingestId?: string | null }) => {
       const agent = await db
         .select()
         .from(agents)
@@ -101,7 +101,7 @@ export function costService(db: Db, budgetHooks: BudgetServiceHooks = {}) {
         billingType: data.billingType,
       });
       const computedIngestId = data.ingestId ?? computePaperclipRunEventKey({
-        runId: data.heartbeatRunId ?? data.runId ?? "unknown",
+        runId: data.heartbeatRunId ?? "unknown",
         usageUpdatedAt: occurredAtIso,
         payloadHash: computedPayloadHash,
       });

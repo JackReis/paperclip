@@ -16031,7 +16031,7 @@ export function heartbeatService(db: Db, options: HeartbeatServiceOptions = {}) 
         outcome === "succeeded"
           ? null
           : (adapterResult.errorMessage ??
-            `Process lost — no stderr or run output captured (exit code ${run.exitCode ?? "unknown"}, timed out: ${!!run.timedOut}). This typically indicates a bootstrap failure before Paperclip could capture adapter output.`),
+            `Process lost — no stderr or run output captured (exit code ${run.exitCode ?? "unknown"}, timed out: ${!!adapterResult.timedOut}). This typically indicates a bootstrap failure before Paperclip could capture adapter output.`),
         {
           keepIdleOnFailure:
             outcome === "failed" &&

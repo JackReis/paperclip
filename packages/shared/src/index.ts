@@ -2435,8 +2435,3 @@ export {
   type InstanceFeatureKey,
 } from "./feature-catalog.js";
 export { stableStringify } from "./utils/json.js";
-export {
-  computePaperclipRunEventKey,
-  computePayloadHash,
-  computeSourceEventId,
-} from "./utils/event-identity.js";
