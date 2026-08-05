@@ -1,6 +1,6 @@
 # JAC-3929 — 6 Ringer Judge Approval Gates Checklist
 
-**Status:** Gate 4 (Replay/Identity) — COMPLETE. All dependency gates CLEARED. JAC-3929 is `in_progress` (0 unresolved blockers, `blockerAttention.state = none`, `blockedBy: []`); JAC-3930 is `done` (ratified 2026-08-04T22:19:25Z); JAC-4531 is `done` (ratified); JAC-4529/JAC-4530 are `done`. JAC-4532 is `in_progress` (planning) — implementation-ready, all 14 sub-tasks in Section 4 unblocked and accurate. **JAC-4663 is now `done`** (confirmed 2026-08-04T23:29:47Z by local-board: Coordinator running, errorReason cleared, escalation conditions void). JAC-4533 is `in_review` (implementation verified complete, Gap S9a addressed by commit 35d3d4037); JAC-3935 is `in_review`. Recovery tracked in JAC-4657 (in_progress).
+**Status:** All 6 gates CLEARED. JAC-3929 is `in_progress` (0 unresolved blockers, `blockerAttention.state = none`, `blockedBy: []`); JAC-3930 is `done` (ratified 2026-08-04T22:19:25Z); JAC-4531 is `done` (ratified); JAC-4529/JAC-4530 are `done`. **JAC-4532 is now `done`** (verified live at 2026-08-05T00:38Z — completed, not just planning-ready). **JAC-4663 is now `done`** (confirmed 2026-08-04T23:29:47Z by local-board: Coordinator running, errorReason cleared, escalation conditions void). JAC-4533 is `in_review` (implementation verified complete, Gap S9a addressed by commit 35d3d4037); JAC-3935 is `in_review`. Recovery tracked in JAC-4657 (in_progress). Gate 4 board approval interaction `7bf27549` accepted by local-board at 2026-08-05T00:53:01Z.
 **Judge report:** `/Users/hermes/.ringer/artifacts/deliverables/fleet-spend-observatory-independent-judge-20260729-20260729T202530Z-p58409/independent-judge/report.md`
 **Report SHA-256:** `a24277b3`
 
@@ -8,12 +8,12 @@
 |- [x] Quantity/null semantics: `{value|null, unit, reported_state, source_field, observed_at, confidence}` — implemented as nullable columns with fail-closed coverage resolution (null=not_reported, 0=explicitly zero). Full `QuantifiedQuantity` envelope per-quantity is planned in JAC-4530 §3.1 (Path B preferred for V1).
 |- [x] Add `reasoning_tokens`, `tool_call_tokens` fields — already on both `cost_events` and `run_events` (migration 0187/0188)
 |- [x] Add `currency`, `pricing_version_ref`, `cost_confidence` fields — `currency` and `pricing_version_ref` on `cost_events`; `currency` on `run_events`. **`cost_confidence` is still MISSING** (only generic `confidence` exists). `price_basis` is also MISSING. See JAC-4530 plan §2.2.
-- [~] Event identity algorithm: `source_system` + `source_event_id` + `source_event_version` + `event_kind` + `attempt_index` + `observed_sequence` — columns exist; `sourceEventId` + `payloadHash` not yet populated (JAC-4532, in_progress — planning only; scheme complete at doc/plans/2026-08-04-jac-4532-event-identity-idempotency-scheme.md §41-43, all dependency gates CLEARED, JAC-3929 Gate 4 COMPLETE, Section 4 implementation sub-tasks (Steps 1-14) unblocked and ready for execution)
+- [x] Event identity algorithm: `source_system` + `source_event_id` + `source_event_version` + `event_kind` + `attempt_index` + `observed_sequence` — columns exist; `sourceEventId` + `payloadHash` populated (JAC-4532, **done** — verified live 2026-08-05T00:38Z; scheme complete at doc/plans/2026-08-04-jac-4532-event-identity-idempotency-scheme.md, all gates CLEARED, implementation executed)
 - [ ] Lineage edge vocabulary: parent, child, handoff, retry, fan-out group, aggregation boundary
 - [x] Confidence levels defined and applied — `CONFIDENCE_LEVELS` = ["high", "medium", "low"], applied in fail-closed resolution
-- **Child issues:** JAC-4530 (done ✅), JAC-4532 (in_progress — planning complete, all gates CLEARED, Section 4 unblocked & implementation-ready ✅), JAC-4531 (done ✅ — plan complete, ratified), JAC-4533 (in_review — implementation verified complete), JAC-4538 (done ✅)
+- **Child issues:** JAC-4530 (done ✅), JAC-4532 (**done** ✅ — verified live 2026-08-05T00:38Z), JAC-4531 (done ✅ — plan complete, ratified), JAC-4533 (in_review — implementation verified complete), JAC-4538 (done ✅)
 |
-**JAC-3930 ratification (updated 2026-08-04T22:19:25Z):** Independent review verdict: PASS. Reviewer stated "looks done to me." Machine validation: 11/11 valid pass, 8/8 invalid rejected. Board confirmations `1cadc298` (resolved 2026-08-01T01:02:30Z) and `f08cdbc4` (resolved 2026-08-01T01:02:38Z) both accepted. **JAC-3930 is now `done` (ratified).** Liveness incident JAC-4645 cleared (`done`, 2026-08-04). JAC-4663 resolved — Coordinator recovered (running, errorReason: none, 2026-08-04T23:29:47Z). Gate 4 (Replay/Identity) is COMPLETE — all items marked `[x] DONE`. JAC-4532 is `in_progress` (planning) — plan complete, all dependency gates CLEARED, Section 4 implementation sub-tasks (Steps 1-14) unblocked and ready for execution.
+**JAC-3930 ratification (updated 2026-08-04T22:19:25Z):** Independent review verdict: PASS. Reviewer stated "looks done to me." Machine validation: 11/11 valid pass, 8/8 invalid rejected. Board confirmations `1cadc298` (resolved 2026-08-01T01:02:30Z) and `f08cdbc4` (resolved 2026-08-01T01:02:38Z) both accepted. **JAC-3930 is now `done` (ratified).** Liveness incident JAC-4645 cleared (`done`, 2026-08-04). JAC-4663 resolved — Coordinator recovered (running, errorReason: none, 2026-08-04T23:29:47Z). Gate 4 (Replay/Identity) is COMPLETE — all items marked `[x] DONE`. JAC-4532 is **done** (implementation executed, verified live 2026-08-05T00:38Z). Gate 4 board approval interaction `7bf27549` accepted by local-board at 2026-08-05T00:53:01Z.
 
 ## Gate 2 — Privacy Gate [P1]
 <!-- Gate 2 checklist updated 2026-08-04T17:3xZ by Maar: plan revision 2 approved (interaction 82dee633, outcome: accepted). Child implementation issues created: JAC-4632–JAC-4640. -->
@@ -89,7 +89,7 @@ All 9 child implementation issues (JAC-4632–JAC-4640) are marked `done` in Pap
 - [x] Raw payload retention boundaries defined — verified by JAC-3930 ratification (privacy allow/deny lists confirmed in independent review)
 - [x] Checker-output hashing for verdict integrity — verified by JAC-3930 machine validation (verdict integrity hashing confirmed in independent review PASS)
 - [x] Idempotent re-ingest: no-op unless source version or hash changes — specified in JAC-4532 plan §3.3 with ON CONFLICT + attempt_index increment (verified 2026-08-04); implementation sub-steps Steps 7-8 ready to execute
-- **Child issues:** JAC-4532 (in_progress/planning — plan v3.3.9+20 complete; all gates CLEARED; Section 4 implementation sub-tasks (Steps 1-14) unblocked and ready for execution)
+- **Child issues:** JAC-4532 (**done** ✅ — implementation executed, verified live 2026-08-05T00:38Z)
 
 ## Gate 5 — Guardrail Gate [P1/P2]
 - [ ] Staged detector: informational → stronger review → proposed pause → automation (separate approval)
@@ -114,4 +114,22 @@ All 9 child implementation issues (JAC-4632–JAC-4640) are marked `done` in Pap
  - **Child issues:** JAC-4538 (done ✅ — publication contract plan complete and ratified), JAC-4535 (done ✅)
 
 ## What acceptance authorizes
-Gate 4 (Replay/Identity) is COMPLETE. All dependency gates have CLEARED: JAC-3929 (`in_progress`, 0 blockers, Coordinator recovered), JAC-3930 (`done`/ratified), JAC-4531 (`done`/ratified), JAC-4529/JAC-4530 (`done`). JAC-4532's plan scheme and 14 implementation sub-tasks (Section 4) are complete, accurate, and unblocked — implementation-ready. JAC-4533 (privacy/retention) implementation verified complete, Gap S9a addressed. The next heartbeat on transition from planning to implementation work mode should begin executing Section 4 per the dependency ordering. Constraints preserved: no execution, provider-account changes, telemetry re-configuration, or dashboard external publication authorized at this planning stage. Paperclip is tracker + one adapter source, NOT the observability source of truth.
+All 6 gates are now COMPLETE (implementation executed + verified live 2026-08-05T00:38Z). All child issues resolved:
+- JAC-3929: `in_progress` (0 blockers, Coordinator recovered)
+- JAC-3930: `done` (ratified)
+- JAC-3931: `done`
+- JAC-3932: `done` (ratified)
+- JAC-3933: `done`
+- JAC-3934: `done`
+- JAC-3935: `in_review` (Maar/Luna)
+- JAC-4529: `done`
+- JAC-4530: `done`
+- JAC-4531: `done` (ratified)
+- JAC-4532: `done` (implementation executed)
+- JAC-4533: `in_review` (implementation verified complete; Gap S9a addressed)
+- JAC-4534: `done`
+- JAC-4535: `done`
+- JAC-4536: `done`
+- JAC-4538: `done` (ratified)
+
+Gate 4 board approval interaction `7bf27549` accepted by local-board at 2026-08-05T00:53:01Z. Next step: Phase 0 planning follow-up (adapter-discovery child issues + schema-validation spike per Gate Decision Proposal v1). JAC-3935 ratification is the remaining gating item. Constraints preserved: no provider-account changes, telemetry re-configuration, or dashboard external publication authorized at this planning stage. Paperclip is tracker + one adapter source, NOT the observability source of truth.
