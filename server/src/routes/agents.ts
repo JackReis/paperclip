@@ -109,6 +109,7 @@ import { resolveCoreTrustPreset } from "../services/trust-preset-resolver.js";
 import { readObject } from "../lib/objects.js";
 import { listInvalidOrgChainDescendantIds } from "../services/agent-invokability.js";
 import { logger } from "../middleware/logger.js";
+import { invalidateCompanyCache } from "../services/agent-instructions-inheritance.js";
 import {
   AGENT_PROFILE_CHANGE_CONSENT_FIELDS,
   agentInstructionsChangeTargetKey,
@@ -199,7 +200,7 @@ export function agentRoutes(
   const recovery = recoveryService(db, { enqueueWakeup: heartbeat.wakeup });
   const issueApprovalsSvc = issueApprovalService(db);
   const secretsSvc = secretService(db);
-  const instructions = agentInstructionsService();
+  const instructions = agentInstructionsService(db);
   const companySkills = companySkillService(db);
   const workspaceOperations = workspaceOperationService(db);
   const instanceSettings = instanceSettingsService(db);
@@ -2934,6 +2935,9 @@ export function agentRoutes(
         },
       },
     );
+
+    // Invalidate inheritance cache — agent's override instructions changed
+    if (existing.folderId) invalidateCompanyCache(existing.companyId);
 
     await logActivity(db, {
       companyId: existing.companyId,

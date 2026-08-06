@@ -8,6 +8,7 @@ import {
 } from "@paperclipai/shared";
 import { validate } from "../middleware/validate.js";
 import { agentFolderService, logActivity } from "../services/index.js";
+import { invalidateCompanyCache } from "../services/agent-instructions-inheritance.js";
 import { assertCompanyAccess, getActorInfo } from "./authz.js";
 
 export function agentFolderRoutes(db: Db) {
@@ -93,6 +94,9 @@ export function agentFolderRoutes(db: Db) {
         res.status(404).json({ error: "Folder not found" });
         return;
       }
+      // On folder reparent, invalidate all descendant agent caches
+      // (both old and new parent chains may contain different agent sets)
+      invalidateCompanyCache(companyId);
       const actor = getActorInfo(req);
       await logActivity(db, {
         companyId,
@@ -120,6 +124,8 @@ export function agentFolderRoutes(db: Db) {
         res.status(404).json({ error: "Folder not found" });
         return;
       }
+      // On folder deletion, invalidate caches for any descendant agents
+      invalidateCompanyCache(companyId);
       const actor = getActorInfo(req);
       await logActivity(db, {
         companyId,
@@ -157,6 +163,8 @@ export function agentFolderRoutes(db: Db) {
         return;
       }
       await svc.assignAgents(companyId, folderId, agentIds);
+      // Invalidate inheritance cache for affected agents
+      invalidateCompanyCache(companyId);
       const actor = getActorInfo(req);
       await logActivity(db, {
         companyId,
@@ -196,6 +204,8 @@ export function agentFolderRoutes(db: Db) {
       } else {
         await svc.unassignAgent(companyId, agentId);
       }
+      // Invalidate inheritance cache for the affected agent
+      invalidateCompanyCache(companyId);
       const actor = getActorInfo(req);
       await logActivity(db, {
         companyId,
