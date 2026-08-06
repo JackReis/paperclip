@@ -236,6 +236,18 @@ describeEmbeddedPostgres("agent folders integration", () => {
       );
     });
 
+    it("force deletes a folder and its child folders", async () => {
+      const parent = await createFolder({ name: "Parent" });
+      const child = await createFolder({ name: "Child", parentId: parent.id });
+
+      const deleted = await svc.deleteFolder(companyId, parent.id, { force: true });
+      expect(deleted).not.toBeNull();
+      expect(deleted!.id).toBe(parent.id);
+
+      expect(await svc.get(companyId, parent.id)).toBeNull();
+      expect(await svc.get(companyId, child.id)).toBeNull();
+    });
+
     it("deletes a folder and nullifies its agents' folder_id", async () => {
       const folder = await createFolder({ name: "Team" });
       const agent = await createAgent("Agent A", "general", folder.id);

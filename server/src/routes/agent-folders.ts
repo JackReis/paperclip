@@ -113,9 +113,10 @@ export function agentFolderRoutes(db: Db) {
   router.delete("/companies/:companyId/agent-folders/:folderId", async (req, res) => {
     const companyId = req.params.companyId as string;
     const folderId = req.params.folderId as string;
+    const force = req.query.force === "true";
     assertCompanyAccess(req, companyId);
     try {
-      const deleted = await svc.deleteFolder(companyId, folderId);
+      const deleted = await svc.deleteFolder(companyId, folderId, { force });
       if (!deleted) {
         res.status(404).json({ error: "Folder not found" });
         return;
@@ -131,7 +132,7 @@ export function agentFolderRoutes(db: Db) {
         action: "agent_folder.deleted",
         entityType: "agent_folder",
         entityId: deleted.id,
-        details: { name: deleted.name },
+        details: { name: deleted.name, force },
       });
       res.json({ deleted });
     } catch (err) {
