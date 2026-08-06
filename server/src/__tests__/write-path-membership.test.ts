@@ -30,6 +30,7 @@ const mockGoalService = vi.hoisted(() => ({
   getById: vi.fn(),
   create: vi.fn(),
   update: vi.fn(),
+  updateWithTransition: vi.fn(),
   remove: vi.fn(),
 }));
 
@@ -111,6 +112,7 @@ function resetMocks() {
   mockGoalService.getById.mockImplementation(async () => ({ ...baseGoal }));
   mockGoalService.create.mockImplementation(async () => ({ ...baseGoal }));
   mockGoalService.update.mockImplementation(async () => ({ ...baseGoal }));
+  mockGoalService.updateWithTransition.mockImplementation(async () => ({ ...baseGoal }));
   mockGoalService.remove.mockImplementation(async () => ({ ...baseGoal }));
   mockLogActivity.mockImplementation(async () => undefined);
   mockGetTelemetryClient.mockReturnValue({ track: vi.fn() });
@@ -247,7 +249,7 @@ describe.sequential("write-path membership checks (viewer / inactive)", () => {
       );
 
       expect(res.status).toBe(200);
-      expect(mockGoalService.update).toHaveBeenCalledWith(goalId, { title: "New title" });
+      expect(mockGoalService.updateWithTransition).toHaveBeenCalledWith(goalId, { title: "New title" });
     });
   });
 });
