@@ -2410,6 +2410,17 @@ export type {
   MoveAgentToFolder,
 } from "./types/agent-folders.js";
 
+export type {
+  MigrationResult,
+  BrokenFolderReference,
+  BrokenFolderChain,
+  FolderCycle,
+  MissingFolderInstructions,
+  ConflictingExternalFolderInstructions,
+  MisalignedInstructionsRoot,
+  InheritanceValidationResult,
+} from "./types/folder-migration.js";
+
 export {
   createAgentFolderSchema,
   updateAgentFolderSchema,

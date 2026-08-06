@@ -22,7 +22,12 @@ export {
 } from "./built-in-agents.js";
 export { agentInstructionsService, syncInstructionsBundleConfigFromFilePath } from "./agent-instructions.js";
 export { agentFolderService } from "./agent-folders.js";
-export { folderMigrationService, FolderMigrationService } from "./folder-migration.js";
+export {
+  folderMigrationService,
+  FolderMigrationService,
+  type MigrationResult,
+  type InheritanceValidationResult,
+} from "./folder-migration.js";
 export {
   writeAgentFolderPointerFile,
   removeAgentFolderPointerFile,
