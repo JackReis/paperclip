@@ -191,7 +191,11 @@ async function resolveFolderChain(
   while (currentId !== null && !visited.has(currentId)) {
     visited.add(currentId);
     const folder = await resolveFolder(currentId);
-    if (!folder) break;
+    if (!folder) {
+      // Clean exit: folder not found or API unreachable. This is NOT a cycle.
+      currentId = null;
+      break;
+    }
 
     chain.push(folder);
     currentId = folder.parentId;
