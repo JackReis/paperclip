@@ -4,6 +4,7 @@ import { registerAgentCommands } from "../commands/client/agent.js";
 
 const COMPANY_ID = "22222222-2222-4222-8222-222222222222";
 const AGENT_ID = "11111111-1111-4111-8111-111111111111";
+const FOLDER_ID = "44444444-4444-4444-8444-444444444444";
 const REVISION_ID = "33333333-3333-4333-8333-333333333333";
 
 function createProgram(): Command {
@@ -45,9 +46,11 @@ describe("agent lifecycle commands", () => {
       "agent", "create",
       "--company-id", COMPANY_ID,
       "--payload-json", JSON.stringify({ name: "Builder", adapterType: "codex_local" }),
+      "--folder-id", FOLDER_ID,
     ]);
     await run(["agent", "hire", "--company-id", COMPANY_ID, "--payload-json", "{}"]);
     await run(["agent", "update", AGENT_ID, "--payload-json", JSON.stringify({ title: "Senior Builder" })]);
+    await run(["agent", "move", AGENT_ID, "--company-id", COMPANY_ID, "--folder-id", FOLDER_ID]);
     await run(["agent", "pause", AGENT_ID]);
     await run(["agent", "resume", AGENT_ID]);
     await run(["agent", "approve", AGENT_ID]);
@@ -60,6 +63,7 @@ describe("agent lifecycle commands", () => {
       ["POST", `http://localhost:3100/api/companies/${COMPANY_ID}/agents`],
       ["POST", `http://localhost:3100/api/companies/${COMPANY_ID}/agent-hires`],
       ["PATCH", `http://localhost:3100/api/agents/${AGENT_ID}`],
+      ["POST", `http://localhost:3100/api/companies/${COMPANY_ID}/agent-folders/agents/${AGENT_ID}/move`],
       ["POST", `http://localhost:3100/api/agents/${AGENT_ID}/pause`],
       ["POST", `http://localhost:3100/api/agents/${AGENT_ID}/resume`],
       ["POST", `http://localhost:3100/api/agents/${AGENT_ID}/approve`],

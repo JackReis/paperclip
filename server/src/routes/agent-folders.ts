@@ -245,5 +245,25 @@ export function agentFolderRoutes(db: Db) {
     },
   );
 
+  // Get the merged folder-level instructions bundle (this folder's AGENTS.md
+  // plus inherited ancestor instructions). Path: <instanceRoot>/companies/<cid>/folders/<fid>/instructions/
+  router.get(
+    "/companies/:companyId/agent-folders/:folderId/instructions-bundle",
+    async (req, res) => {
+      const companyId = req.params.companyId as string;
+      const folderId = req.params.folderId as string;
+      assertCompanyAccess(req, companyId);
+      const relativePath = typeof req.query.path === "string" && req.query.path.trim()
+        ? req.query.path.trim()
+        : null;
+      const result = await svc.getInstructionsBundle(companyId, folderId, relativePath);
+      if (!result) {
+        res.status(404).json({ error: "Folder not found" });
+        return;
+      }
+      res.json(result);
+    },
+  );
+
   return router;
 }
