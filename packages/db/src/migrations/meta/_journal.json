@@ -1450,6 +1450,90 @@
       "when": 1785988680096,
       "tag": "0208_keen_sharon_carter",
       "breakpoints": true
+    },
+    {
+      "idx": 211,
+      "version": "7",
+      "when": 1784824200000,
+      "tag": "0211_routine_goal_sync_metadata",
+      "breakpoints": true
+    },
+    {
+      "idx": 212,
+      "version": "7",
+      "when": 1783025824120,
+      "tag": "0212_environment_custom_image_templates_reconciliation",
+      "breakpoints": true
+    },
+    {
+      "idx": 213,
+      "version": "7",
+      "when": 1783025924120,
+      "tag": "0213_agent_sessions",
+      "breakpoints": true
+    },
+    {
+      "idx": 214,
+      "version": "7",
+      "when": 1775500000000,
+      "tag": "0214_cost_events_coverage_fields",
+      "breakpoints": true
+    },
+    {
+      "idx": 215,
+      "version": "7",
+      "when": 1784592001000,
+      "tag": "0215_run_events_coverage",
+      "breakpoints": true
+    },
+    {
+      "idx": 216,
+      "version": "7",
+      "when": 1784592001000,
+      "tag": "0216_productivity_review_trigger_snooze",
+      "breakpoints": true
+    },
+    {
+      "idx": 217,
+      "version": "7",
+      "when": 1784592002000,
+      "tag": "0217_cost_events_price_basis",
+      "breakpoints": true
+    },
+    {
+      "idx": 218,
+      "version": "7",
+      "when": 1784592003000,
+      "tag": "0218_run_events_extended_fields",
+      "breakpoints": true
+    },
+    {
+      "idx": 219,
+      "version": "7",
+      "when": 1784592004000,
+      "tag": "0219_cost_events_privacy_index",
+      "breakpoints": true
+    },
+    {
+      "idx": 220,
+      "version": "7",
+      "when": 1785970000000,
+      "tag": "0220_jac4532_event_identity_idempotency_enforcement",
+      "breakpoints": true
+    },
+    {
+      "idx": 221,
+      "version": "7",
+      "when": 1786060000000,
+      "tag": "0221_jac4747_agent_folders",
+      "breakpoints": true
+    },
+    {
+      "idx": 222,
+      "version": "7",
+      "when": 1786070000000,
+      "tag": "0222_jac4538_issue_work_products_approval_id",
+      "breakpoints": true
     }
   ]
 }

@@ -15,8 +15,8 @@ import {
   startEmbeddedPostgresTestDatabase,
 } from "./test-embedded-postgres.js";
 
-const RECONCILIATION_MIGRATION = "0208_environment_custom_image_templates_reconciliation.sql";
-const AGENT_SESSIONS_MIGRATION = "0209_agent_sessions.sql";
+const RECONCILIATION_MIGRATION = "0212_environment_custom_image_templates_reconciliation.sql";
+const AGENT_SESSIONS_MIGRATION = "0213_agent_sessions.sql";
 const LOCAL_0125_AGENT_SESSIONS_HASH = "d53c4598fd1813fdff5c3fabdc8e6192bc665b3ec9031ae795c0e9d0955b08e6";
 
 const protectedMigrationHashes = {
@@ -262,10 +262,10 @@ describe("agent sessions migration artifacts", () => {
     ) as { entries: Array<{ idx: number; tag: string }> };
 
     expect(journal.entries.slice(-4)).toEqual([
-      { idx: 212, version: "7", when: 1784592001000, tag: "0212_productivity_review_trigger_snooze", breakpoints: true },
-      { idx: 213, version: "7", when: 1784592002000, tag: "0213_cost_events_price_basis", breakpoints: true },
-      { idx: 214, version: "7", when: 1784592003000, tag: "0214_run_events_extended_fields", breakpoints: true },
-      { idx: 215, version: "7", when: 1784592004000, tag: "0215_cost_events_privacy_index", breakpoints: true },
+      { idx: 219, version: "7", when: 1784592004000, tag: "0219_cost_events_privacy_index", breakpoints: true },
+      { idx: 220, version: "7", when: 1785970000000, tag: "0220_jac4532_event_identity_idempotency_enforcement", breakpoints: true },
+      { idx: 221, version: "7", when: 1786060000000, tag: "0221_jac4747_agent_folders", breakpoints: true },
+      { idx: 222, version: "7", when: 1786070000000, tag: "0222_jac4538_issue_work_products_approval_id", breakpoints: true },
     ]);
     await expect(fs.promises.access(new URL("./migrations/0125_agent_sessions.sql", import.meta.url))).rejects.toThrow();
     await expect(migrationContent(RECONCILIATION_MIGRATION)).resolves.toContain("CREATE TABLE IF NOT EXISTS");
