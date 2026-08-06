@@ -11,13 +11,14 @@ import {
   uniqueIndex,
 } from "drizzle-orm/pg-core";
 import { agents } from "./agents.js";
+import { agentSessions } from "./agent_sessions.js";
 import { projects } from "./projects.js";
 import { goals } from "./goals.js";
 import { companies } from "./companies.js";
 import { heartbeatRuns } from "./heartbeat_runs.js";
 import { projectWorkspaces } from "./project_workspaces.js";
 import { executionWorkspaces } from "./execution_workspaces.js";
-import type { IssueReviewPolicy, IssueUnblockDescriptor, SourceTrustMetadata } from "@paperclipai/shared";
+import type { IssueReviewPolicy, IssueUnblockDescriptor, SourceTrustMetadata, ProductivityReviewOverride } from "@paperclipai/shared";
 
 export const issues = pgTable(
   "issues",
@@ -38,6 +39,11 @@ export const issues = pgTable(
     assigneeAgentId: uuid("assignee_agent_id").references(() => agents.id),
     assigneeUserId: text("assignee_user_id"),
     checkoutRunId: uuid("checkout_run_id").references(() => heartbeatRuns.id, { onDelete: "set null" }),
+    sessionId: uuid("session_id").references(() => agentSessions.id, { onDelete: "set null" }),
+    productivityReviewOverride: jsonb("productivity_review_override")
+      .$type<ProductivityReviewOverride | null>()
+      .notNull()
+      .default(sql`'null'::jsonb`),
     executionRunId: uuid("execution_run_id").references(() => heartbeatRuns.id, { onDelete: "set null" }),
     executionAgentNameKey: text("execution_agent_name_key"),
     executionLockedAt: timestamp("execution_locked_at", { withTimezone: true }),
