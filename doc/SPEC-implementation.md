@@ -168,6 +168,7 @@ Invariant: every business record belongs to exactly one company.
 - `permissions` jsonb not null default `{}`
 - `last_heartbeat_at` timestamptz null
 - `metadata` jsonb null
+- `folder_id` uuid fk `agent_folders.id` null ON DELETE SET NULL — hierarchical folder membership for instruction inheritance (see 7.3a)
 
 Invariants:
 
@@ -186,6 +187,28 @@ Invariants:
 - `revoked_at` timestamptz null
 
 Invariant: plaintext key shown once at creation; only hash stored.
+
+## 7.3a `agent_folders`
+
+Hierarchical folder structure for organizing agent instruction inheritance. Each folder lives under a company and may nest under a parent folder (self-referential `parent_id`). `agents.folder_id` (see 7.2) references this table.
+
+- `id` uuid pk
+- `company_id` uuid fk `companies.id` not null ON DELETE CASCADE
+- `parent_id` uuid fk `agent_folders.id` null ON DELETE SET NULL
+- `name` text not null
+- `slug` text not null
+- `sort_order` int not null default 0
+- `metadata` jsonb not null default `{}`
+- `created_at` timestamptz not null default now()
+- `updated_at` timestamptz not null default now()
+
+Indexes: unique `(company_id, parent_id, slug)`, unique `(company_id, parent_id, name)`, index on `(company_id, parent_id, sort_order, name)`.
+
+Invariants:
+- slug is unique within a company under a given parent (root or nested)
+- parent_id cannot reference a descendant (no cycles)
+- deleting a folder with child folders is rejected (move/delete children first)
+- deleting a folder with agents sets those agents' folder_id to NULL
 
 ## 7.4 `goals`
 
@@ -503,6 +526,106 @@ Decision-desk triage uses company-scoped sidecars rather than adding queue field
 - `decision_retention` stores the attention source's last observed activity timestamp, monotonic version, Keep flag, and reversible archive provenance. Queue `retention_days` overrides use the shortest assigned queue threshold; otherwise the shelf threshold is 30 days.
 - `decision_archive_notification_outbox` records one retry-safe origin-agent notification per source/archive version. The 90-day internal sweeper archives only unkept rows and coalesces delivery per origin agent.
 - Queue membership never grants source visibility. Item writes re-authorize the referenced source, and queue reads re-authorize every member before returning rows or counts.
+
+## 7.18 Hierarchical Agent Folders (JAC-4746)
+
+Agent folders (`agent_folders` table, see §7.3a) provide a hierarchical organization
+layer for agent instruction inheritance. `agents.folder_id` (see §7.2) links an
+agent to a folder. Folder-level shared instructions cascade to all agents in that
+folder's subtree, enabling efficient management of 100+ agent fleets.
+
+### 7.18.1 Disk Layout
+
+Folder-level shared instructions live on disk at:
+
+```
+<instanceRoot>/companies/<companyId>/folders/<folderId>/instructions/
+```
+
+- `<instanceRoot>` is resolved from `PAPERCLIP_INSTANCE_ROOT` env var, or
+  `$HOME/.paperclip/instances/default`.
+- Each folder's instruction directory contains an `AGENTS.md` entry file.
+  Additional `.md` files in the same directory are also included in the
+  fingerprint for cache staleness detection.
+- Agents with folder-specific overrides get a pointer file at:
+  `.../folders/<folderId>/instructions/<agentId>.md`
+  containing the agent-specific instructions (or a zero-override marker).
+- Agents without overrides use a pure-DB pointer (the `folder_id` column on the
+  `agents` table) and need no pointer file.
+
+### 7.18.2 Instruction Resolution
+
+1. The agent's own instructions file (pointer file) — if present with override
+   content — takes highest precedence.
+2. If no override, resolve the parent folder chain (agent → folder → parent →
+   root) and read `AGENTS.md` from each folder's instructions directory.
+3. Instructions are pre-merged in leaf-to-root order (deepest folder first) so
+   that more specific folder instructions take precedence.
+4. Results are cached with a fingerprint covering the folder chain IDs, file
+   modification times, content hashes, and the agent's own instructions hash.
+5. Cache invalidation: when any instruction file in the chain is modified,
+   the fingerprint changes and re-merging is triggered.
+
+### 7.18.3 API Endpoints
+
+Agent folder routes are mounted under `/api/companies/:companyId/agent-folders`:
+
+| Method | Path | Description |
+|--------|------|-------------|
+| GET | `/agent-folders` | List all folders for the company, with agent and descendant counts |
+| GET | `/agent-folders/:folderId` | Get a single folder by ID |
+| POST | `/agent-folders` | Create a new folder (root or nested under `parentId`) |
+| PATCH | `/agent-folders/:folderId` | Update folder name, slug, sort order, or metadata |
+| POST | `/agent-folders/:folderId/move` | Move a folder to a new parent (cycle detection enforced) |
+| DELETE | `/agent-folders/:folderId` | Delete an empty folder; nullifies agent folder_id on delete |
+| POST | `/agent-folders/:folderId/agents` | Assign agents to a folder |
+| GET | `/agent-folders/:folderId/agents` | Recursively list all agents in the folder subtree |
+| POST | `/agent-folders/agents/:agentId/move` | Move a single agent to a folder (or unassign with `folderId: null`) |
+
+Folder migration routes (board-only, see §7.18.4):
+
+| Method | Path | Description |
+|--------|------|-------------|
+| GET | `/folders/migration-preview` | Preview unassigned agents grouped by role |
+| POST | `/folders/migrate-by-role` | Migrate all flat agents into role-based folders (idempotent) |
+| POST | `/folders/migrate-by-metadata` | Migrate flat agents grouped by a metadata key |
+| POST | `/folders/migrate-to-folder` | Migrate a specific list of agents into a named folder |
+| POST | `/folders/validate-inheritance` | Validate the inheritance chain for broken refs, cycles, missing instructions |
+
+### 7.18.4 Inheritance Resolution Behavior
+
+- **Single folder**: agent inherits instructions from its immediate folder's
+  `AGENTS.md`, merged with any override in the pointer file.
+- **Multi-level chain**: instructions are merged leaf-to-root; child folder
+  instructions override parent folder instructions when keys conflict (the
+  concatenation preserves both; the agent sees child content first).
+- **Agent overrides**: an agent with a pointer file containing override
+  content gets its own instructions prepended to the folder-merged result.
+- **Backward compat**: agents without a `folder_id` get flat instructions
+  (no folder inheritance). No migration is required — the column is nullable.
+- **Cache invalidation**: updating a folder (rename, move, metadata) or
+  modifying any instruction file in the chain invalidates the cached merge for
+  that folder+agent combination. The service uses an advisory lock per company
+  to serialize mutating operations.
+
+### 7.18.5 CLI Commands
+
+The `folder` command group provides:
+
+```
+paperclipai folder list                              — list agent folders
+paperclipai folder migrate-from-flat [--dry-run] [--group-by <key>] — migrate flat agents
+paperclipai folder migrate-to-folder --folder-name <n> --agent-ids <csv> [--dry-run]
+paperclipai folder unassign --agent-ids <csv|all>    — remove agents from folders
+paperclipai folder validate-inheritance              — validate inheritance chain
+```
+
+### 7.18.6 Disk Path Note
+
+The `agent_folders` table (§7.3a) is distinct from the pre-existing `folders`
+table used for routine/skill items. `agent_folders` is specifically for the
+agent instruction hierarchy and uses a separate API route namespace
+(`/agent-folders/`) versus skill/routine folders (`/folders/`).
 
 ## 8. State Machines
 
