@@ -840,6 +840,7 @@ export type {
   AgentInstructionsFileSummary,
   AgentInstructionsFileDetail,
   AgentInstructionsBundle,
+  InheritanceChainEntry,
   AgentKeyCreated,
   AgentConfigRevision,
   AdapterEnvironmentCheckLevel,
