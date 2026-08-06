@@ -1,4 +1,5 @@
 import { Command } from "commander";
+import pc from "picocolors";
 import {
   agentSkillSyncSchema,
   createAgentSchema,
@@ -67,6 +68,11 @@ interface AgentDeleteOptions extends BaseClientOptions {
 
 interface AgentResetSessionOptions extends BaseClientOptions {
   taskKey?: string;
+}
+
+interface AgentMoveOptions extends BaseClientOptions {
+  companyId?: string;
+  folderId?: string;
 }
 
 interface AgentSkillsSyncOptions extends BaseClientOptions {
@@ -341,10 +347,14 @@ export function registerAgentCommands(program: Command): void {
       .description("Create an agent from a JSON payload")
       .option("-C, --company-id <id>", "Company ID")
       .requiredOption("--payload-json <json>", "CreateAgent JSON payload")
-      .action(async (opts: AgentJsonPayloadOptions) => {
+      .option("-f, --folder-id <folderId>", "Assign the new agent to a folder")
+      .action(async (opts: AgentJsonPayloadOptions & { folderId?: string }) => {
         try {
           const ctx = resolveCommandContext(opts, { requireCompany: true });
           const payload = createAgentSchema.parse(parseJson(opts.payloadJson));
+          if (opts.folderId !== undefined) {
+            payload.folderId = opts.folderId || null;
+          }
           const created = await ctx.api.post<Agent>(apiPath`/api/companies/${ctx.companyId}/agents`, payload);
           printOutput(created, { json: ctx.json });
         } catch (err) {
@@ -453,6 +463,42 @@ export function registerAgentCommands(program: Command): void {
           handleCommandError(err);
         }
       }),
+  );
+
+  addCommonClientOptions(
+    agent
+      .command("move")
+      .description("Move an agent to a folder (or unassign from a folder)")
+      .argument("<agentId>", "Agent ID")
+      .requiredOption("-C, --company-id <id>", "Company ID")
+      .option("-f, --folder-id <folderId>", "Target folder ID (use 'null' to unassign)")
+      .action(async (agentId: string, opts: AgentMoveOptions) => {
+        try {
+          const ctx = resolveCommandContext(opts, { requireCompany: true });
+          const folderId =
+            opts.folderId === undefined
+              ? undefined
+              : opts.folderId === "null"
+                ? null
+                : opts.folderId;
+          const result = await ctx.api.post<{ ok: boolean }>(
+            apiPath`/api/companies/${ctx.companyId}/agent-folders/agents/${agentId}/move`,
+            { folderId },
+          );
+          if (ctx.json) {
+            printOutput(result, { json: true });
+            return;
+          }
+          console.log(
+            pc.green(
+              `✓ Agent ${agentId} ${folderId === null ? "unassigned from folder" : folderId === undefined ? "folder assignment unchanged" : "moved to folder " + folderId}.`,
+            ),
+          );
+        } catch (err) {
+          handleCommandError(err);
+        }
+      }),
+    { includeCompany: false },
   );
 
   addCommonClientOptions(

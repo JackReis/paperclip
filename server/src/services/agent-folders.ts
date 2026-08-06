@@ -10,6 +10,9 @@ import type {
   UpdateAgentFolder,
 } from "@paperclipai/shared";
 import { conflict, notFound, unprocessable } from "../errors.js";
+import fs from "node:fs/promises";
+import path from "node:path";
+import { resolveFolderInstructionsDir } from "./agent-instructions-inheritance.js";
 
 type AgentFolderRow = typeof agentFolders.$inferSelect;
 type AgentRow = typeof agents.$inferSelect;
@@ -19,6 +22,8 @@ function isPostgresError(error: unknown, code: string) {
     typeof error === "object" && error !== null && "code" in error && error.code === code
   );
 }
+
+const AGENTS_ENTRY = "AGENTS.md";
 
 function normalizeName(name: string) {
   return name.trim();
@@ -446,6 +451,49 @@ export function agentFolderService(db: Db, mutationLockHeld = false) {
       .orderBy(asc(agents.name));
   }
 
+  async function getInstructionsBundle(companyId: string, folderId: string, filePath: string | null) {
+    const folder = await getFolder(companyId, folderId);
+    if (!folder) return null;
+
+    const resolvedPath = filePath ?? AGENTS_ENTRY;
+    const ownDir = resolveFolderInstructionsDir(companyId, folderId);
+    const ownFile = path.join(ownDir, resolvedPath);
+
+    let ownContent: string | null = null;
+    try {
+      ownContent = await fs.readFile(ownFile, "utf-8");
+    } catch {
+      ownContent = null;
+    }
+
+    // Walk the parent chain leaf→root to gather inherited instructions.
+    const inherited: Array<{ folderId: string; folderName: string; content: string | null }> = [];
+    let currentId: string | null = folder.parentId;
+    const seen = new Set<string>();
+    while (currentId && !seen.has(currentId)) {
+      seen.add(currentId);
+      const ancestor = await getFolder(companyId, currentId);
+      if (!ancestor) break;
+      const ancestorDir = resolveFolderInstructionsDir(companyId, ancestor.id);
+      const ancestorFile = path.join(ancestorDir, resolvedPath);
+      let ancestorContent: string | null = null;
+      try {
+        ancestorContent = await fs.readFile(ancestorFile, "utf-8");
+      } catch {
+        ancestorContent = null;
+      }
+      inherited.push({ folderId: ancestor.id, folderName: ancestor.name, content: ancestorContent });
+      currentId = ancestor.parentId;
+    }
+
+    return {
+      folderId: folder.id,
+      folderName: folder.name,
+      content: ownContent,
+      inherited,
+    };
+  }
+
   return {
     list,
     get,
@@ -457,5 +505,6 @@ export function agentFolderService(db: Db, mutationLockHeld = false) {
     unassignAgent,
     listAgentsInFolder,
     descendantIds,
+    getInstructionsBundle,
   };
 }

@@ -23,6 +23,10 @@ import {
 } from "./helpers/embedded-postgres.js";
 import { agentFolderRoutes } from "../routes/agent-folders.js";
 import { errorHandler } from "../middleware/index.js";
+import fs from "node:fs/promises";
+import path from "node:path";
+import { resolvePaperclipInstanceRoot } from "../home-paths.js";
+import { resolveFolderInstructionsDir } from "../services/agent-instructions-inheritance.js";
 
 // Mock logActivity to avoid needing the full activity log table infrastructure
 vi.mock("../services/index.js", async (importOriginal) => {
@@ -346,6 +350,7 @@ describeEmbeddedPostgres("agent folder routes integration", () => {
       const parent = await createFolderInDb("Parent");
       const child = await createFolderInDb("Child", parent.id);
 
+
       const res = await request(app)
         .post(`${baseUrl(companyId)}/${parent.id}/move`)
         .send({ parentId: child.id });
@@ -516,6 +521,76 @@ describeEmbeddedPostgres("agent folder routes integration", () => {
         .where(eq(agents.id, agent.id))
         .limit(1);
       expect(updated!.folderId).toBeNull();
+    });
+  });
+
+  // ── Phase 3: instructions-bundle ─────────────────────────────
+
+  describe("GET /companies/:companyId/agent-folders/:folderId/instructions-bundle", () => {
+    it("returns the folder's own AGENTS.md and inherited ancestor instructions", async () => {
+      // Create parent → child folder hierarchy
+      const parent = await createFolderInDb("Parent");
+      const child = await createFolderInDb("Child", parent.id);
+
+      // Write instructions to both folders on disk
+      const parentDir = resolveFolderInstructionsDir(companyId, parent.id);
+      const childDir = resolveFolderInstructionsDir(companyId, child.id);
+      await fs.mkdir(parentDir, { recursive: true });
+      await fs.mkdir(childDir, { recursive: true });
+      await fs.writeFile(path.join(parentDir, "AGENTS.md"), "# Parent AGENTS");
+      await fs.writeFile(path.join(childDir, "AGENTS.md"), "# Child AGENTS");
+
+      const res = await request(app).get(
+        `${baseUrl(companyId)}/${child.id}/instructions-bundle`,
+      );
+
+      expect(res.status).toBe(200);
+      expect(res.body.folderId).toBe(child.id);
+      expect(res.body.folderName).toBe("Child");
+      expect(res.body.content).toBe("# Child AGENTS");
+      expect(res.body.inherited).toHaveLength(1);
+      expect(res.body.inherited[0].folderName).toBe("Parent");
+      expect(res.body.inherited[0].content).toBe("# Parent AGENTS");
+
+      // cleanup
+      await fs.rm(parentDir, { recursive: true, force: true });
+      await fs.rm(childDir, { recursive: true, force: true });
+    });
+
+    it("returns null content when no instructions exist", async () => {
+      const child = await createFolderInDb("Lonely");
+
+      const res = await request(app).get(
+        `${baseUrl(companyId)}/${child.id}/instructions-bundle`,
+      );
+
+      expect(res.status).toBe(200);
+      expect(res.body.folderName).toBe("Lonely");
+      expect(res.body.content).toBeNull();
+      expect(res.body.inherited).toEqual([]);
+    });
+
+    it("returns 404 for a non-existent folder", async () => {
+      const fakeId = "00000000-0000-4000-8000-000000000000";
+      const res = await request(app).get(
+        `${baseUrl(companyId)}/${fakeId}/instructions-bundle`,
+      );
+      expect(res.status).toBe(404);
+    });
+
+    it("respects the ?path= query to read a different file", async () => {
+      const child = await createFolderInDb("Child");
+      const childDir = resolveFolderInstructionsDir(companyId, child.id);
+      await fs.mkdir(childDir, { recursive: true });
+      await fs.writeFile(path.join(childDir, "SYSTEM.md"), "system content");
+
+      const res = await request(app).get(
+        `${baseUrl(companyId)}/${child.id}/instructions-bundle?path=SYSTEM.md`,
+      );
+      expect(res.status).toBe(200);
+      expect(res.body.content).toBe("system content");
+
+      await fs.rm(childDir, { recursive: true, force: true });
     });
   });
 });
