@@ -1,0 +1,113 @@
+# Ringer config.toml for Talari host (jack.reis)
+# Deployed from Aegis to resolve hermes-j11l.6.5 drift
+# Talari has: agy, gemini, claude, kimi, kimi-cli
+# Missing: codex, opencode (not installed on Talari)
+# See: hermes-j11l.6.5 — Reconcile Ringer config.toml drift
+
+# Default identity stamped into state JSON and eval rows.
+identity_default = "talaris"
+
+# State files live under <state_dir>/runs/<run_id>.json.
+state_dir = "~/.ringer"
+
+# First localhost port tried for the per-run dashboard.
+dashboard_port_base = 8700
+
+# Belt-and-suspenders full-access gate.
+allow_full_access = true
+
+[eval]
+backend = "jsonl"
+jsonl_path = "~/.ringer/runs.jsonl"
+
+# Agy iterm2 (Gemini 3.1 Pro High) — the high-reasoning judge
+[engines.agy_iterm2]
+bin = "/Users/jack.reis/.local/bin/agy"
+model_default = "Gemini 3.1 Pro (High)"
+args = ["code", "--non-interactive"]
+args_template = [
+  "code",
+  "--non-interactive",
+  "--skip-git-repo-check",
+  "-m",
+  "{model}",
+  "{access_args}",
+  "{engine_args}",
+  "-C",
+  "{taskdir}",
+  "{spec}",
+]
+sandbox_args = ["--sandbox", "workspace-write"]
+full_access_args = ["--dangerously-bypass-approvals-and-sandbox"]
+
+# Gemini CLI
+[engines.gemini]
+bin = "/Users/jack.reis/.local/bin/gemini"
+model_default = "gemini-2.5-pro"
+args_template = [
+  "--cwd",
+  "{taskdir}",
+  "--yolo",
+  "-m",
+  "{model}",
+  "{engine_args}",
+  "--prompt",
+  "{spec}",
+]
+sandbox_args = []
+full_access_args = []
+
+# Claude Code
+[engines.claude]
+bin = "/Users/jack.reis/.local/bin/claude"
+model_default = "claude-sonnet-4-20250514"
+args_template = [
+  "--allowedCwd",
+  "{taskdir}",
+  "--dangerously-skip-permissions",
+  "--model",
+  "{model}",
+  "--output-format",
+  "json",
+  "{engine_args}",
+  "--prompt",
+  "{spec}",
+]
+sandbox_args = []
+full_access_args = []
+
+# Kimi Code subscription lane
+[engines.kimi]
+bin = "/Users/jack.reis/.kimi-code/bin/kimi"
+model_default = "kimi-for-coding/k2p7"
+args_template = [
+  "--model",
+  "{model}",
+  "--output-format",
+  "stream-json",
+  "--skills-dir",
+  "/Users/jack.reis/.config/ringer/empty-skills",
+  "{engine_args}",
+  "--prompt",
+  "{spec}",
+]
+sandbox_args = []
+full_access_args = ["--yolo"]
+token_regex = '"total_tokens":([0-9]+)'
+
+# Mock engine for CI/testing
+[engines.mock]
+bin = "python3"
+args_template = [
+  "/Users/jack.reis/ringer/engines/mock_worker.py",
+  "{spec}",
+]
+sandbox_args = []
+full_access_args = []
+token_regex = ""
+
+[artifact]
+enabled = true
+out = "~/.ringer/artifacts/{run_id}.html"
+report_out = "~/.ringer/artifacts/{run_id}-report.html"
+index_out = "~/.ringer/artifacts/index.html"
