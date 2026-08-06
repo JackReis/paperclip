@@ -7,7 +7,7 @@ import {
   updateAgentFolderSchema,
 } from "@paperclipai/shared";
 import { validate } from "../middleware/validate.js";
-import { agentFolderService, logActivity } from "../services/index.js";
+import { agentFolderService, agentService, logActivity, writeAgentFolderPointerFile, removeAgentFolderPointerFile } from "../services/index.js";
 import { assertCompanyAccess, getActorInfo } from "./authz.js";
 
 export function agentFolderRoutes(db: Db) {
@@ -157,6 +157,21 @@ export function agentFolderRoutes(db: Db) {
         return;
       }
       await svc.assignAgents(companyId, folderId, agentIds);
+
+      // Phase 3 (JAC-4752): Write pointer files for each assigned agent
+      const agentSvc = agentService(db);
+      for (const agentId of agentIds) {
+        const agent = await agentSvc.getById(agentId);
+        if (agent && agent.name) {
+          await writeAgentFolderPointerFile(
+            { id: agent.id, companyId: agent.companyId, name: agent.name, adapterConfig: agent.adapterConfig ?? {}, folderId: agent.folderId ?? folderId },
+            folderId,
+          ).catch((err) => {
+            console.error(`[JAC-4752] Failed to write pointer file for agent ${agent.id}:`, err);
+          });
+        }
+      }
+
       const actor = getActorInfo(req);
       await logActivity(db, {
         companyId,
@@ -191,10 +206,27 @@ export function agentFolderRoutes(db: Db) {
       const agentId = req.params.agentId as string;
       assertCompanyAccess(req, companyId);
       const folderId = req.body.folderId;
+      const agent = await agentService(db).getById(agentId);
+      if (!agent || agent.companyId !== companyId) {
+        res.status(404).json({ error: "Agent not found" });
+        return;
+      }
+
       if (folderId) {
         await svc.assignAgents(companyId, folderId, [agentId]);
+        await writeAgentFolderPointerFile(
+          { id: agent.id, companyId: agent.companyId, name: agent.name, adapterConfig: agent.adapterConfig ?? {}, folderId },
+          folderId,
+        ).catch((err) => {
+          console.error(`[JAC-4752] Failed to write pointer file for agent ${agent.id}:`, err);
+        });
       } else {
+        // Agent was in a folder, need to find old folderId before unassigning
+        const oldFolderId = agent.folderId;
         await svc.unassignAgent(companyId, agentId);
+        if (oldFolderId && agent.name) {
+          await removeAgentFolderPointerFile(companyId, oldFolderId, agentId).catch(() => undefined);
+        }
       }
       const actor = getActorInfo(req);
       await logActivity(db, {
