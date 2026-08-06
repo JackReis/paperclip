@@ -69,6 +69,10 @@ export {
   type IssueFilters,
 } from "./issues.js";
 export { issueThreadInteractionService } from "./issue-thread-interactions.js";
+export {
+  assertIssueReviewVerdictActorAllowed,
+  type IssueReviewVerdictActor,
+} from "./issue-review-policy.js";
 export { issueTreeControlService } from "./issue-tree-control.js";
 export { issueApprovalService } from "./issue-approvals.js";
 export { issueReferenceService } from "./issue-references.js";
@@ -111,6 +115,8 @@ export type {
 export { approvalService } from "./approvals.js";
 export { budgetService } from "./budgets.js";
 export { secretService } from "./secrets.js";
+export { createRunSecretRedactionRegistry } from "./run-secret-redaction.js";
+export { createSecretProposalsService } from "./secret-proposals.js";
 export { googleSheetsRobotEmailFromEnv, toolAccessService } from "./tool-access.js";
 export { smokeLabService } from "./smoke-lab.js";
 export { backfillLegacyToolOAuthTokens } from "./tool-oauth-legacy-backfill.js";
