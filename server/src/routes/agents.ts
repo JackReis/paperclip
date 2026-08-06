@@ -182,6 +182,8 @@ export function agentRoutes(
     "instructionsEntryFile",
     "instructionsFilePath",
     "agentsMdPath",
+    "instructionsFolderId",
+    "instructionsOverrides",
   ] as const;
   const KNOWN_INSTRUCTIONS_BUNDLE_KEY_SET: ReadonlySet<string> = new Set(KNOWN_INSTRUCTIONS_BUNDLE_KEYS);
 
