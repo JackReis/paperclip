@@ -1282,13 +1282,49 @@ describeEmbeddedPostgres("heartbeat orphaned process recovery", () => {
     return { companyId, agentId, runId, wakeupRequestId, issueId };
   }
 
-  it("keeps a local run active when the recorded pid is still alive", async () => {
+  it("terminates detached sessioned local child process group and reaps as process_lost", async () => {
+    const child = spawn(process.execPath, ["-e", "setInterval(() => {}, 1000)"], {
+      detached: true,
+      stdio: "ignore",
+    });
+    childProcesses.add(child);
+    expect(child.pid).toBeTypeOf("number");
+
+    const { runId } = await seedRunFixture({
+      processPid: child.pid ?? null,
+      processGroupId: child.pid ?? null,
+      includeIssue: false,
+    });
+    const heartbeat = heartbeatService(db);
+
+    const result = await heartbeat.reapOrphanedRuns();
+    expect(result.reaped).toBe(1);
+    expect(result.runIds).toEqual([runId]);
+
+    // The child process must have been terminated, not left running
+    await waitForPidExit(child.pid!, 2_000);
+
+    const run = await heartbeat.getRun(runId);
+    expect(run?.status).toBe("failed");
+    expect(run?.errorCode).toBe("process_lost");
+    expect(run?.error).toContain(String(child.pid));
+
+    // Because this run has no assigned issue, shouldRetry is limited: the
+    // process_lost finalization still runs (marking the run failed), but no
+    // retry is queued since there is no issue to retry on. The key fix is that
+    // the orphaned child is terminated and the run is not stuck in "running".
+  });
+
+  it("keeps a non-sessioned detached run marked as process_detached without killing", async () => {
+    // When no processGroupId is available (non-sessioned adapter or no pgid),
+    // the old behavior of marking as process_detached and continuing applies.
     const child = spawnAliveProcess();
     childProcesses.add(child);
     expect(child.pid).toBeTypeOf("number");
 
     const { runId, wakeupRequestId } = await seedRunFixture({
       processPid: child.pid ?? null,
+      processGroupId: null,
       includeIssue: false,
     });
     const heartbeat = heartbeatService(db);
