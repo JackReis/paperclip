@@ -556,16 +556,32 @@ Folder-level shared instructions live on disk at:
 
 ### 7.18.2 Instruction Resolution
 
-1. The agent's own instructions file (pointer file) — if present with override
-   content — takes highest precedence.
-2. If no override, resolve the parent folder chain (agent → folder → parent →
-   root) and read `AGENTS.md` from each folder's instructions directory.
-3. Instructions are pre-merged in leaf-to-root order (deepest folder first) so
-   that more specific folder instructions take precedence.
-4. Results are cached with a fingerprint covering the folder chain IDs, file
-   modification times, content hashes, and the agent's own instructions hash.
-5. Cache invalidation: when any instruction file in the chain is modified,
-   the fingerprint changes and re-merging is triggered.
+1. The agent's own override file (pointer file at
+   `<instanceRoot>/companies/<companyId>/folders/<folderId>/instructions/<agentId>.md`
+   containing override content) takes highest precedence and is appended last.
+2. Resolve the parent folder chain (agent → leaf folder → parent → root)
+   and read `AGENTS.md` from each folder's instructions directory. The chain is
+   walked root→leaf, so parent-folder instructions are emitted first and
+   leaf (more specific) folder instructions last.
+3. Instructions are pre-merged in root→leaf order as a sequence of
+   `\`# [Folder: <name>]\`` sections, joined by `\n\n---\n\n`. Leaf-folder
+   content therefore appears closer to the agent overrides and is more specific.
+4. Per-adapter supplementary files are appended after each folder's `AGENTS.md`
+   section: `HERMES.md` for `hermes_local` adapters, `CLAUDE.md` for
+   `claude_local` adapters (see §7.18.4). Adapters may declare an alternative
+   map via `adapterConfig.instructionsSupplementaryFiles`.
+5. The agent's own override file content is appended as a `\`# [Agent: <name>]\``
+   section after all folder sections. Per-agent inline overrides from
+   `adapterConfig.instructionsOverrides` are appended last, as
+   `\`# [Agent: <name> (override)]\``, taking the highest precedence.
+6. Results are cached with a fingerprint covering the folder chain IDs, per-folder
+   content hashes (all `.md` files, not just `AGENTS.md`), the agent's own
+   override-file hash, the adapter type, and the supplementary-files map.
+7. Cache invalidation: when any instruction file in the chain is modified, the
+   fingerprint changes and re-merging is triggered. Folder mutations (rename,
+   move, metadata, assign/unassign agents, delete) call `invalidateCompanyCache`
+   which clears every cached entry for the affected company. The service uses a
+   Postgres advisory lock per company to serialize mutating operations.
 
 ### 7.18.3 API Endpoints
 
@@ -582,6 +598,7 @@ Agent folder routes are mounted under `/api/companies/:companyId/agent-folders`:
 | POST | `/agent-folders/:folderId/agents` | Assign agents to a folder |
 | GET | `/agent-folders/:folderId/agents` | Recursively list all agents in the folder subtree |
 | POST | `/agent-folders/agents/:agentId/move` | Move a single agent to a folder (or unassign with `folderId: null`) |
+| GET  | `/agent-folders/:folderId/instructions-bundle` | Read the merged instruction bundle for a folder, with `?path=<file>` to read a specific supplementary file |
 
 Folder migration routes (board-only, see §7.18.4):
 
@@ -597,17 +614,36 @@ Folder migration routes (board-only, see §7.18.4):
 
 - **Single folder**: agent inherits instructions from its immediate folder's
   `AGENTS.md`, merged with any override in the pointer file.
-- **Multi-level chain**: instructions are merged leaf-to-root; child folder
-  instructions override parent folder instructions when keys conflict (the
-  concatenation preserves both; the agent sees child content first).
-- **Agent overrides**: an agent with a pointer file containing override
-  content gets its own instructions prepended to the folder-merged result.
+- **Multi-level chain**: instructions are merged root→leaf. Parent-folder
+  sections appear first; leaf (more specific) folder sections appear last, then
+  agent overrides. All content is preserved (concatenation), so the effective
+  precedence is: leaf folder > intermediate folder > root folder > ... , with the
+  agent override section appended after all folder sections.
+- **Adapter-specific supplementary files**: after each folder's `AGENTS.md`
+  section, the engine reads the adapter-specific supplementary file for the
+  agent's `adapterType` if present in that folder's instructions directory.
+  `hermes_local` → `HERMES.md`; `claude_local` → `CLAUDE.md`. An adapter
+  type with no mapping reads no supplementary file. This is how adapter-tuned
+  preamble/system prompts layer onto folder-shared instructions.
+- **Agent overrides**: an agent with a pointer file containing override content
+  gets its own instructions appended as a final `# [Agent: <name>]` section
+  (not a replacement — all folder content is preserved). Per-agent inline
+  overrides from `adapterConfig.instructionsOverrides` are appended even later,
+  as `# [Agent: <name> (override)]`, and take the highest precedence.
+- **Inline overrides**: `adapterConfig.instructionsOverrides` (a string) is
+  merged as the final section. `adapterConfig.instructionsSupplementaryFiles`
+  (a `Record<string,string>` map of adapter type → filename) may override the
+  built-in `HERMES.md`/`CLAUDE.md` mapping or declare that an adapter has no
+  supplementary file.
 - **Backward compat**: agents without a `folder_id` get flat instructions
-  (no folder inheritance). No migration is required — the column is nullable.
-- **Cache invalidation**: updating a folder (rename, move, metadata) or
-  modifying any instruction file in the chain invalidates the cached merge for
-  that folder+agent combination. The service uses an advisory lock per company
-  to serialize mutating operations.
+  (empty merged bundle, empty chain). No migration is required — the column
+  is nullable and the resolver short-circuits to an empty result.
+- **Cache invalidation**: updating a folder (rename, move, metadata, assign or
+  unassign agents, delete) calls `invalidateCompanyCache(companyId)`, which
+  clears every cached merge for that company. Editing any `.md` file in any
+  folder’s instructions directory changes the per-folder content hash and
+  therefore the fingerprint, forcing a re-merge. The service uses a Postgres
+  advisory lock per company to serialize mutating operations.
 
 ### 7.18.5 CLI Commands
 

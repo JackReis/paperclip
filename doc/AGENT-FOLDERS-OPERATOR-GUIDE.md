@@ -92,16 +92,26 @@ EOF
 3. Any additional `.md` files in the `instructions/` directory are also
    included in the cache fingerprint (so editing them invalidates the cache),
    but only `AGENTS.md` is merged as the folder-level instruction bundle.
+   Adapter-specific supplementary files (see below) — `HERMES.md` for
+   `hermes_local` adapters, `CLAUDE.md` for `claude_local` adapters — are also
+   read from this directory during resolution.
 
 ### Resolution order
 
 When an agent resolves its instructions, the merger walks the folder chain from
-the agent's immediate folder up to the root (leaf-to-root order). This means:
+the agent's immediate folder up to the root, then emits sections in **root→leaf**
+order (parent folder first, leaf folder last). This means:
 
-- **Child folder instructions take precedence** over parent folder instructions
-  (child content appears first in the merged result).
-- The agent's own override pointer file (if present) takes the **highest**
-  precedence and is prepended at merge time.
+- **Leaf (more specific) folder instructions take precedence** over parent folder
+  instructions because they appear later in the merged result and are thus
+  closer to the agent's own overrides. All content is preserved (concatenated).
+- The agent's own override pointer file (if present with override content) is
+  **appended** as a final `# [Agent: <name>]` section, taking the highest
+  precedence. It does **not** replace the folder-inherited content.
+- Per-adapter supplementary files layer on top of each folder's `AGENTS.md`:
+  `HERMES.md` is read for `hermes_local` adapters and `CLAUDE.md` for
+  `claude_local` adapters. Use these for adapter-specific preamble/system
+  prompts that should cascade with the folder-shared instructions.
 
 ---
 
@@ -128,14 +138,16 @@ curl -X POST "$PAPERCLIP_API_URL/api/companies/$COMPANY_ID/agent-folders/agents/
 
 ### Agent overrides
 
-If an agent needs custom instructions that override the folder-level bundle:
+If an agent needs custom instructions that supplement or override the folder-level bundle:
 
 1. Write the agent-specific content to the pointer file:
    `.../folders/<folderId>/instructions/<agentId>.md`
-2. The content of this file **replaces** the inherited folder instructions
-   (it does not append). To layer on top of the folder bundle, include the
-   relevant folder instructions in the pointer file or use the folder-level
-   `AGENTS.md` + agent-specific overrides pattern.
+2. The content of this file is **appended** as a final
+   `# [Agent: <name>]` section after all folder-inherited sections (it does
+   **not** replace them). Because it appears last, it takes the highest
+   precedence — for instructions that read top-to-bottom, later sections win.
+   To layer on top of the folder bundle, simply write the delta; the folder
+   content is preserved above the override.
 
 If you want the agent to inherit folder instructions verbatim (no override),
 the service writes a zero-override marker pointer file automatically when you
@@ -271,6 +283,7 @@ Fix any issues reported before relying on folder inheritance in production.
 | Assign agents | `POST /companies/:cid/agent-folders/:id/agents` |
 | List agents (recursive) | `GET /companies/:cid/agent-folders/:id/agents` |
 | Move single agent | `POST /companies/:cid/agent-folders/agents/:id/move` |
+| Read instruction bundle | `GET /companies/:cid/agent-folders/:id/instructions-bundle` |
 | Migrate flat agents | `POST /companies/:cid/folders/migrate-by-role` (board only) |
 | Validate inheritance | `POST /companies/:cid/folders/validate-inheritance` (board only) |
 

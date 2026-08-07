@@ -358,13 +358,13 @@ export async function walkFolderChain(
         AND ${agentFolders.companyId} = ${companyId}
       UNION ALL
       SELECT
-        f.${agentFolders.id} AS "id",
-        f.${agentFolders.parentId} AS "parentId",
-        f.${agentFolders.name} AS "name",
-        f.${agentFolders.slug} AS "slug",
+        f."id" AS "id",
+        f."parent_id" AS "parentId",
+        f."name" AS "name",
+        f."slug" AS "slug",
         fc."depth" + 1 AS "depth"
       FROM ${agentFolders} AS f
-      JOIN folder_chain AS fc ON f.${agentFolders.id} = fc."parentId"
+      JOIN folder_chain AS fc ON f."id" = fc."parentId"
       WHERE fc."depth" < 100
     )
     SELECT "id", "parentId", "name", "slug"
