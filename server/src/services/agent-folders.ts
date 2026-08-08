@@ -346,10 +346,14 @@ export function agentFolderService(db: Db, mutationLockHeld = false) {
     return (await getFolder(companyId, folderId))!;
   }
 
-  async function deleteFolder(companyId: string, folderId: string): Promise<AgentFolder | null> {
+  async function deleteFolder(
+    companyId: string,
+    folderId: string,
+    options?: { force?: boolean },
+  ): Promise<AgentFolder | null> {
     if (!mutationLockHeld) {
       return withLock(companyId, (lockedDb) =>
-        agentFolderService(lockedDb, true).deleteFolder(companyId, folderId),
+        agentFolderService(lockedDb, true).deleteFolder(companyId, folderId, options),
       );
     }
     const existing = await getFolder(companyId, folderId);
@@ -364,7 +368,21 @@ export function agentFolderService(db: Db, mutationLockHeld = false) {
         ),
       )
       .then((rows) => rows[0] ?? null);
-    if (child) throw conflict("Move or delete nested folders first");
+    if (child && !options?.force) {
+      throw conflict("Move or delete nested folders first (use force=true to delete recursively)");
+    }
+    if (options?.force && child) {
+      // Recursively delete all child folders
+      const descendants = await descendantIds(companyId, folderId);
+      await db
+        .delete(agentFolders)
+        .where(
+          and(
+            eq(agentFolders.companyId, companyId),
+            inArray(agentFolders.id, Array.from(descendants)),
+          ),
+        );
+    }
     await db
       .update(agents)
       .set({ folderId: null, updatedAt: new Date() })

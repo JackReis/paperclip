@@ -35,6 +35,54 @@ interface FolderMigrateToFolderOptions extends BaseClientOptions {
 interface FolderListOptions extends BaseClientOptions {}
 
 /**
+ * CLI options for `paperclipai folder create`.
+ */
+interface FolderCreateOptions extends BaseClientOptions {
+  parentId?: string;
+  name: string;
+  slug?: string;
+  sortOrder?: number;
+  metadata?: string;
+}
+
+/**
+ * CLI options for `paperclipai folder get`.
+ */
+interface FolderGetOptions extends BaseClientOptions {}
+
+/**
+ * CLI options for `paperclipai folder update`.
+ */
+interface FolderUpdateOptions extends BaseClientOptions {
+  name?: string;
+  slug?: string | null;
+  sortOrder?: number;
+  metadata?: string | null;
+}
+
+/**
+ * CLI options for `paperclipai folder delete`.
+ */
+interface FolderDeleteOptions extends BaseClientOptions {
+  force?: boolean;
+  yes?: boolean;
+}
+
+/**
+ * CLI options for `paperclipai folder agents`.
+ */
+interface FolderAgentsOptions extends BaseClientOptions {}
+
+/**
+ * CLI options for `paperclipai folder assign`.
+ */
+interface FolderAssignOptions extends BaseClientOptions {
+  agentIds: string;
+  folderId: string;
+}
+
+
+/**
  * Result from the server-side migration-preview endpoint.
  */
 interface UnassignedSummary {
@@ -93,6 +141,12 @@ interface InheritanceValidationResult {
  *
  * Provides:
  *   paperclipai folder list                          — list agent folders for a company
+ *   paperclipai folder create                        — create a new agent folder
+ *   paperclipai folder get                           — get a single folder by UUID
+ *   paperclipai folder update                        — update a folder (name, slug, sort, metadata)
+ *   paperclipai folder delete                        — delete a folder (with --force for folders with children/agents)
+ *   paperclipai folder agents                        — list agents assigned to a folder
+ *   paperclipai folder assign                        — assign agents to a folder
  *   paperclipai folder migrate-from-flat             — migrate flat agents into folders (role-based)
  *   paperclipai folder migrate-from-flat --dry-run   — preview proposed migration
  *   paperclipai folder validate-inheritance           — validate folder inheritance chain
@@ -130,6 +184,338 @@ export function registerFolderCommands(program: Command): void {
           for (const f of rows.folders) {
             console.log(formatInlineRecord(f));
           }
+        } catch (err) {
+          handleCommandError(err);
+        }
+      }),
+    { includeCompany: false },
+  );
+
+
+  // ── folder create ────────────────────────────────────────────
+
+  addCommonClientOptions(
+    folder
+      .command("create")
+      .description("Create a new agent folder")
+      .option("-C, --company-id <id>", "Company ID")
+      .requiredOption("--name <name>", "Folder name")
+      .option("--slug <slug>", "URL-safe slug (auto-derived from name if omitted)")
+      .option("--parent-id <id>", "Parent folder UUID (omit for root-level)")
+      .option("--sort-order <n>", "Sort order (integer, defaults to end of siblings)", parseInt)
+      .option("--metadata <json>", "Folder metadata as JSON object")
+      .action(async (opts: FolderCreateOptions) => {
+        try {
+          const ctx = resolveCommandContext(opts, { requireCompany: true });
+
+          const body: Record<string, unknown> = { name: opts.name };
+          if (opts.slug !== undefined) body.slug = opts.slug;
+          if (opts.parentId !== undefined) body.parentId = opts.parentId;
+          if (opts.sortOrder !== undefined) body.sortOrder = opts.sortOrder;
+          if (opts.metadata) {
+            try {
+              body.metadata = JSON.parse(opts.metadata);
+            } catch {
+              handleCommandError(new Error("--metadata must be valid JSON"));
+              return;
+            }
+          }
+
+          const result = await ctx.api.post<{
+            id: string;
+            name: string;
+            slug: string;
+            parentId: string | null;
+            companyId: string;
+            sortOrder: number;
+            metadata: Record<string, unknown> | null;
+            createdAt: string;
+            updatedAt: string;
+          } | null>(
+            apiPath`/api/companies/${ctx.companyId}/agent-folders`,
+            body,
+          );
+
+          if (ctx.json) {
+            printOutput(result, { json: true });
+            return;
+          }
+
+          if (!result) {
+            console.log(pc.red("Failed to create folder — no response from server."));
+            return;
+          }
+
+          console.log(pc.green("✓ Folder created."));
+          console.log(formatInlineRecord({
+            id: result.id,
+            name: result.name,
+            slug: result.slug,
+            parentId: result.parentId ?? "root",
+            sortOrder: result.sortOrder,
+          }));
+        } catch (err) {
+          handleCommandError(err);
+        }
+      }),
+    { includeCompany: false },
+  );
+
+  // ── folder get ───────────────────────────────────────────────
+
+  addCommonClientOptions(
+    folder
+      .command("get")
+      .description("Get a single agent folder by UUID")
+      .argument("<folderId>", "Folder UUID")
+      .option("-C, --company-id <id>", "Company ID")
+      .action(async (folderId: string, opts: FolderGetOptions) => {
+        try {
+          const ctx = resolveCommandContext(opts, { requireCompany: true });
+
+          const result = await ctx.api.get<{
+            id: string;
+            name: string;
+            slug: string;
+            parentId: string | null;
+            companyId: string;
+            sortOrder: number;
+            metadata: Record<string, unknown> | null;
+            createdAt: string;
+            updatedAt: string;
+          } | null>(
+            apiPath`/api/companies/${ctx.companyId}/agent-folders/${folderId}`,
+          );
+
+          if (ctx.json) {
+            printOutput(result, { json: true });
+            return;
+          }
+
+          if (!result) {
+            console.log(pc.yellow(`Folder ${folderId} not found.`));
+            return;
+          }
+
+          console.log(formatInlineRecord({
+            id: result.id,
+            name: result.name,
+            slug: result.slug,
+            parentId: result.parentId ?? "root",
+            sortOrder: result.sortOrder,
+            metadata: result.metadata ? JSON.stringify(result.metadata) : "-",
+          }));
+        } catch (err) {
+          handleCommandError(err);
+        }
+      }),
+    { includeCompany: false },
+  );
+
+  // ── folder update ────────────────────────────────────────────
+
+  addCommonClientOptions(
+    folder
+      .command("update")
+      .description("Update an agent folder (name, slug, sort order, metadata)")
+      .argument("<folderId>", "Folder UUID to update")
+      .option("-C, --company-id <id>", "Company ID")
+      .option("--name <name>", "New folder name")
+      .option("--slug <slug>", "New URL-safe slug")
+      .option("--sort-order <n>", "New sort order (integer)", parseInt)
+      .option("--metadata <json>", "Set folder metadata (JSON). Use 'null' to clear.")
+      .action(async (folderId: string, opts: FolderUpdateOptions) => {
+        try {
+          const ctx = resolveCommandContext(opts, { requireCompany: true });
+
+          const body: Record<string, unknown> = {};
+          if (opts.name !== undefined) body.name = opts.name;
+          if (opts.slug !== undefined) body.slug = opts.slug;
+          if (opts.sortOrder !== undefined) body.sortOrder = opts.sortOrder;
+
+          if (opts.metadata !== undefined && opts.metadata !== null) {
+            if (opts.metadata === "null") {
+              body.metadata = null;
+            } else {
+              try {
+                body.metadata = JSON.parse(opts.metadata);
+              } catch {
+                handleCommandError(new Error("--metadata must be valid JSON or 'null' to clear"));
+                return;
+              }
+            }
+          }
+
+          const result = await ctx.api.patch<{
+            id: string;
+            name: string;
+            slug: string;
+            parentId: string | null;
+            companyId: string;
+            sortOrder: number;
+            metadata: Record<string, unknown> | null;
+            updatedAt: string;
+          } | null>(
+            apiPath`/api/companies/${ctx.companyId}/agent-folders/${folderId}`,
+            body,
+          );
+
+          if (ctx.json) {
+            printOutput(result, { json: true });
+            return;
+          }
+
+          if (!result) {
+            console.log(pc.yellow(`Folder ${folderId} not found — nothing to update.`));
+            return;
+          }
+
+          console.log(pc.green("✓ Folder updated."));
+          console.log(formatInlineRecord({
+            id: result.id,
+            name: result.name,
+            slug: result.slug,
+            sortOrder: result.sortOrder,
+          }));
+        } catch (err) {
+          handleCommandError(err);
+        }
+      }),
+    { includeCompany: false },
+  );
+
+  // ── folder delete ────────────────────────────────────────────
+
+  addCommonClientOptions(
+    folder
+      .command("delete")
+      .description(
+        "Delete an agent folder. Use --force to delete even if folder has children or assigned agents.",
+      )
+      .argument("<folderId>", "Folder UUID to delete")
+      .option("-C, --company-id <id>", "Company ID")
+      .option("--force", "Force delete even if folder has children or assigned agents")
+      .option("-y, --yes", "Skip confirmation prompt")
+      .action(async (folderId: string, opts: FolderDeleteOptions) => {
+        try {
+          const ctx = resolveCommandContext(opts, { requireCompany: true });
+
+          // Require --yes for confirmation (consistent with agent delete pattern)
+          if (!opts.yes) {
+            throw new Error("Refusing to delete without --yes. This operation cannot be undone.");
+          }
+
+          // The server delete endpoint handles child/agent checks.
+          // If the folder has children or assigned agents, it returns 409.
+          // With --force, we pass force=true as a query param.
+          const url = apiPath`/api/companies/${ctx.companyId}/agent-folders/${folderId}` +
+            (opts.force ? "?force=true" : "");
+
+          await ctx.api.delete(url);
+
+          if (ctx.json) {
+            printOutput({ deleted: true, folderId }, { json: true });
+            return;
+          }
+
+          console.log(pc.green(`✓ Folder ${folderId} deleted.`));
+        } catch (err) {
+          handleCommandError(err);
+        }
+      }),
+    { includeCompany: false },
+  );
+
+  // ── folder agents ────────────────────────────────────────────
+
+  addCommonClientOptions(
+    folder
+      .command("agents")
+      .description("List agents assigned to a folder (recursively includes child folders)")
+      .argument("<folderId>", "Folder UUID")
+      .option("-C, --company-id <id>", "Company ID")
+      .action(async (folderId: string, opts: FolderAgentsOptions) => {
+        try {
+          const ctx = resolveCommandContext(opts, { requireCompany: true });
+
+          const result = await ctx.api.get<{
+            folderId: string;
+            folderName: string;
+            agents: Array<{
+              id: string;
+              name: string;
+              adapterType: string;
+              status: string;
+              folderId: string | null;
+            }>;
+          } | null>(
+            apiPath`/api/companies/${ctx.companyId}/agent-folders/${folderId}/agents`,
+          );
+
+          if (ctx.json) {
+            printOutput(result, { json: true });
+            return;
+          }
+
+          if (!result || result.agents.length === 0) {
+            console.log(pc.dim(`No agents in folder ${pc.cyan(folderId)}.`));
+            return;
+          }
+
+          console.log(pc.bold(`Folder: ${result.folderName ?? folderId}`));
+          console.log(pc.dim(`${result.agents.length} agent(s):
+`));
+
+          for (const agent of result.agents) {
+            const statusColor =
+              agent.status === "running"
+                ? pc.green
+                : agent.status === "idle"
+                ? pc.blue
+                : agent.status === "error"
+                ? pc.red
+                : agent.status === "paused"
+                ? pc.yellow
+                : pc.gray;
+            console.log(`  ${pc.cyan(agent.id)} ${pc.bold(agent.name)} ${statusColor(`[${agent.status}]`)} ${pc.dim(agent.adapterType)}`);
+          }
+        } catch (err) {
+          handleCommandError(err);
+        }
+      }),
+    { includeCompany: false },
+  );
+
+  // ── folder assign ────────────────────────────────────────────
+
+  addCommonClientOptions(
+    folder
+      .command("assign")
+      .description("Assign one or more agents to a folder")
+      .option("-C, --company-id <id>", "Company ID")
+      .requiredOption("--folder-id <id>", "Target folder UUID")
+      .requiredOption("--agent-ids <csv>", "Comma-separated list of agent IDs")
+      .action(async (opts: FolderAssignOptions) => {
+        try {
+          const ctx = resolveCommandContext(opts, { requireCompany: true });
+          const agentIds = opts.agentIds.split(",").map((s) => s.trim()).filter(Boolean);
+
+          if (agentIds.length === 0) {
+            console.error(pc.red("--agent-ids must contain at least one agent ID."));
+            process.exit(1);
+          }
+
+          const result = await ctx.api.post<{ ok: boolean } | null>(
+            apiPath`/api/companies/${ctx.companyId}/agent-folders/${opts.folderId}/agents`,
+            { agentIds },
+          );
+
+          if (ctx.json) {
+            printOutput(result, { json: true });
+            return;
+          }
+
+          console.log(pc.green(`✓ Assigned ${agentIds.length} agent(s) to folder ${pc.cyan(opts.folderId)}.`));
         } catch (err) {
           handleCommandError(err);
         }
