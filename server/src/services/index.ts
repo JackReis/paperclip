@@ -32,7 +32,22 @@ export {
   writeAgentFolderPointerFile,
   removeAgentFolderPointerFile,
   resolveFolderInstructionsDir,
+  resolveAgentInstructionsRoot,
+  resolveMergedFilePath,
+  resolveGeneratedDir,
+  resolveAgentInstructions,
+  walkFolderChain,
+  buildMergedInstructions,
+  computeInstructionsFingerprint,
+  computeAgentOverrideHash,
+  invalidateCompanyCache,
+  clearInheritanceCache,
+  getInheritanceCacheSize,
+  InstructionsLRUCache,
   type AgentLikeForInheritance,
+  type InheritanceFolder,
+  type InheritanceChainEntry,
+  type ResolvedAgentInstructions,
 } from "./agent-instructions-inheritance.js";
 export { assetService } from "./assets.js";
 export { documentService, extractLegacyPlanBody } from "./documents.js";

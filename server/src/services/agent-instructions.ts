@@ -2,6 +2,11 @@ import fs from "node:fs/promises";
 import path from "node:path";
 import { notFound, unprocessable } from "../errors.js";
 import { resolveHomeAwarePath, resolvePaperclipInstanceRoot } from "../home-paths.js";
+import type { Db } from "@paperclipai/db";
+import {
+  resolveAgentInstructions,
+  invalidateCompanyCache,
+} from "./agent-instructions-inheritance.js";
 
 const ENTRY_FILE_DEFAULT = "AGENTS.md";
 const MODE_KEY = "instructionsBundleMode";
@@ -32,6 +37,10 @@ type AgentLike = {
   companyId: string;
   name: string;
   adapterConfig: unknown;
+  /** Folder ID for instruction inheritance (JAC-4750 Phase 2). */
+  folderId?: string | null;
+  /** Adapter type for supplementary file resolution (JAC-4750 Phase 2). */
+  adapterType?: string;
 };
 
 type AgentInstructionsFileSummary = {
@@ -63,6 +72,24 @@ type AgentInstructionsBundle = {
   legacyPromptTemplateActive: boolean;
   legacyBootstrapPromptTemplateActive: boolean;
   files: AgentInstructionsFileSummary[];
+  /** Inheritance chain metadata (JAC-4750 Phase 2). Present when the agent has a folderId. */
+  inheritanceChain?: InheritanceChainEntry[];
+  /** Fingerprint of the resolved instructions bundle. Present when inheritance is active. */
+  instructionsFingerprint?: string | null;
+  /** Path to the generated merged file. Present when inheritance is active. */
+  generatedInstructionsPath?: string | null;
+  /** Whether the bundle was served from cache. */
+  fromCache?: boolean;
+};
+
+/** A folder chain entry returned in the API response (JAC-4750 Phase 2). */
+type InheritanceChainEntry = {
+  folderId: string;
+  folderName: string;
+  folderSlug: string;
+  hasInstructions: boolean;
+  fileMtime: string | null;
+  contentHash: string | null;
 };
 
 type BundleState = {
@@ -451,20 +478,105 @@ export function syncInstructionsBundleConfigFromFilePath(
   return applyBundleConfig(next, { mode, rootPath, entryFile });
 }
 
-export function agentInstructionsService() {
+export function agentInstructionsService(db?: Db) {
   async function getBundle(agent: AgentLike): Promise<AgentInstructionsBundle> {
     const state = await recoverManagedBundleState(agent, deriveBundleState(agent));
-    if (!state.rootPath) return toBundle(agent, state, []);
+    if (!state.rootPath) {
+      const bundle = toBundle(agent, state, []);
+      // If agent has a folderId, try inheritance resolution for merged instructions
+      if (agent.folderId && db) {
+        try {
+          const resolved = await resolveAgentInstructions(db, {
+            id: agent.id,
+            companyId: agent.companyId,
+            name: agent.name,
+            adapterConfig: asRecord(agent.adapterConfig),
+            adapterType: agent.adapterType ?? "hermes_local",
+            folderId: agent.folderId ?? null,
+          });
+          if (resolved.chain.length > 0) {
+            return {
+              ...bundle,
+              inheritanceChain: resolved.chain,
+              instructionsFingerprint: resolved.fingerprint,
+              generatedInstructionsPath: resolved.mergedFilePath,
+              fromCache: resolved.fromCache,
+            };
+          }
+        } catch (err) {
+          bundle.warnings.push(
+            `Failed to resolve instruction inheritance for agent ${agent.id}: ${err instanceof Error ? err.message : String(err)}`,
+          );
+        }
+      }
+      return bundle;
+    }
     const stat = await statIfExists(state.rootPath);
     if (!stat?.isDirectory()) {
-      return toBundle(agent, {
+      const fallbackBundle = toBundle(agent, {
         ...state,
         warnings: [...state.warnings, `Instructions root does not exist: ${state.rootPath}`],
       }, []);
+      // Try inheritance resolution as fallback for missing flat bundle
+      if (agent.folderId && db) {
+        try {
+          const resolved = await resolveAgentInstructions(db, {
+            id: agent.id,
+            companyId: agent.companyId,
+            name: agent.name,
+            adapterConfig: asRecord(agent.adapterConfig),
+            adapterType: agent.adapterType ?? "hermes_local",
+            folderId: agent.folderId ?? null,
+          });
+          if (resolved.chain.length > 0) {
+            return {
+              ...fallbackBundle,
+              inheritanceChain: resolved.chain,
+              instructionsFingerprint: resolved.fingerprint,
+              generatedInstructionsPath: resolved.mergedFilePath,
+              fromCache: resolved.fromCache,
+            };
+          }
+        } catch (err) {
+          fallbackBundle.warnings.push(
+            `Failed to resolve instruction inheritance for agent ${agent.id}: ${err instanceof Error ? err.message : String(err)}`,
+          );
+        }
+      }
+      return fallbackBundle;
     }
     const files = await listFilesRecursive(state.rootPath);
     const summaries = await Promise.all(files.map((relativePath) => readFileSummary(state.rootPath!, relativePath, state.entryFile)));
-    return toBundle(agent, state, summaries);
+    const bundle = toBundle(agent, state, summaries);
+
+    // If agent has a folderId, resolve inheritance and attach metadata
+    if (agent.folderId && db) {
+      try {
+        const resolved = await resolveAgentInstructions(db, {
+          id: agent.id,
+          companyId: agent.companyId,
+          name: agent.name,
+          adapterConfig: asRecord(agent.adapterConfig),
+          adapterType: agent.adapterType ?? "hermes_local",
+          folderId: agent.folderId ?? null,
+        });
+        if (resolved.chain.length > 0) {
+          return {
+            ...bundle,
+            inheritanceChain: resolved.chain,
+            instructionsFingerprint: resolved.fingerprint,
+            generatedInstructionsPath: resolved.mergedFilePath,
+            fromCache: resolved.fromCache,
+          };
+        }
+      } catch (err) {
+        bundle.warnings.push(
+          `Failed to resolve instruction inheritance for agent ${agent.id}: ${err instanceof Error ? err.message : String(err)}`,
+        );
+      }
+    }
+
+    return bundle;
   }
 
   async function readFile(agent: AgentLike, relativePath: string): Promise<AgentInstructionsFileDetail> {
@@ -624,6 +736,8 @@ export function agentInstructionsService() {
     const absolutePath = resolvePathWithinRoot(prepared.state.rootPath!, relativePath);
     await fs.mkdir(path.dirname(absolutePath), { recursive: true });
     await fs.writeFile(absolutePath, content, "utf8");
+    // Invalidate inheritance cache for this agent (agent override changed)
+    if (agent.folderId) invalidateCompanyCache(agent.companyId);
     const nextAgent = { ...agent, adapterConfig: prepared.adapterConfig };
     const [bundle, file] = await Promise.all([
       getBundle(nextAgent),
@@ -648,6 +762,8 @@ export function agentInstructionsService() {
     }
     const absolutePath = resolvePathWithinRoot(state.rootPath, normalizedPath);
     await fs.rm(absolutePath, { force: true });
+    // Invalidate inheritance cache for this agent (agent override changed)
+    if (agent.folderId) invalidateCompanyCache(agent.companyId);
     const adapterConfig = buildPersistedBundleConfig(derived, state);
     const bundle = await getBundle({ ...agent, adapterConfig });
     return { bundle, adapterConfig };
