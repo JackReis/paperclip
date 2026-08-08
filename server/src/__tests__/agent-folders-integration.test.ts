@@ -236,7 +236,6 @@ describeEmbeddedPostgres("agent folders integration", () => {
       );
     });
 
-<<<<<<< HEAD
     it("force deletes a folder and its child folders", async () => {
       const parent = await createFolder({ name: "Parent" });
       const child = await createFolder({ name: "Child", parentId: parent.id });
@@ -249,9 +248,6 @@ describeEmbeddedPostgres("agent folders integration", () => {
       expect(await svc.get(companyId, child.id)).toBeNull();
     });
 
-||||||| parent of 26660f32c (test(JAC-4754): commit Phase 4 agent-folders integration test suites)
-=======
->>>>>>> 26660f32c (test(JAC-4754): commit Phase 4 agent-folders integration test suites)
     it("deletes a folder and nullifies its agents' folder_id", async () => {
       const folder = await createFolder({ name: "Team" });
       const agent = await createAgent("Agent A", "general", folder.id);
