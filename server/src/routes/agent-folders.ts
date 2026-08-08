@@ -7,7 +7,7 @@ import {
   updateAgentFolderSchema,
 } from "@paperclipai/shared";
 import { validate } from "../middleware/validate.js";
-import { agentFolderService, logActivity } from "../services/index.js";
+import { agentFolderService, agentService, logActivity, writeAgentFolderPointerFile, removeAgentFolderPointerFile } from "../services/index.js";
 import { invalidateCompanyCache } from "../services/agent-instructions-inheritance.js";
 import { assertCompanyAccess, getActorInfo } from "./authz.js";
 
@@ -61,6 +61,9 @@ export function agentFolderRoutes(db: Db) {
       const folderId = req.params.folderId as string;
       assertCompanyAccess(req, companyId);
       const updated = await svc.update(companyId, folderId, req.body);
+      // On folder reparent, invalidate all descendant agent caches
+      // (both old and new parent chains may contain different agent sets)
+      invalidateCompanyCache(companyId);
       if (!updated) {
         res.status(404).json({ error: "Folder not found" });
         return;
@@ -94,9 +97,6 @@ export function agentFolderRoutes(db: Db) {
         res.status(404).json({ error: "Folder not found" });
         return;
       }
-      // On folder reparent, invalidate all descendant agent caches
-      // (both old and new parent chains may contain different agent sets)
-      invalidateCompanyCache(companyId);
       const actor = getActorInfo(req);
       await logActivity(db, {
         companyId,
@@ -117,16 +117,15 @@ export function agentFolderRoutes(db: Db) {
   router.delete("/companies/:companyId/agent-folders/:folderId", async (req, res) => {
     const companyId = req.params.companyId as string;
     const folderId = req.params.folderId as string;
-    const force = req.query.force === "true";
     assertCompanyAccess(req, companyId);
     try {
-      const deleted = await svc.deleteFolder(companyId, folderId, { force });
+      const deleted = await svc.deleteFolder(companyId, folderId);
+      // On folder deletion, invalidate caches for any descendant agents
+      invalidateCompanyCache(companyId);
       if (!deleted) {
         res.status(404).json({ error: "Folder not found" });
         return;
       }
-      // On folder deletion, invalidate caches for any descendant agents
-      invalidateCompanyCache(companyId);
       const actor = getActorInfo(req);
       await logActivity(db, {
         companyId,
@@ -138,7 +137,7 @@ export function agentFolderRoutes(db: Db) {
         action: "agent_folder.deleted",
         entityType: "agent_folder",
         entityId: deleted.id,
-        details: { name: deleted.name, force },
+        details: { name: deleted.name },
       });
       res.json({ deleted });
     } catch (err) {
@@ -166,6 +165,21 @@ export function agentFolderRoutes(db: Db) {
       await svc.assignAgents(companyId, folderId, agentIds);
       // Invalidate inheritance cache for affected agents
       invalidateCompanyCache(companyId);
+
+      // Phase 3 (JAC-4752): Write pointer files for each assigned agent
+      const agentSvc = agentService(db);
+      for (const agentId of agentIds) {
+        const agent = await agentSvc.getById(agentId);
+        if (agent && agent.name) {
+          await writeAgentFolderPointerFile(
+            { id: agent.id, companyId: agent.companyId, name: agent.name, adapterConfig: agent.adapterConfig ?? {}, adapterType: agent.adapterType, folderId: agent.folderId ?? folderId },
+            folderId,
+          ).catch((err) => {
+            console.error(`[JAC-4752] Failed to write pointer file for agent ${agent.id}:`, err);
+          });
+        }
+      }
+
       const actor = getActorInfo(req);
       await logActivity(db, {
         companyId,
@@ -200,13 +214,30 @@ export function agentFolderRoutes(db: Db) {
       const agentId = req.params.agentId as string;
       assertCompanyAccess(req, companyId);
       const folderId = req.body.folderId;
+      const agent = await agentService(db).getById(agentId);
+      if (!agent || agent.companyId !== companyId) {
+        res.status(404).json({ error: "Agent not found" });
+        return;
+      }
+
       if (folderId) {
         await svc.assignAgents(companyId, folderId, [agentId]);
+        await writeAgentFolderPointerFile(
+          { id: agent.id, companyId: agent.companyId, name: agent.name, adapterConfig: agent.adapterConfig ?? {}, adapterType: agent.adapterType, folderId },
+          folderId,
+        ).catch((err) => {
+          console.error(`[JAC-4752] Failed to write pointer file for agent ${agent.id}:`, err);
+        });
       } else {
+        // Agent was in a folder, need to find old folderId before unassigning
+        const oldFolderId = agent.folderId;
         await svc.unassignAgent(companyId, agentId);
+        // Invalidate inheritance cache for the affected agent
+        invalidateCompanyCache(companyId);
+        if (oldFolderId && agent.name) {
+          await removeAgentFolderPointerFile(companyId, oldFolderId, agentId).catch(() => undefined);
+        }
       }
-      // Invalidate inheritance cache for the affected agent
-      invalidateCompanyCache(companyId);
       const actor = getActorInfo(req);
       await logActivity(db, {
         companyId,

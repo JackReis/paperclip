@@ -379,10 +379,14 @@ export function registerAgentCommands(program: Command): void {
       .description("Update an agent from a JSON payload")
       .argument("<agentId>", "Agent ID")
       .requiredOption("--payload-json <json>", "UpdateAgent JSON payload")
-      .action(async (agentId: string, opts: AgentJsonPayloadOptions) => {
+      .option("-f, --folder <folderId>", "Move agent to a folder (use null to unassign)")
+      .action(async (agentId: string, opts: AgentJsonPayloadOptions & { folder?: string }) => {
         try {
           const ctx = resolveCommandContext(opts);
           const payload = updateAgentSchema.parse(parseJson(opts.payloadJson));
+          if (opts.folder !== undefined) {
+            payload.folderId = opts.folder === "null" ? null : opts.folder;
+          }
           const updated = await ctx.api.patch<Agent>(apiPath`/api/agents/${agentId}`, payload);
           printOutput(updated, { json: ctx.json });
         } catch (err) {
