@@ -28,6 +28,8 @@ import { resolvePaperclipInstanceRoot } from "../home-paths.js";
 
 const INSTRUCTIONS_DIR = "instructions";
 const AGENTS_ENTRY = "AGENTS.md";
+/** HFS (Hierarchical Folder Structure) room file — read alongside AGENTS.md per folder. */
+const HFS_CONTEXT_ENTRY = "_CONTEXT.md";
 const GENERATED_DIR = "__generated__";
 const GENERATED_FILE = "merged.md";
 const MERGED_FILE_PATH = path.join(GENERATED_DIR, GENERATED_FILE);
@@ -203,6 +205,16 @@ async function readFolderEntry(dir: string): Promise<string | null> {
   return readFileIfExists(entryPath);
 }
 
+/**
+ * Read the HFS room file (_CONTEXT.md) from a folder's instructions directory.
+ * Returns null if the file doesn't exist or is empty. Added by HFS Wave 3 bridge
+ * so each folder/room auto-loads its room context into agent prompts.
+ */
+async function readFolderHfsContext(dir: string): Promise<string | null> {
+  const contextPath = path.join(dir, HFS_CONTEXT_ENTRY);
+  return readFileIfExists(contextPath);
+}
+
 async function getFileMtime(dir: string): Promise<string | null> {
   const entryPath = path.join(dir, AGENTS_ENTRY);
   const stat = await statIfExists(entryPath);
@@ -291,6 +303,8 @@ export async function computeInstructionsFingerprint(
     const dir = resolveFolderInstructionsDir(agent.companyId, folder.id);
     const filesHash = await getInstructionFilesHash(dir);
     hasher.update(`|folder:${folder.id}:${filesHash ?? "empty"}`);
+    const hfsPresent = await statIfExists(path.join(dir, HFS_CONTEXT_ENTRY));
+    hasher.update(`|hfsCtx:${folder.id}:${hfsPresent ? "1" : "0"}`);
   }
 
   // Agent override instructions hash (computed on-the-fly)
@@ -427,6 +441,12 @@ export async function buildMergedInstructions(
     const entryContent = await readFolderEntry(dir);
     if (entryContent) {
       parts.push(`# [Folder: ${folder.name}]\n\n${entryContent}`);
+    }
+
+    // Read the folder's HFS room file (_CONTEXT.md) and append under a titled section.
+    const hfsContext = await readFolderHfsContext(dir);
+    if (hfsContext) {
+      parts.push(`# [Folder: ${folder.name} · HFS context]\n\n${hfsContext}`);
     }
 
     // Read adapter-specific supplementary file if it exists
