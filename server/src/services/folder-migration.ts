@@ -26,6 +26,7 @@ export class FolderMigrationService {
         name: agentsTable.name,
         role: agentsTable.role,
         adapterConfig: agentsTable.adapterConfig,
+        adapterType: agentsTable.adapterType,
         metadata: agentsTable.metadata,
       })
       .from(agentsTable)
@@ -81,6 +82,7 @@ export class FolderMigrationService {
             companyId,
             name: agent.name,
             adapterConfig: agent.adapterConfig ?? {},
+            adapterType: agent.adapterType,
             folderId: folder.id,
           },
           folder.id,
@@ -107,6 +109,7 @@ export class FolderMigrationService {
         name: agentsTable.name,
         role: agentsTable.role,
         adapterConfig: agentsTable.adapterConfig,
+        adapterType: agentsTable.adapterType,
         metadata: agentsTable.metadata,
       })
       .from(agentsTable)
@@ -152,6 +155,7 @@ export class FolderMigrationService {
             companyId,
             name: agent.name,
             adapterConfig: agent.adapterConfig ?? {},
+            adapterType: agent.adapterType,
             folderId: folder.id,
           },
           folder.id,
@@ -186,6 +190,7 @@ export class FolderMigrationService {
           id: agentsTable.id,
           name: agentsTable.name,
           adapterConfig: agentsTable.adapterConfig,
+          adapterType: agentsTable.adapterType,
         })
         .from(agentsTable)
         .where(
@@ -209,6 +214,7 @@ export class FolderMigrationService {
           companyId,
           name: agent.name,
           adapterConfig: agent.adapterConfig ?? {},
+          adapterType: agent.adapterType,
           folderId: folder.id,
         },
         folder.id,

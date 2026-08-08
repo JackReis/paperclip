@@ -2598,7 +2598,7 @@ export function agentRoutes(
     // Phase 3 (JAC-4752): Write pointer file if the agent is assigned to a folder
     if (agent.folderId && agent.name) {
       await writeAgentFolderPointerFile(
-        { id: agent.id, companyId: agent.companyId, name: agent.name, adapterConfig: agent.adapterConfig ?? {}, folderId: agent.folderId },
+        { id: agent.id, companyId: agent.companyId, name: agent.name, adapterConfig: agent.adapterConfig ?? {}, adapterType: agent.adapterType, folderId: agent.folderId },
         agent.folderId,
       ).catch((err) => {
         // Fail open: pointer file creation should not block agent creation
@@ -2795,7 +2795,7 @@ export function agentRoutes(
     // Phase 3 (JAC-4752): Write pointer file if the agent is assigned to a folder
     if (agent.folderId && agent.name) {
       await writeAgentFolderPointerFile(
-        { id: agent.id, companyId: agent.companyId, name: agent.name, adapterConfig: agent.adapterConfig ?? {}, folderId: agent.folderId },
+        { id: agent.id, companyId: agent.companyId, name: agent.name, adapterConfig: agent.adapterConfig ?? {}, adapterType: agent.adapterType, folderId: agent.folderId },
         agent.folderId,
       ).catch((err) => {
         // Fail open: pointer file creation should not block agent creation
@@ -3295,7 +3295,7 @@ export function agentRoutes(
       // Write pointer file to new folder if agent is assigned to one
       if (agent.folderId) {
         await writeAgentFolderPointerFile(
-          { id: agent.id, companyId: agent.companyId, name: agent.name, adapterConfig: agent.adapterConfig ?? {}, folderId: agent.folderId },
+          { id: agent.id, companyId: agent.companyId, name: agent.name, adapterConfig: agent.adapterConfig ?? {}, adapterType: agent.adapterType, folderId: agent.folderId },
           agent.folderId,
         ).catch((err) => {
           console.error(`[JAC-4752] Failed to write pointer file for agent ${agent.id}:`, err);
