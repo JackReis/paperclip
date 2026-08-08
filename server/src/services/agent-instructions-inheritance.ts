@@ -35,7 +35,10 @@ const MERGED_FILE_PATH = path.join(GENERATED_DIR, GENERATED_FILE);
 /** Max entries in the in-memory LRU cache. */
 const CACHE_MAX_ENTRIES = 500;
 
-/** Adapter -> supplementary instruction file name */
+/** Adapter type -> supplementary instruction file name (fallback).
+ * Adapters may also declare instructionsSupplementaryFiles on their
+ * ServerAdapterModule manifest, which overrides this map at resolution time
+ * (JAC-4750 Phase 2). */
 const ADAPTER_SUPPLEMENTARY_FILES: Record<string, string> = {
   hermes_local: "HERMES.md",
   claude_local: "CLAUDE.md",
@@ -81,6 +84,14 @@ export interface ResolvedAgentInstructions {
   fingerprint: string;
   chain: InheritanceChainEntry[];
   fromCache: boolean;
+  /** The folderId that was resolved (from agent.folderId or adapterConfig.instructionsFolderId). */
+  resolvedFolderId: string | null;
+  /** Supplementary files map used during resolution (from adapter manifest). */
+  instructionsSupplementaryFiles: Record<string, string>;
+  /** Per-agent instruction overrides applied at the top of the merge chain. */
+  instructionsOverrides: string | null;
+  /** The effective instructions file path (the merged file path, suitable for adapterConfig.instructionsFilePath). */
+  instructionsFilePath: string | null;
 }
 
 interface CacheEntry {
@@ -148,8 +159,22 @@ export function resolveGeneratedDir(companyId: string, agentId: string): string 
 
 /**
  * Resolve the supplementary instruction file name for a given adapter type.
+ * Uses the manifest-declared instructionsSupplementaryFiles map when provided
+ * (JAC-4750 Phase 2), falling back to the built-in ADAPTER_SUPPLEMENTARY_FILES
+ * map.
  */
-function resolveSupplementaryFile(adapterType: string): string | null {
+function resolveSupplementaryFile(
+  adapterType: string,
+  manifestSupplementaryFiles?: Record<string, string>,
+): string | null {
+  if (manifestSupplementaryFiles) {
+    const name = manifestSupplementaryFiles[adapterType];
+    if (name) return name;
+    // Manifest explicitly declared this adapter has no supplementary file
+    if (Object.prototype.hasOwnProperty.call(manifestSupplementaryFiles, adapterType)) {
+      return null;
+    }
+  }
   const name = ADAPTER_SUPPLEMENTARY_FILES[adapterType];
   return name ?? null;
 }
@@ -248,6 +273,10 @@ export async function computeAgentOverrideHash(
 export async function computeInstructionsFingerprint(
   agent: AgentLikeForInheritance,
   chain: InheritanceFolder[],
+  options?: {
+    instructionsSupplementaryFiles?: Record<string, string>;
+    instructionsOverrides?: string;
+  },
 ): Promise<string> {
   const hasher = createHash("sha256");
 
@@ -267,6 +296,14 @@ export async function computeInstructionsFingerprint(
   // Agent override instructions hash (computed on-the-fly)
   const overrideHash = await computeAgentOverrideHash(agent.companyId, agent.id);
   hasher.update(`|agent:${overrideHash ?? "null"}`);
+
+  // Inline overrides from adapterConfig (instructionsOverrides)
+  const inlineOverrides = options?.instructionsOverrides?.trim() ?? "";
+  hasher.update(`|inlineOverrides:${inlineOverrides.length > 0 ? createHash("sha256").update(inlineOverrides).digest("hex").slice(0, 16) : "null"}`);
+
+  // Supplementary files map (so manifest changes invalidate cache)
+  const suppKeys = Object.keys(options?.instructionsSupplementaryFiles ?? {}).sort();
+  hasher.update(`|supp:${suppKeys.join(",")}`);
 
   return hasher.digest("hex").slice(0, 32);
 }
@@ -371,7 +408,13 @@ export async function walkFolderChain(
 export async function buildMergedInstructions(
   agent: AgentLikeForInheritance,
   chain: InheritanceFolder[],
+  options?: {
+    instructionsSupplementaryFiles?: Record<string, string>;
+    instructionsOverrides?: string;
+  },
 ): Promise<string> {
+  const supplementaryFiles = options?.instructionsSupplementaryFiles;
+  const overrides = options?.instructionsOverrides;
   const parts: string[] = [];
 
   // Walk chain in root->leaf order (chain is already root->leaf from walkFolderChain)
@@ -387,7 +430,7 @@ export async function buildMergedInstructions(
     }
 
     // Read adapter-specific supplementary file if it exists
-    const supplementaryFile = resolveSupplementaryFile(agent.adapterType);
+    const supplementaryFile = resolveSupplementaryFile(agent.adapterType, supplementaryFiles);
     if (supplementaryFile) {
       const supplementaryPath = path.join(dir, supplementaryFile);
       const supplementaryContent = await readFileIfExists(supplementaryPath);
@@ -405,6 +448,11 @@ export async function buildMergedInstructions(
   const agentOverrideContent = await readFileIfExists(agentOverridePath);
   if (agentOverrideContent) {
     parts.push(`# [Agent: ${agent.name}]\n\n${agentOverrideContent}`);
+  }
+
+  // Append per-agent inline overrides from adapterConfig (instructionsOverrides)
+  if (overrides && overrides.trim().length > 0) {
+    parts.push(`# [Agent: ${agent.name} (override)]\n\n${overrides.trim()}`);
   }
 
   if (parts.length === 0) return "";
@@ -540,6 +588,16 @@ export function getInheritanceCacheSize(): number {
 const mergedFilePathCache = new Map<string, string>();
 
 /**
+ * Options for instruction inheritance resolution (JAC-4750 Phase 2).
+ */
+export interface ResolveAgentInstructionsOptions {
+  /** Supplementary instruction files map, typically from the adapter manifest. */
+  instructionsSupplementaryFiles?: Record<string, string>;
+  /** Per-agent inline instruction overrides from adapterConfig.instructionsOverrides. */
+  instructionsOverrides?: string;
+}
+
+/**
  * Resolve the full merged instructions for an agent.
  *
  * Main entry point — walks the folder chain, builds merged instructions,
@@ -547,12 +605,17 @@ const mergedFilePathCache = new Map<string, string>();
  *
  * @param db    - Paperclip DB instance
  * @param agent - Agent with folderId and adapterType
+ * @param options - Optional supplementary files map and inline overrides
  * @returns ResolvedAgentInstructions with merged content, file path, fingerprint, and chain
  */
 export async function resolveAgentInstructions(
   db: Db,
   agent: AgentLikeForInheritance,
+  options?: ResolveAgentInstructionsOptions,
 ): Promise<ResolvedAgentInstructions> {
+  const supplementaryFiles = options?.instructionsSupplementaryFiles ?? ADAPTER_SUPPLEMENTARY_FILES;
+  const overrides = options?.instructionsOverrides;
+
   // If agent has no folderId, return flat (empty) chain — backward compat
   if (!agent.folderId) {
     return {
@@ -561,6 +624,10 @@ export async function resolveAgentInstructions(
       fingerprint: "",
       chain: [],
       fromCache: false,
+      resolvedFolderId: agent.folderId,
+      instructionsSupplementaryFiles: supplementaryFiles,
+      instructionsOverrides: overrides ?? null,
+      instructionsFilePath: null,
     };
   }
 
@@ -568,7 +635,10 @@ export async function resolveAgentInstructions(
   const chain = await walkFolderChain(db, agent.companyId, agent.folderId);
 
   // Compute fingerprint
-  const fingerprint = await computeInstructionsFingerprint(agent, chain);
+  const fingerprint = await computeInstructionsFingerprint(agent, chain, {
+    instructionsSupplementaryFiles: supplementaryFiles,
+    instructionsOverrides: overrides,
+  });
 
   // Check LRU cache
   const cacheKey = `fingerprint:${fingerprint}`;
@@ -583,12 +653,19 @@ export async function resolveAgentInstructions(
         fingerprint,
         chain: cached.chain,
         fromCache: true,
+        resolvedFolderId: agent.folderId,
+        instructionsSupplementaryFiles: supplementaryFiles,
+        instructionsOverrides: overrides ?? null,
+        instructionsFilePath: mergedFilePathCache.get(fingerprint) ?? null,
       };
     }
   }
 
   // Cache miss (or stale) — regenerate
-  const mergedInstructions = await buildMergedInstructions(agent, chain);
+  const mergedInstructions = await buildMergedInstructions(agent, chain, {
+    instructionsSupplementaryFiles: supplementaryFiles,
+    instructionsOverrides: overrides,
+  });
   const mergedFilePath = await generateMergedFile(agent, chain, mergedInstructions, fingerprint);
 
   // Compute chain metadata for the response
@@ -627,6 +704,10 @@ export async function resolveAgentInstructions(
     fingerprint,
     chain: chainMetadata,
     fromCache: false,
+    resolvedFolderId: agent.folderId,
+    instructionsSupplementaryFiles: supplementaryFiles,
+    instructionsOverrides: overrides ?? null,
+    instructionsFilePath: mergedFilePath,
   };
 }
 

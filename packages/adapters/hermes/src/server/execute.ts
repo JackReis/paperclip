@@ -46,12 +46,27 @@ import {
   DEFAULT_GRACE_SEC,
   DEFAULT_MODEL,
   VALID_PROVIDERS,
+  OLLAMA_CLOUD_PROVIDER,
+  OLLAMA_CLOUD_ADMISSION_STATE_DIR_ENV,
+  OLLAMA_CLOUD_ADMISSION_POLICY_ENV,
+  OLLAMA_CLOUD_ADMISSION_WRAPPER_ENV,
+  DEFAULT_CLOUD_ADMISSION_WRAPPER,
+  CLOUD_ADMISSION_ROUTE_CLASS,
 } from "../shared/constants.js";
 
 import {
   detectModel,
   resolveProvider,
 } from "./detect-model.js";
+import {
+  parseCurrentResultFooter,
+  authenticateModel,
+  type ModelCatalogEntry,
+} from "../shared/footer.js";
+import {
+  resolveFolderInstructions,
+  clearFolderInstructionsCache,
+} from "./folder-instructions.js";
 
 // ---------------------------------------------------------------------------
 // Config helpers
@@ -70,6 +85,58 @@ function cfgStringArray(v: unknown): string[] | undefined {
   return Array.isArray(v) && v.every((i) => typeof i === "string")
     ? (v as string[])
     : undefined;
+}
+
+// ---------------------------------------------------------------------------
+// Paperclip API folder resolver for instruction inheritance
+// ---------------------------------------------------------------------------
+
+/**
+ * Resolve a single agent folder via the Paperclip API.
+ * Returns null for absent/invalid folders (fail-open: no folder instructions).
+ *
+ * Uses the API key from the environment (PAPERCLIP_API_KEY) or the run's
+ * authToken, never from config (keys must never enter commits or config).
+ */
+async function resolveFolderFromApi(
+  companyId: string,
+  folderId: string,
+  apiUrl: string,
+  apiKey: string | null,
+): Promise<{ id: string; parentId: string | null; name: string; slug: string; sortOrder: number } | null> {
+  if (!apiKey) return null;
+
+  const url = `${apiUrl.replace(/\/+$/, "")}/companies/${companyId}/agent-folders/${folderId}`;
+
+  try {
+    const resp = await fetch(url, {
+      method: "GET",
+      headers: {
+        Authorization: `Bearer ${apiKey}`,
+        "Content-Type": "application/json",
+      },
+      signal: AbortSignal.timeout(10_000),
+    });
+
+    if (!resp.ok) {
+      if (resp.status === 401 || resp.status === 403) return null;
+      return null;
+    }
+
+    const data = await resp.json();
+    if (!data || typeof data !== "object") return null;
+
+    return {
+      id: String(data.id ?? folderId),
+      parentId: data.parentId ? String(data.parentId) : null,
+      name: String(data.name ?? ""),
+      slug: String(data.slug ?? ""),
+      sortOrder: Number(data.sortOrder ?? 0),
+    };
+  } catch {
+    // Non-fatal: fail open — no folder instructions resolved
+    return null;
+  }
 }
 
 export function resolveHermesCommand(config: Record<string, unknown>): string {
@@ -154,7 +221,7 @@ export function buildPrompt(
   let paperclipApiUrl =
     cfgString(config.paperclipApiUrl) ||
     process.env.PAPERCLIP_API_URL ||
-    "http://127.0.0.1:3100/api";
+    "http://127.0.0.1:3101/api";
   // Ensure /api suffix
   if (!paperclipApiUrl.endsWith("/api")) {
     paperclipApiUrl = paperclipApiUrl.replace(/\/+$/, "") + "/api";
@@ -214,19 +281,19 @@ export function buildPrompt(
 // ---------------------------------------------------------------------------
 
 /** Regex to extract session ID from Hermes quiet-mode output: "session_id: <id>" */
-const SESSION_ID_REGEX = /^session_id:\s*(\S+)/m;
+export const SESSION_ID_REGEX = /^session_id:\s*(\S+)/m;
 
 /** Regex for legacy session output format */
-const SESSION_ID_REGEX_LEGACY = /session[_ ](?:id|saved)[:\s]+([a-zA-Z0-9_-]+)/i;
+export const SESSION_ID_REGEX_LEGACY = /session[_ ](?:id|saved)[:\\s]+([a-zA-Z0-9_-]+)/i;
 
 /** Regex to extract token usage from Hermes output. */
-const TOKEN_USAGE_REGEX =
+export const TOKEN_USAGE_REGEX =
   /tokens?[:\s]+(\d+)\s*(?:input|in)\b.*?(\d+)\s*(?:output|out)\b/i;
 
 /** Regex to extract cost from Hermes output. */
-const COST_REGEX = /(?:cost|spent)[:\s]*\$?([\d.]+)/i;
+export const COST_REGEX = /(?:cost|spent)[:\\s]*\$?([\d.]+)/i;
 
-interface ParsedOutput {
+export interface ParsedOutput {
   sessionId?: string;
   response?: string;
   usage?: UsageSummary;
@@ -264,40 +331,140 @@ function cleanResponse(raw: string): string {
 }
 
 // ---------------------------------------------------------------------------
+// Error extraction
+// ---------------------------------------------------------------------------
+
+/**
+ * Extract a human-readable error summary from stderr.
+ *
+ * Strategy — in priority order:
+ * 1. Python-style tracebacks: capture the full "Traceback (most recent call last):"
+ *    block up to the exception line, so the File/line context is not lost.
+ * 2. Generic error/exception lines: collect lines matching common error keywords
+ *    (error, exception, traceback, failed), skipping log-level noise, capped at
+ *    a reasonable number of lines.
+ *
+ * Returns null when no error-like content is found.
+ */
+function extractErrorSummary(stderr: string): string | null {
+  const lines = stderr.split("\n");
+
+  // --- 1. Python-style traceback block ----------------------------------
+  // Find "Traceback (most recent call last):" and capture everything from
+  // there until the actual exception line (the last line that isn't indented
+  // with File/line or blank). This preserves the full stack context.
+  const tracebackStart = lines.findIndex((l) =>
+    /traceback/i.test(l.trim()),
+  );
+  if (tracebackStart >= 0) {
+    // Walk forward from the traceback header to find the exception line.
+    // In a Python traceback the frames are indented, and the final exception
+    // line (e.g. "RuntimeError: adapter init failed") is at indent 0.
+    let end = tracebackStart + 1;
+    for (let i = tracebackStart + 1; i < lines.length; i++) {
+      const line = lines[i];
+      const trimmed = line.trim();
+      if (trimmed === "") continue; // skip blank lines between frames
+      // Indented lines are continuation (File "...", line N, etc.)
+      if (/^\s/.test(line)) {
+        end = i;
+        continue;
+      }
+      // Non-indented non-empty line after the traceback header: this is the
+      // exception type/message line (the terminal line of the traceback).
+      end = i;
+      break;
+    }
+    const block = lines.slice(tracebackStart, end + 1).join("\n").trim();
+    if (block) return block;
+  }
+
+  // --- 2. Generic error keyword lines ------------------------------------
+  const errorLines = lines
+    .filter((line) => /error|exception|failed/i.test(line))
+    .filter((line) => !/INFO|DEBUG|warn/i.test(line.trim()));
+  if (errorLines.length > 0) {
+    return errorLines.slice(0, 10).join("\n").trim();
+  }
+
+  return null;
+}
+
+// ---------------------------------------------------------------------------
 // Output parsing
 // ---------------------------------------------------------------------------
 
+/**
+ * Parse Hermes quiet-mode output into structured fields.
+ *
+ * Quiet mode (-Q) emits a `session_id: <id>` metadata line alongside the
+ * model response.  In Hermes 0.18.2 the ordering is not guaranteed —
+ * session_id may appear on stdout before or after the response, and
+ * cancelled sessions emit session_id on stderr.  The parser must:
+ *
+ * 1. Accept either ordering (session_id-first or response-first).
+ * 2. Normalise CRLF / lone-CR line endings before any slicing.
+ * 3. Strip only metadata lines (session_id, timestamps, [hermes], etc.).
+ * 4. Preserve the response even when it lives on stderr (cancelled sessions).
+ * 5. Retain false-green / provider-exhaustion / traceback error behaviour.
+ *
+ * The search for session_id spans stdout + stderr (combined), but the
+ * response is extracted from whichever stream actually carries prose
+ * content — not blindly from stdout alone.
+ */
 function parseHermesOutput(stdout: string, stderr: string): ParsedOutput {
-  const combined = stdout + "\n" + stderr;
+  // Normalise CRLF early so all downstream slicing is byte-accurate.
+  const normStdout = stdout.replace(/\r\n/g, "\n").replace(/\r/g, "\n");
+  const normStderr = stderr.replace(/\r\n/g, "\n").replace(/\r/g, "\n");
+  const combined = normStdout + "\n" + normStderr;
   const result: ParsedOutput = {};
 
-  // In quiet mode, Hermes outputs:
-  //   <response text>
+  // ── Extract session ID from combined output ──────────────────────────
+  const sessionIdMatch = combined.match(SESSION_ID_REGEX);
+  if (sessionIdMatch?.[1]) {
+    result.sessionId = sessionIdMatch[1];
+  }
+
+  // ── Extract response ──────────────────────────────────────────────────
   //
-  //   session_id: <id>
-  const sessionMatch = stdout.match(SESSION_ID_REGEX);
-  if (sessionMatch?.[1]) {
-    result.sessionId = sessionMatch?.[1] ?? null;
-    // The response is everything before the session_id line
-    const sessionLineIdx = stdout.lastIndexOf("\nsession_id:");
-    if (sessionLineIdx > 0) {
-      result.response = cleanResponse(stdout.slice(0, sessionLineIdx));
-    }
-  } else {
-    // Legacy format (non-quiet mode)
-    const legacyMatch = combined.match(SESSION_ID_REGEX_LEGACY);
-    if (legacyMatch?.[1]) {
-      result.sessionId = legacyMatch?.[1] ?? null;
-    }
-    // In non-quiet mode, extract clean response from stdout by
-    // filtering out tool lines, system messages, and noise
-    const cleaned = cleanResponse(stdout);
+  // Strategy: find the session_id line boundaries across the combined
+  // normalised output, then take the prose that is NOT a metadata line
+  // from whichever stream(s) carry it.
+  //
+  // We search in combined (stdout + stderr) so that cancelled sessions
+  // where session_id is on stderr but the response is on stdout (or vice
+  // versa) are handled correctly.
+
+  // Remove all session_id lines from combined before extracting the response.
+  // This handles both orderings and both streams.
+  const responseCandidates: string[] = [];
+
+  // stdout is the primary source of the response
+  if (normStdout.trim()) {
+    responseCandidates.push(normStdout);
+  }
+  // stderr may contain the response too (e.g. cancelled sessions where
+  // the model output was written to stderr before the session_id line)
+  if (normStderr.trim()) {
+    responseCandidates.push(normStderr);
+  }
+
+  for (const candidate of responseCandidates) {
+    // Strip the session_id line from this candidate so it doesn't
+    // pollute the response text.
+    const withoutSessionId = candidate.replace(/^session_id:.*$/gm, "");
+    const cleaned = cleanResponse(withoutSessionId);
     if (cleaned.length > 0) {
-      result.response = cleaned;
+      // Use the first non-empty cleaned response.  If stdout already
+      // gave us a response, we keep that (primary).  Only fall through
+      // to stderr if stdout had no usable response.
+      if (result.response === undefined) {
+        result.response = cleaned;
+      }
     }
   }
 
-  // Extract token usage
+  // ── Extract token usage ──────────────────────────────────────────────
   const usageMatch = combined.match(TOKEN_USAGE_REGEX);
   if (usageMatch) {
     result.usage = {
@@ -306,20 +473,20 @@ function parseHermesOutput(stdout: string, stderr: string): ParsedOutput {
     };
   }
 
-  // Extract cost
+  // ── Extract cost ─────────────────────────────────────────────────────
   const costMatch = combined.match(COST_REGEX);
   if (costMatch?.[1]) {
     result.costUsd = parseFloat(costMatch[1]);
   }
 
-  // Check for error patterns in stderr
-  if (stderr.trim()) {
-    const errorLines = stderr
-      .split("\n")
-      .filter((line) => /error|exception|traceback|failed/i.test(line))
-      .filter((line) => !/INFO|DEBUG|warn/i.test(line)); // skip log-level noise
-    if (errorLines.length > 0) {
-      result.errorMessage = errorLines.slice(0, 5).join("\n");
+  // ── Extract error summary from stderr ────────────────────────────────
+  // Extract full traceback blocks rather than only keyword-matching lines,
+  // so that traceback context (File "...", line N, raise/return statements)
+  // is preserved alongside the exception line.
+  if (normStderr.trim()) {
+    const extracted = extractErrorSummary(normStderr);
+    if (extracted !== null) {
+      result.errorMessage = extracted;
     }
   }
 
@@ -336,7 +503,7 @@ export async function execute(
   const config = (ctx.config ?? ctx.agent?.adapterConfig ?? {}) as Record<string, unknown>;
 
   // ── Resolve configuration ──────────────────────────────────────────────
-  const hermesCmd = resolveHermesCommand(config);
+  const baseHermesCmd = resolveHermesCommand(config);
   const model = cfgString(config.model) || DEFAULT_MODEL;
   const timeoutSec = cfgNumber(config.timeoutSec) || DEFAULT_TIMEOUT_SEC;
   const graceSec = cfgNumber(config.graceSec) || DEFAULT_GRACE_SEC;
@@ -408,6 +575,58 @@ export async function execute(
     }
   }
 
+  // ── Resolve folder-level shared instructions (JAC-4746 hierarchical folders) ──
+  // If the agent has a folderId, walk the folder chain and merge folder-level
+  // AGENTS.md instruction bundles. These are prepended to the agent's own
+  // instructions so that folder-level shared instructions cascade to all agents
+  // in the folder subtree. Fail open — if the API is unreachable or the agent
+  // has no folderId, no folder instructions are resolved.
+  //
+  // Note: if instructionsFilePath already points to the generated merged file
+  // (__generated__/merged.md), the service layer pre-resolved folder inheritance
+  // and we skip the runtime API resolution to avoid double-application.
+  const agentFolderId = (ctx.agent as any)?.folderId as string | undefined;
+  const agentCompanyId = ctx.agent?.companyId ?? "";
+  const instructionsFilePathIsPreMerged = instructionsFilePath?.includes("__generated__/merged.md") ?? false;
+  if (agentFolderId && agentCompanyId && !instructionsFilePathIsPreMerged) {
+    const apiUrl =
+      cfgString(config.paperclipApiUrl) ||
+      process.env.PAPERCLIP_API_URL ||
+      "http://127.0.0.1:3101/api";
+    const apiKey =
+      (ctx as any).authToken ??
+      process.env.PAPERCLIP_API_KEY;
+
+    try {
+      const folderResult = await resolveFolderInstructions({
+        companyId: agentCompanyId,
+        folderId: agentFolderId,
+        resolveFolder: (id: string) =>
+          resolveFolderFromApi(agentCompanyId, id, apiUrl, apiKey ?? null),
+        agentInstructions: agentInstructions,
+      });
+
+      if (folderResult.mergedInstructions) {
+        const folderInstructions =
+          folderResult.mergedInstructions +
+          `\n\n[Folder instructions resolved from ${folderResult.chain.length} folder(s) in chain, fingerprint: ${folderResult.fingerprint ?? "null"}]`;
+        // Prepend folder instructions before agent instructions
+        agentInstructions = folderInstructions + "\n\n---\n\n" + agentInstructions;
+        await ctx.onLog(
+          "stdout",
+          `[hermes] Loaded folder-level instructions from \"${folderResult.chain.length} folder(s)\" (${folderResult.mergedInstructions.length} chars)\n`,
+        );
+      }
+    } catch (err) {
+      const reason = err instanceof Error ? err.message : String(err);
+      // Non-fatal: fail open — log a warning but continue execution
+      await ctx.onLog(
+        "stdout",
+        `[hermes] Warning: could not resolve folder instructions (folderId=${agentFolderId}): ${reason}\n`,
+      );
+    }
+  }
+
   // ── Build prompt ───────────────────────────────────────────────────────
   let prompt = buildPrompt(ctx, config, { resumedSession: Boolean(prevSessionId) });
   if (agentInstructions) {
@@ -416,11 +635,12 @@ export async function execute(
 
   // ── Build command args ─────────────────────────────────────────────────
   // Use -Q (quiet) to get clean output: just response + session_id line
-  const useQuiet = cfgBoolean(config.quiet) === true; // default false
+  const useQuiet = cfgBoolean(config.quiet) !== false; // schema default true; explicit false is supported
   const args: string[] = ["chat", "-q", prompt];
   if (useQuiet) args.push("-Q");
 
-  if (model) {
+  // `auto` is an adapter sentinel: omitting -m lets Hermes resolve its configured model.
+  if (model !== "auto") {
     args.push("-m", model);
   }
 
@@ -532,7 +752,29 @@ export async function execute(
     return ctx.onLog(stream, chunk);
   };
 
-  const result = await runChildProcess(ctx.runId, hermesCmd, args, {
+  // ── Cloud admission wrapper wiring (hermes-04ps.1.3.1) ──────────────────
+  // When the resolved provider is "ollama-cloud" AND the admission state dir
+  // is configured, wrap the Hermes CLI invocation with the counting semaphore.
+  // The wrapper acquires a flock slot before exec'ing the child, capping
+  // concurrent cloud requests under the Ollama Cloud ceiling.
+  let effectiveCmd = baseHermesCmd;
+  let effectiveArgs = args;
+  const stateDir = process.env[OLLAMA_CLOUD_ADMISSION_STATE_DIR_ENV];
+  if (resolvedProvider === OLLAMA_CLOUD_PROVIDER && stateDir) {
+    const wrapperPath =
+      cfgString(config.cloudAdmissionWrapper) ||
+      process.env[OLLAMA_CLOUD_ADMISSION_WRAPPER_ENV] ||
+      DEFAULT_CLOUD_ADMISSION_WRAPPER;
+    // Build: wrapper.py passthrough -- <baseHermesCmd> [chat -q ... ...]
+    effectiveCmd = wrapperPath;
+    effectiveArgs = ["passthrough", "--", baseHermesCmd, ...args];
+    await ctx.onLog(
+      "stdout",
+      `[hermes] Cloud admission wrapper active (provider=ollama-cloud, state_dir=${stateDir}, route_class=${CLOUD_ADMISSION_ROUTE_CLASS}). Wrapping: ${wrapperPath} passthrough -- ${baseHermesCmd}\n`,
+    );
+  }
+
+  const result = await runChildProcess(ctx.runId, effectiveCmd, effectiveArgs, {
     cwd,
     env,
     timeoutSec,
@@ -542,11 +784,72 @@ export async function execute(
   });
 
   // ── Parse output ───────────────────────────────────────────────────────
-  const parsed = parseHermesOutput(result.stdout || "", result.stderr || "");
+  const stdout = result.stdout || "";
+  const stderr = result.stderr || "";
+  const parsed = parseHermesOutput(stdout, stderr);
+  const combinedOutput = `${stdout}\n${stderr}`;
+
+  // ── Verify current-result footer for cataloged models ──────────────────
+  //
+  // When the configured model is an exact catalog entry (e.g. "gemini-3.1-pro-preview"),
+  // the adapter requires a structured current-result footer in the Hermes output
+  // that proves the exact model was used.  This is the model-catalog authentication
+  // gate: the footer's model field must EXACTLY match the catalog entry — never
+  // a substring match.
+  //
+  // When the model is "auto" or not in the catalog, footer verification is skipped
+  // (Hermes resolves the model at runtime and there is no catalog entry to authenticate).
+  let footerModelVerified: ModelCatalogEntry | null = null;
+  let footerAuthError: string | null = null;
+  const catalogEntry = authenticateModel(model);
+  if (catalogEntry !== null) {
+    const footerResult = parseCurrentResultFooter(combinedOutput);
+
+    if (footerResult.malformed) {
+      await ctx.onLog(
+        "stderr",
+        `[hermes] Model catalog gate FAILED: malformed current-result footer. ${footerResult.error}\n`,
+      );
+      // Surface as an error condition but don't override a successful exit code
+      // — the footer gate is an authentication signal, not an execution failure.
+      footerAuthError = footerResult.error ?? "Malformed footer.";
+    } else if (footerResult.footer === null) {
+      await ctx.onLog(
+        "stderr",
+        `[hermes] Model catalog gate WARNING: no current-result footer found for cataloged model "${model}". Model not proven by footer authentication.\n`,
+      );
+      footerAuthError = `No current-result footer found for cataloged model "${model}".`;
+    } else if (!footerResult.footer.authenticated) {
+      await ctx.onLog(
+        "stderr",
+        `[hermes] Model catalog gate FAILED: footer model "${footerResult.footer.model}" did not match catalog entry "${catalogEntry.id}". ${footerResult.error}\n`,
+      );
+      footerAuthError = footerResult.error ?? "Footer model authentication failed.";
+    } else {
+      footerModelVerified = footerResult.footer.catalogEntry;
+      await ctx.onLog(
+        "stdout",
+        `[hermes] Model catalog gate PASSED: footer proves exact model "${footerResult.footer.model}" (provider=${footerResult.footer.provider ?? "unset"}, tier=${catalogEntry.tier ?? "default"}).\n`,
+      );
+    }
+  }
+
+  // Older Hermes releases can return 0 after exhausting every provider. Require
+  // the complete terminal envelope so ordinary HTTP-error prose stays successful.
+  const terminalProviderExhaustion =
+    /API call failed \(attempt \d+\/\d+\)/i.test(combinedOutput) &&
+    /model [\s\x27"]*auto[\s\x27"]* is not supported[^\n]*Codex provider/i.test(combinedOutput) &&
+    /fallback provider[^\n]*failed[^\n]*(?:HTTP 401 Unauthorized|non-retryable client error)/i.test(combinedOutput) &&
+    /(?:all fallback providers failed|no providers remain)/i.test(combinedOutput) &&
+    /Resume this session with:/i.test(combinedOutput);
+  const effectiveExitCode = result.exitCode === 0 && terminalProviderExhaustion ? 1 : result.exitCode;
+  if (terminalProviderExhaustion) {
+    parsed.errorMessage = "Provider fallback exhaustion prevented Hermes from completing the request.";
+  }
 
   await ctx.onLog(
     "stdout",
-    `[hermes] Exit code: ${result.exitCode ?? "null"}, timed out: ${result.timedOut}\n`,
+    `[hermes] Exit code: ${effectiveExitCode ?? "null"}, timed out: ${result.timedOut}\n`,
   );
   if (parsed.sessionId) {
     await ctx.onLog("stdout", `[hermes] Session: ${parsed.sessionId}\n`);
@@ -554,7 +857,7 @@ export async function execute(
 
   // ── Build result ───────────────────────────────────────────────────────
   const executionResult: AdapterExecutionResult = {
-    exitCode: result.exitCode,
+    exitCode: effectiveExitCode,
     signal: result.signal,
     timedOut: result.timedOut,
     provider: resolvedProvider,
@@ -563,6 +866,12 @@ export async function execute(
 
   if (parsed.errorMessage) {
     executionResult.errorMessage = parsed.errorMessage;
+  }
+  if (footerAuthError) {
+    // Append footer auth failure to any existing error message
+    executionResult.errorMessage = executionResult.errorMessage
+      ? `${executionResult.errorMessage}; Footer auth: ${footerAuthError}`
+      : `Footer auth: ${footerAuthError}`;
   }
 
   if (parsed.usage) {
@@ -584,6 +893,8 @@ export async function execute(
     session_id: parsed.sessionId || null,
     usage: parsed.usage || null,
     cost_usd: parsed.costUsd ?? null,
+    footer_error: footerAuthError,
+    footer_model_verified: footerModelVerified ? footerModelVerified.id : null,
   };
 
   // Store session ID for next run

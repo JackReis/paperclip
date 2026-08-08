@@ -6,13 +6,19 @@ import type { Db } from "@paperclipai/db";
 import {
   resolveAgentInstructions,
   invalidateCompanyCache,
+  type ResolveAgentInstructionsOptions,
 } from "./agent-instructions-inheritance.js";
+import { findActiveServerAdapter } from "../adapters/registry.js";
 
 const ENTRY_FILE_DEFAULT = "AGENTS.md";
 const MODE_KEY = "instructionsBundleMode";
 const ROOT_KEY = "instructionsRootPath";
 const ENTRY_KEY = "instructionsEntryFile";
 const FILE_KEY = "instructionsFilePath";
+/** AdapterConfig key for inline instruction overrides (JAC-4750 Phase 2). */
+const INSTRUCTIONS_OVERRIDES_KEY = "instructionsOverrides";
+/** AdapterConfig key for explicit folder id override (JAC-4750 Phase 2). */
+const INSTRUCTIONS_FOLDER_ID_KEY = "instructionsFolderId";
 const PROMPT_KEY = "promptTemplate";
 /** @deprecated Use the managed instructions bundle system instead. */
 const BOOTSTRAP_PROMPT_KEY = "bootstrapPromptTemplate";
@@ -78,6 +84,16 @@ type AgentInstructionsBundle = {
   instructionsFingerprint?: string | null;
   /** Path to the generated merged file. Present when inheritance is active. */
   generatedInstructionsPath?: string | null;
+  /** The effective instructions file path for the agent — set to the generated merged
+   * file path when folder inheritance is active, so the adapter consumes the already-
+   * merged bundle instead of re-resolving at runtime (JAC-4750 Phase 2). */
+  instructionsFilePath?: string | null;
+  /** The folderId used for inheritance resolution (from agent.folderId or adapterConfig). */
+  instructionsFolderId?: string | null;
+  /** Per-agent inline instruction overrides applied at the top of the merge chain. */
+  instructionsOverrides?: string | null;
+  /** Supplementary instruction files map used during resolution (from adapter manifest). */
+  instructionsSupplementaryFiles?: Record<string, string>;
   /** Whether the bundle was served from cache. */
   fromCache?: boolean;
 };
@@ -478,79 +494,94 @@ export function syncInstructionsBundleConfigFromFilePath(
   return applyBundleConfig(next, { mode, rootPath, entryFile });
 }
 
+
+/**
+ * Resolve the effective folderId for an agent from adapterConfig or the agent record.
+ * Supports per-agent `instructionsFolderId` in adapterConfig which overrides the
+ * DB-level folderId (JAC-4750 Phase 2).
+ */
+function resolveEffectiveFolderId(agent: AgentLike): string | null {
+  const config = asRecord(agent.adapterConfig);
+  const configFolderId = asString(config[INSTRUCTIONS_FOLDER_ID_KEY]);
+  if (configFolderId && configFolderId.trim().length > 0) {
+    return configFolderId.trim();
+  }
+  return agent.folderId ?? null;
+}
+
+/**
+ * Read per-agent inline instruction overrides from adapterConfig.
+ * These are appended at the top of the merge chain during inheritance resolution.
+ */
+function resolveInstructionsOverrides(agent: AgentLike): string | null {
+  const config = asRecord(agent.adapterConfig);
+  const overrides = asString(config[INSTRUCTIONS_OVERRIDES_KEY]);
+  if (!overrides || !overrides.trim()) return null;
+  return overrides;
+}
+
+/**
+ * Feature-gate: only adapters that declare supportsInstructionsBundle get
+ * folder instruction inheritance. Adapters whose capability is undefined
+ * fall back to a legacy hardcoded set of known local bundle-supporting types.
+ */
+function adapterSupportsInheritance(adapterType: string | undefined): boolean {
+  if (!adapterType) return false;
+  const adapter = findActiveServerAdapter(adapterType);
+  if (adapter?.supportsInstructionsBundle !== undefined) {
+    return adapter.supportsInstructionsBundle;
+  }
+  // Legacy fallback: known local adapters that ship with AGENTS.md bundle support
+  const LEGACY_BUNDLE_ADAPTERS = new Set([
+    "hermes_local",
+    "claude_local",
+    "codex_local",
+    "cursor",
+    "gemini_local",
+    "grok_local",
+    "opencode_local",
+    "pi_local",
+    "droid_local",
+  ]);
+  return LEGACY_BUNDLE_ADAPTERS.has(adapterType);
+}
+
+/**
+ * Resolve supplementary instruction files map for an agent's adapter type,
+ * preferring the adapter manifest declaration over the built-in fallback map.
+ */
+function resolveSupplementaryFiles(adapterType: string | undefined): Record<string, string> {
+  if (!adapterType) return {};
+  const adapter = findActiveServerAdapter(adapterType);
+  if (adapter?.instructionsSupplementaryFiles) {
+    return adapter.instructionsSupplementaryFiles;
+  }
+  // Built-in fallback map mirrors ADAPTER_SUPPLEMENTARY_FILES in the inheritance engine
+  if (adapterType === "hermes_local") return { hermes: "HERMES.md" };
+  if (adapterType === "claude_local") return { claude: "CLAUDE.md" };
+  return {};
+}
+
 export function agentInstructionsService(db?: Db) {
   async function getBundle(agent: AgentLike): Promise<AgentInstructionsBundle> {
     const state = await recoverManagedBundleState(agent, deriveBundleState(agent));
-    if (!state.rootPath) {
-      const bundle = toBundle(agent, state, []);
-      // If agent has a folderId, try inheritance resolution for merged instructions
-      if (agent.folderId && db) {
-        try {
-          const resolved = await resolveAgentInstructions(db, {
-            id: agent.id,
-            companyId: agent.companyId,
-            name: agent.name,
-            adapterConfig: asRecord(agent.adapterConfig),
-            adapterType: agent.adapterType ?? "hermes_local",
-            folderId: agent.folderId ?? null,
-          });
-          if (resolved.chain.length > 0) {
-            return {
-              ...bundle,
-              inheritanceChain: resolved.chain,
-              instructionsFingerprint: resolved.fingerprint,
-              generatedInstructionsPath: resolved.mergedFilePath,
-              fromCache: resolved.fromCache,
-            };
-          }
-        } catch (err) {
-          bundle.warnings.push(
-            `Failed to resolve instruction inheritance for agent ${agent.id}: ${err instanceof Error ? err.message : String(err)}`,
-          );
-        }
-      }
-      return bundle;
-    }
-    const stat = await statIfExists(state.rootPath);
-    if (!stat?.isDirectory()) {
-      const fallbackBundle = toBundle(agent, {
-        ...state,
-        warnings: [...state.warnings, `Instructions root does not exist: ${state.rootPath}`],
-      }, []);
-      // Try inheritance resolution as fallback for missing flat bundle
-      if (agent.folderId && db) {
-        try {
-          const resolved = await resolveAgentInstructions(db, {
-            id: agent.id,
-            companyId: agent.companyId,
-            name: agent.name,
-            adapterConfig: asRecord(agent.adapterConfig),
-            adapterType: agent.adapterType ?? "hermes_local",
-            folderId: agent.folderId ?? null,
-          });
-          if (resolved.chain.length > 0) {
-            return {
-              ...fallbackBundle,
-              inheritanceChain: resolved.chain,
-              instructionsFingerprint: resolved.fingerprint,
-              generatedInstructionsPath: resolved.mergedFilePath,
-              fromCache: resolved.fromCache,
-            };
-          }
-        } catch (err) {
-          fallbackBundle.warnings.push(
-            `Failed to resolve instruction inheritance for agent ${agent.id}: ${err instanceof Error ? err.message : String(err)}`,
-          );
-        }
-      }
-      return fallbackBundle;
-    }
-    const files = await listFilesRecursive(state.rootPath);
-    const summaries = await Promise.all(files.map((relativePath) => readFileSummary(state.rootPath!, relativePath, state.entryFile)));
-    const bundle = toBundle(agent, state, summaries);
 
-    // If agent has a folderId, resolve inheritance and attach metadata
-    if (agent.folderId && db) {
+    // Resolve folder inheritance metadata from DB or adapterConfig
+    const effectiveFolderId = resolveEffectiveFolderId(agent);
+    const overrides = resolveInstructionsOverrides(agent);
+    const supportsInheritance = adapterSupportsInheritance(agent.adapterType);
+
+    // Build inheritance resolve options (supplementary files from manifest + overrides)
+    const inheritanceOptions: ResolveAgentInstructionsOptions = {
+      instructionsSupplementaryFiles: resolveSupplementaryFiles(agent.adapterType),
+      instructionsOverrides: overrides ?? undefined,
+    };
+
+    // Attempt inheritance resolution (feature-gated on supportsInstructionsBundle)
+    async function resolveInheritance(fallbackBundle: AgentInstructionsBundle): Promise<AgentInstructionsBundle> {
+      if (!effectiveFolderId || !db || !supportsInheritance) {
+        return fallbackBundle;
+      }
       try {
         const resolved = await resolveAgentInstructions(db, {
           id: agent.id,
@@ -558,25 +589,49 @@ export function agentInstructionsService(db?: Db) {
           name: agent.name,
           adapterConfig: asRecord(agent.adapterConfig),
           adapterType: agent.adapterType ?? "hermes_local",
-          folderId: agent.folderId ?? null,
-        });
+          folderId: effectiveFolderId,
+        }, inheritanceOptions);
         if (resolved.chain.length > 0) {
           return {
-            ...bundle,
+            ...fallbackBundle,
             inheritanceChain: resolved.chain,
             instructionsFingerprint: resolved.fingerprint,
             generatedInstructionsPath: resolved.mergedFilePath,
+            // Step 4: set instructionsFilePath to the merged file path so the
+            // adapter consumes the already-merged bundle instead of re-resolving.
+            instructionsFilePath: resolved.instructionsFilePath ?? resolved.mergedFilePath,
+            instructionsFolderId: resolved.resolvedFolderId,
+            instructionsOverrides: resolved.instructionsOverrides,
+            instructionsSupplementaryFiles: resolved.instructionsSupplementaryFiles,
             fromCache: resolved.fromCache,
           };
         }
+        return fallbackBundle;
       } catch (err) {
-        bundle.warnings.push(
+        fallbackBundle.warnings.push(
           `Failed to resolve instruction inheritance for agent ${agent.id}: ${err instanceof Error ? err.message : String(err)}`,
         );
+        return fallbackBundle;
       }
     }
 
-    return bundle;
+    if (!state.rootPath) {
+      const bundle = toBundle(agent, state, []);
+      return resolveInheritance(bundle);
+    }
+    const stat = await statIfExists(state.rootPath);
+    if (!stat?.isDirectory()) {
+      const fallbackBundle = toBundle(agent, {
+        ...state,
+        warnings: [...state.warnings, `Instructions root does not exist: ${state.rootPath}`],
+      }, []);
+      return resolveInheritance(fallbackBundle);
+    }
+    const files = await listFilesRecursive(state.rootPath);
+    const summaries = await Promise.all(files.map((relativePath) => readFileSummary(state.rootPath!, relativePath, state.entryFile)));
+    const bundle = toBundle(agent, state, summaries);
+
+    return resolveInheritance(bundle);
   }
 
   async function readFile(agent: AgentLike, relativePath: string): Promise<AgentInstructionsFileDetail> {
