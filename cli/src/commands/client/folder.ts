@@ -9,6 +9,7 @@ import {
   resolveCommandContext,
   type BaseClientOptions,
 } from "./common.js";
+import type { AgentFolder } from "@paperclipai/shared";
 
 /**
  * CLI options for `paperclipai folder migrate-from-flat`.
@@ -79,6 +80,26 @@ interface FolderAgentsOptions extends BaseClientOptions {}
 interface FolderAssignOptions extends BaseClientOptions {
   agentIds: string;
   folderId: string;
+}
+
+interface FolderMoveOptions extends BaseClientOptions {
+  parentId?: string;
+  sortOrder?: number;
+}
+
+interface FolderInstructionsBundleOptions extends BaseClientOptions {
+  path?: string;
+}
+
+interface FolderInstructionsBundle {
+  folderId: string;
+  folderName: string;
+  content: string | null;
+  inherited: Array<{
+    folderId: string;
+    folderName: string;
+    content: string | null;
+  }>;
 }
 
 
@@ -813,6 +834,99 @@ export function registerFolderCommands(program: Command): void {
                 `Unassigned ${successCount} agent(s) with ${errorCount} error(s).`,
               ),
             );
+          }
+        } catch (err) {
+          handleCommandError(err);
+        }
+      }),
+    { includeCompany: false },
+  );
+
+  // ── folder move ────────────────────────────────────────────────
+  // Moves a folder under a new parent (or to root). Uses the server
+  // /move endpoint which enforces cycle detection + sort order.
+
+  addCommonClientOptions(
+    folder
+      .command("move")
+      .description("Move a folder to a new parent (or to root)")
+      .argument("<folderId>", "Folder ID")
+      .option("-C, --company-id <id>", "Company ID")
+      .option("-p, --parent-id <id>", "New parent folder ID (use 'null' to make root-level)")
+      .option("--sort-order <n>", "New sort order within the parent (integer)", (v) => Number(v), undefined)
+      .action(async (folderId: string, opts: FolderMoveOptions) => {
+        try {
+          const ctx = resolveCommandContext(opts, { requireCompany: true });
+          const body: Record<string, unknown> = {};
+          if (opts.parentId !== undefined) body.parentId = opts.parentId === "null" ? null : opts.parentId;
+          if (opts.sortOrder !== undefined) body.sortOrder = opts.sortOrder;
+          const moved = await ctx.api.post<AgentFolder>(
+            apiPath`/api/companies/${ctx.companyId}/agent-folders/${folderId}/move`,
+            body,
+          );
+          if (ctx.json) {
+            printOutput(moved, { json: true });
+            return;
+          }
+          console.log(
+            pc.green(
+              `✓ Moved folder ${pc.cyan(folderId)} to ${opts.parentId === "null" ? "root" : opts.parentId ?? "same parent"}.`,
+            ),
+          );
+        } catch (err) {
+          handleCommandError(err);
+        }
+      }),
+    { includeCompany: false },
+  );
+
+  // ── folder instructions-bundle ─────────────────────────────────
+  // Prints the merged instruction bundle for a folder: the folder-level
+  // AGENTS.md plus any inherited parent instructions, walked leaf→root.
+
+  addCommonClientOptions(
+    folder
+      .command("instructions-bundle")
+      .description(
+        "Print the merged folder-level instruction bundle (this folder's " +
+          "AGENTS.md, walked up the parent chain. No --path: the folder-level bundle root).",
+      )
+      .argument("<folderId>", "Folder ID")
+      .option("-C, --company-id <id>", "Company ID")
+      .option("--path <path>", "Read a specific file from the bundle (default: AGENTS.md)")
+      .action(async (folderId: string, opts: FolderInstructionsBundleOptions) => {
+        try {
+          const ctx = resolveCommandContext(opts, { requireCompany: true });
+          const result = await ctx.api.get<FolderInstructionsBundle>(
+            apiPath`/api/companies/${ctx.companyId}/agent-folders/${folderId}/instructions-bundle` +
+              (opts.path ? `?path=${encodeURIComponent(opts.path)}` : ""),
+          );
+          if (ctx.json) {
+            printOutput(result, { json: true });
+            return;
+          }
+          if (!result) {
+            console.log(pc.dim("(no instructions bundle for this folder)"));
+            return;
+          }
+          if (result.content) {
+            console.log(pc.bold(`# ${result.folderName} (folder ${result.folderId})`));
+            if (result.inherited && result.inherited.length > 0) {
+              console.log(pc.dim(`// inherited from ${result.inherited.length} ancestor folder(s)`));
+            }
+            console.log("");
+            process.stdout.write(result.content);
+          } else {
+            console.log(pc.dim(`(no ${opts.path ?? "AGENTS.md"} in this folder)`));
+            if (result.inherited && result.inherited.length > 0) {
+              for (const inh of result.inherited) {
+                if (inh.content) {
+                  console.log(pc.bold(`\n# ${inh.folderName}`));
+                  process.stdout.write(inh.content);
+                  console.log("");
+                }
+              }
+            }
           }
         } catch (err) {
           handleCommandError(err);
