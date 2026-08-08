@@ -13137,7 +13137,7 @@ export function heartbeatService(db: Db, options: HeartbeatServiceOptions = {}) 
 
       const tracksLocalChild = isTrackedLocalChildProcessAdapter(adapterType);
       const processPidAlive = tracksLocalChild && run.processPid && isProcessAlive(run.processPid);
-      const processGroupAlive = tracksLocalChild && run.processGroupId && isProcessGroupAlive(run.processGroupId);
+      let processGroupAlive = tracksLocalChild && run.processGroupId && isProcessGroupAlive(run.processGroupId);
       if (
         (processPidAlive || processGroupAlive) &&
         readHotRestartAdoptionMetadata(parseObject(run.resultJson))
@@ -13145,25 +13145,59 @@ export function heartbeatService(db: Db, options: HeartbeatServiceOptions = {}) 
         continue;
       }
       if (processPidAlive) {
+        const detachReason = `Lost in-memory process handle, but child pid ${run.processPid} is still alive`;
         if (run.errorCode !== DETACHED_PROCESS_ERROR_CODE) {
-          const detachedMessage = `Lost in-memory process handle, but child pid ${run.processPid} is still alive`;
-          const detachedRun = await setRunStatus(run.id, "running", {
-            error: detachedMessage,
+          await appendRunEvent(run, await nextRunEventSeq(run.id), {
+            eventType: "lifecycle",
+            stream: "system",
+            level: "warn",
+            message: detachReason,
+            payload: {
+              processPid: run.processPid,
+              processGroupId: run.processGroupId ?? null,
+              detachDetected: true,
+            },
+          });
+        }
+
+        // For sessioned local child-process adapters (opencape_local, claude_local,
+        // codex_local, etc.), the orphaned child is generating output into a pipe
+        // whose reader (the heartbeat service's runChildProcess) is gone. There is
+        // no way to re-attach the stdout stream. Terminate the orphaned process
+        // group so output stops silently accumulating, surface process_lost
+        // promptly, and fall through to retry logic below.
+        if (tracksLocalChild && !!run.processGroupId) {
+          await appendRunEvent(run, await nextRunEventSeq(run.id), {
+            eventType: "lifecycle",
+            stream: "system",
+            level: "warn",
+            message: "Detached child process has no recoverable stdout path; terminating orphaned process group",
+            payload: {
+              processPid: run.processPid,
+              processGroupId: run.processGroupId,
+              detachRecovery: "terminate_orphaned_process_group",
+            },
+          });
+          await terminateHeartbeatRunProcess({
+            pid: run.processPid ?? null,
+            processGroupId: run.processGroupId,
+          });
+        } else {
+          // Non-sessioned or non-grouped detached process: mark state and
+          // continue without termination (some adapters manage their own child
+          // lifecycle independently).
+          await setRunStatus(run.id, "running", {
+            error: detachReason,
             errorCode: DETACHED_PROCESS_ERROR_CODE,
           });
-          if (detachedRun) {
-            await appendRunEvent(detachedRun, await nextRunEventSeq(detachedRun.id), {
-              eventType: "lifecycle",
-              stream: "system",
-              level: "warn",
-              message: detachedMessage,
-              payload: {
-                processPid: run.processPid,
-              },
-            });
-          }
+          continue;
         }
-        continue;
+
+        // If we reach here, we terminated an orphaned sessioned local child.
+        // Proceed to process_lost finalization below, but skip the stale
+        // processGroupAlive re-check (cached value is still true from before
+        // the kill — the fall-through would redundantly re-terminate).
+        processGroupAlive = false;
       }
 
       let descendantOnlyCleanup = false;
