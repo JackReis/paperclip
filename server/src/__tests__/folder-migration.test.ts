@@ -1,6 +1,6 @@
 import { randomUUID } from "node:crypto";
 import { afterEach, beforeAll, beforeEach, describe, expect, it } from "vitest";
-import { eq } from "drizzle-orm";
+import { eq, sql } from "drizzle-orm";
 import {
   agentFolders,
   agents,
@@ -189,17 +189,21 @@ describeEmbeddedPostgres("FolderMigrationService", () => {
     });
 
     it("detects broken folder references (agent pointing to non-existent folder)", async () => {
-      // Create an agent with a folder_id pointing to a non-existent folder
-      await db
-        .insert(agents)
-        .values({
+      // Create an agent with a folder_id pointing to a non-existent folder.
+      // The agents.folder_id FK (added in 0217) prevents inserting an orphan
+      // directly, so we drop the constraint within a transaction, insert the
+      // orphan row, and re-add the constraint as NOT VALID.
+      await db.transaction(async (tx) => {
+        await tx.execute(sql`ALTER TABLE "agents" DROP CONSTRAINT IF EXISTS "agents_folder_id_fkey"`);
+        await tx.insert(agents).values({
           companyId,
           name: "Orphan Agent",
           role: "coordinator",
           adapterType: "process",
           folderId: "00000000-0000-0000-0000-000000000000",
-        })
-        .returning();
+        });
+        await tx.execute(sql`ALTER TABLE "agents" ADD CONSTRAINT "agents_folder_id_fkey" FOREIGN KEY ("folder_id") REFERENCES "agent_folders" ("id") ON DELETE SET NULL NOT VALID`);
+      });
 
       const result = await migrationService.validateInheritance(companyId);
       expect(result.brokenFolderReferences).toHaveLength(1);
@@ -249,17 +253,24 @@ describeEmbeddedPostgres("FolderMigrationService", () => {
     });
 
     it("detects broken folder chains (missing parent)", async () => {
-      // Create a folder with a non-existent parent
-      await db
-        .insert(agentFolders)
-        .values({
-          companyId,
-          name: "Child Folder",
-          slug: "child",
-          sortOrder: 0,
-          parentId: "00000000-0000-0000-0000-000000000000",
-        })
-        .returning();
+      // Create a folder with a non-existent parent.
+      // The agent_folders.parent_id self-referencing FK (added in 0217) prevents
+      // inserting a broken parent chain directly, so we drop the constraint within
+      // a transaction, insert the orphan folder, and re-add as NOT VALID.
+      await db.transaction(async (tx) => {
+        await tx.execute(sql`ALTER TABLE "agent_folders" DROP CONSTRAINT IF EXISTS "agent_folders_parent_id_fkey"`);
+        await tx
+          .insert(agentFolders)
+          .values({
+            companyId,
+            name: "Child Folder",
+            slug: "child",
+            sortOrder: 0,
+            parentId: "00000000-0000-0000-0000-000000000000",
+          })
+          .returning();
+        await tx.execute(sql`ALTER TABLE "agent_folders" ADD CONSTRAINT "agent_folders_parent_id_fkey" FOREIGN KEY ("parent_id") REFERENCES "agent_folders" ("id") ON DELETE SET NULL NOT VALID`);
+      });
 
       const result = await migrationService.validateInheritance(companyId);
       expect(result.brokenFolderChains.some((c) => c.reason === "missing_parent")).toBe(true);
