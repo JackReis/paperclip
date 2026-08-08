@@ -12,6 +12,7 @@ import {
   startEmbeddedPostgresTestDatabase,
 } from "../__tests__/helpers/embedded-postgres.js";
 import { FolderMigrationService } from "../services/folder-migration.js";
+import { agentFolderService } from "../services/agent-folders.js";
 
 const embeddedPostgresSupport = await getEmbeddedPostgresTestSupport();
 const describeEmbeddedPostgres = embeddedPostgresSupport.supported ? describe : describe.skip;
@@ -164,6 +165,128 @@ describeEmbeddedPostgres("FolderMigrationService", () => {
       expect(moved.map((a) => a.id)).toEqual(
         expect.arrayContaining([agentA.id, agentB.id]),
       );
+    });
+  });
+
+  describe("validateInheritance", () => {
+    it("returns zero issues for an empty company", async () => {
+      const result = await migrationService.validateInheritance(companyId);
+      expect(result.issueCount).toBe(0);
+      expect(result.totalAgents).toBe(0);
+      expect(result.agentsInFolders).toBe(0);
+      expect(result.agentsUnassigned).toBe(0);
+    });
+
+    it("reports all flat agents with no folder issues", async () => {
+      await createUnassignedAgent("Agent A", "coordinator");
+      await createUnassignedAgent("Agent B", "watchdog");
+
+      const result = await migrationService.validateInheritance(companyId);
+      expect(result.totalAgents).toBe(2);
+      expect(result.agentsInFolders).toBe(0);
+      expect(result.agentsUnassigned).toBe(2);
+      expect(result.issueCount).toBe(0);
+    });
+
+    it("detects broken folder references (agent pointing to non-existent folder)", async () => {
+      // Create an agent with a folder_id pointing to a non-existent folder
+      await db
+        .insert(agents)
+        .values({
+          companyId,
+          name: "Orphan Agent",
+          role: "coordinator",
+          adapterType: "process",
+          folderId: "00000000-0000-0000-0000-000000000000",
+        })
+        .returning();
+
+      const result = await migrationService.validateInheritance(companyId);
+      expect(result.brokenFolderReferences).toHaveLength(1);
+      expect(result.brokenFolderReferences[0].agentName).toBe("Orphan Agent");
+      expect(result.brokenFolderReferences[0].reason).toBe("folder_not_found");
+      expect(result.issueCount).toBe(1);
+    });
+
+    it("detects cycles in folder hierarchy", async () => {
+      // Create two folders that reference each other
+      const [folderA] = await db
+        .insert(agentFolders)
+        .values({
+          companyId,
+          name: "Folder A",
+          slug: "folder-a",
+          sortOrder: 0,
+          parentId: null,
+        })
+        .returning();
+
+      const [folderB] = await db
+        .insert(agentFolders)
+        .values({
+          companyId,
+          name: "Folder B",
+          slug: "folder-b",
+          sortOrder: 1,
+          parentId: null,
+        })
+        .returning();
+
+      // Create cycle: A -> B -> A
+      await db
+        .update(agentFolders)
+        .set({ parentId: folderB.id })
+        .where(eq(agentFolders.id, folderA.id));
+      await db
+        .update(agentFolders)
+        .set({ parentId: folderA.id })
+        .where(eq(agentFolders.id, folderB.id));
+
+      const result = await migrationService.validateInheritance(companyId);
+      expect(result.folderCycles.length).toBeGreaterThan(0);
+      expect(result.brokenFolderChains.some((c) => c.reason === "cycle")).toBe(true);
+      expect(result.issueCount).toBeGreaterThan(0);
+    });
+
+    it("detects broken folder chains (missing parent)", async () => {
+      // Create a folder with a non-existent parent
+      await db
+        .insert(agentFolders)
+        .values({
+          companyId,
+          name: "Child Folder",
+          slug: "child",
+          sortOrder: 0,
+          parentId: "00000000-0000-0000-0000-000000000000",
+        })
+        .returning();
+
+      const result = await migrationService.validateInheritance(companyId);
+      expect(result.brokenFolderChains.some((c) => c.reason === "missing_parent")).toBe(true);
+      expect(result.issueCount).toBeGreaterThan(0);
+    });
+
+    it("detects missing folder-level instructions (AGENTS.md)", async () => {
+      // This test relies on the fact that pointer files are written during migration
+      // but AGENTS.md is not automatically created. We create a folder and assign
+      // an agent to it without writing AGENTS.md.
+      const svc = agentFolderService(db);
+      const folder = await svc.create(companyId, {
+        name: "Team A",
+        slug: "team-a",
+      });
+
+      const agent = await createUnassignedAgent("Team Agent", "coordinator");
+      await db
+        .update(agents)
+        .set({ folderId: folder.id })
+        .where(eq(agents.id, agent.id));
+
+      const result = await migrationService.validateInheritance(companyId);
+      expect(result.missingFolderInstructions).toHaveLength(1);
+      expect(result.missingFolderInstructions[0].agentName).toBe("Team Agent");
+      expect(result.missingFolderInstructions[0].folderName).toBe("Team A");
+      expect(result.issueCount).toBe(1);
     });
   });
 });
