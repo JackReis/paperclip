@@ -408,7 +408,7 @@ describeEmbeddedPostgres("agent folder service (real DB)", () => {
       await db.insert(companies).values({
         id: otherCompanyId,
         name: "Company 2",
-        issuePrefix: "C2",
+        issuePrefix: "C3",
         requireBoardApprovalForNewAgents: false,
       });
 
