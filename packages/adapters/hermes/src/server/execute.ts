@@ -581,14 +581,9 @@ export async function execute(
   // instructions so that folder-level shared instructions cascade to all agents
   // in the folder subtree. Fail open — if the API is unreachable or the agent
   // has no folderId, no folder instructions are resolved.
-  //
-  // Note: if instructionsFilePath already points to the generated merged file
-  // (__generated__/merged.md), the service layer pre-resolved folder inheritance
-  // and we skip the runtime API resolution to avoid double-application.
   const agentFolderId = (ctx.agent as any)?.folderId as string | undefined;
   const agentCompanyId = ctx.agent?.companyId ?? "";
-  const instructionsFilePathIsPreMerged = instructionsFilePath?.includes("__generated__/merged.md") ?? false;
-  if (agentFolderId && agentCompanyId && !instructionsFilePathIsPreMerged) {
+  if (agentFolderId && agentCompanyId) {
     const apiUrl =
       cfgString(config.paperclipApiUrl) ||
       process.env.PAPERCLIP_API_URL ||
