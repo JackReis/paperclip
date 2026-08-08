@@ -2382,6 +2382,34 @@ export {
   type EnsureMySkillFolder,
 } from "./validators/folder.js";
 
+export type {
+  AgentFolder,
+  AgentFolderListItem,
+  AgentFolderListResult,
+  CreateAgentFolder,
+  UpdateAgentFolder,
+  MoveAgentFolder,
+  MoveAgentToFolder,
+} from "./types/agent-folders.js";
+
+export type {
+  MigrationResult,
+  BrokenFolderReference,
+  BrokenFolderChain,
+  FolderCycle,
+  MissingFolderInstructions,
+  ConflictingExternalFolderInstructions,
+  MisalignedInstructionsRoot,
+  InheritanceValidationResult,
+} from "./types/folder-migration.js";
+
+export {
+  createAgentFolderSchema,
+  updateAgentFolderSchema,
+  moveAgentFolderSchema,
+  moveAgentToFolderSchema,
+} from "./validators/agent-folders.js";
+
 export {
   environmentCustomImageTemplateKindSchema,
   environmentCustomImageTemplateStatusSchema,
