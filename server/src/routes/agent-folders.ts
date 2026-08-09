@@ -8,7 +8,6 @@ import {
 } from "@paperclipai/shared";
 import { validate } from "../middleware/validate.js";
 import { agentFolderService, agentService, logActivity, writeAgentFolderPointerFile, removeAgentFolderPointerFile } from "../services/index.js";
-import { invalidateCompanyCache } from "../services/agent-instructions-inheritance.js";
 import { assertCompanyAccess, getActorInfo } from "./authz.js";
 
 export function agentFolderRoutes(db: Db) {
@@ -61,9 +60,6 @@ export function agentFolderRoutes(db: Db) {
       const folderId = req.params.folderId as string;
       assertCompanyAccess(req, companyId);
       const updated = await svc.update(companyId, folderId, req.body);
-      // On folder reparent, invalidate all descendant agent caches
-      // (both old and new parent chains may contain different agent sets)
-      invalidateCompanyCache(companyId);
       if (!updated) {
         res.status(404).json({ error: "Folder not found" });
         return;
@@ -117,11 +113,10 @@ export function agentFolderRoutes(db: Db) {
   router.delete("/companies/:companyId/agent-folders/:folderId", async (req, res) => {
     const companyId = req.params.companyId as string;
     const folderId = req.params.folderId as string;
+    const force = req.query.force === "true";
     assertCompanyAccess(req, companyId);
     try {
-      const deleted = await svc.deleteFolder(companyId, folderId);
-      // On folder deletion, invalidate caches for any descendant agents
-      invalidateCompanyCache(companyId);
+      const deleted = await svc.deleteFolder(companyId, folderId, { force });
       if (!deleted) {
         res.status(404).json({ error: "Folder not found" });
         return;
@@ -137,7 +132,7 @@ export function agentFolderRoutes(db: Db) {
         action: "agent_folder.deleted",
         entityType: "agent_folder",
         entityId: deleted.id,
-        details: { name: deleted.name },
+        details: { name: deleted.name, force },
       });
       res.json({ deleted });
     } catch (err) {
@@ -163,8 +158,6 @@ export function agentFolderRoutes(db: Db) {
         return;
       }
       await svc.assignAgents(companyId, folderId, agentIds);
-      // Invalidate inheritance cache for affected agents
-      invalidateCompanyCache(companyId);
 
       // Phase 3 (JAC-4752): Write pointer files for each assigned agent
       const agentSvc = agentService(db);
@@ -172,7 +165,7 @@ export function agentFolderRoutes(db: Db) {
         const agent = await agentSvc.getById(agentId);
         if (agent && agent.name) {
           await writeAgentFolderPointerFile(
-            { id: agent.id, companyId: agent.companyId, name: agent.name, adapterConfig: agent.adapterConfig ?? {}, adapterType: agent.adapterType, folderId: agent.folderId ?? folderId },
+            { id: agent.id, companyId: agent.companyId, name: agent.name, adapterConfig: agent.adapterConfig ?? {}, folderId: agent.folderId ?? folderId },
             folderId,
           ).catch((err) => {
             console.error(`[JAC-4752] Failed to write pointer file for agent ${agent.id}:`, err);
@@ -223,7 +216,7 @@ export function agentFolderRoutes(db: Db) {
       if (folderId) {
         await svc.assignAgents(companyId, folderId, [agentId]);
         await writeAgentFolderPointerFile(
-          { id: agent.id, companyId: agent.companyId, name: agent.name, adapterConfig: agent.adapterConfig ?? {}, adapterType: agent.adapterType, folderId },
+          { id: agent.id, companyId: agent.companyId, name: agent.name, adapterConfig: agent.adapterConfig ?? {}, folderId },
           folderId,
         ).catch((err) => {
           console.error(`[JAC-4752] Failed to write pointer file for agent ${agent.id}:`, err);
@@ -232,8 +225,6 @@ export function agentFolderRoutes(db: Db) {
         // Agent was in a folder, need to find old folderId before unassigning
         const oldFolderId = agent.folderId;
         await svc.unassignAgent(companyId, agentId);
-        // Invalidate inheritance cache for the affected agent
-        invalidateCompanyCache(companyId);
         if (oldFolderId && agent.name) {
           await removeAgentFolderPointerFile(companyId, oldFolderId, agentId).catch(() => undefined);
         }
@@ -252,26 +243,6 @@ export function agentFolderRoutes(db: Db) {
         details: { folderId: folderId ?? null },
       });
       res.json({ ok: true });
-    },
-  );
-
-  // Get the merged folder-level instructions bundle (this folder's AGENTS.md
-  // plus inherited ancestor instructions). Path: <instanceRoot>/companies/<cid>/folders/<fid>/instructions/
-  router.get(
-    "/companies/:companyId/agent-folders/:folderId/instructions-bundle",
-    async (req, res) => {
-      const companyId = req.params.companyId as string;
-      const folderId = req.params.folderId as string;
-      assertCompanyAccess(req, companyId);
-      const relativePath = typeof req.query.path === "string" && req.query.path.trim()
-        ? req.query.path.trim()
-        : null;
-      const result = await svc.getInstructionsBundle(companyId, folderId, relativePath);
-      if (!result) {
-        res.status(404).json({ error: "Folder not found" });
-        return;
-      }
-      res.json(result);
     },
   );
 
