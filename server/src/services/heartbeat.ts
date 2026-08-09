@@ -13406,32 +13406,23 @@ export function heartbeatService(db: Db, options: HeartbeatServiceOptions = {}) 
 
     if (additionalCostCents > 0 || hasTokenUsage) {
       const costs = costService(db, budgetHooks);
-      try {
-        await costs.createEvent(agent.companyId, {
-          heartbeatRunId: run.id,
-          agentId: agent.id,
-          issueId: ledgerScope.issueId,
-          projectId: ledgerScope.projectId,
-          billingCode: ledgerScope.billingCode,
-          provider,
-          biller,
-          billingType,
-          costStatus,
-          model: result.model ?? "unknown",
-          inputTokens,
-          cachedInputTokens,
-          outputTokens,
-          costCents: additionalCostCents,
-          occurredAt: new Date(),
-        });
-      } catch (costError) {
-        // JAC-4532: Cost accounting must never void a completed, already-billed
-        // agent run. Log the failure and continue — telemetry is best-effort.
-        logger.error(
-          { err: costError, runId: run.id, agentId: agent.id },
-          "Cost event emission failed; continuing run finalization",
-        );
-      }
+      await costs.createEvent(agent.companyId, {
+        heartbeatRunId: run.id,
+        agentId: agent.id,
+        issueId: ledgerScope.issueId,
+        projectId: ledgerScope.projectId,
+        billingCode: ledgerScope.billingCode,
+        provider,
+        biller,
+        billingType,
+        costStatus,
+        model: result.model ?? "unknown",
+        inputTokens,
+        cachedInputTokens,
+        outputTokens,
+        costCents: additionalCostCents,
+        occurredAt: new Date(),
+      });
     }
   }
 
@@ -16033,10 +16024,7 @@ export function heartbeatService(db: Db, options: HeartbeatServiceOptions = {}) 
       await finalizeAgentStatus(
         agent.id,
         outcome,
-        outcome === "succeeded"
-          ? null
-          : (adapterResult.errorMessage ??
-            `Process lost — no stderr or run output captured (exit code ${run.exitCode ?? "unknown"}, timed out: ${!!run.timedOut}). This typically indicates a bootstrap failure before Paperclip could capture adapter output.`),
+        outcome === "succeeded" ? null : (adapterResult.errorMessage ?? null),
         {
           keepIdleOnFailure:
             outcome === "failed" &&

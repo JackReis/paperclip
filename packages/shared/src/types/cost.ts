@@ -1,4 +1,4 @@
-import type { BillingType, ConfidenceLevel, CostStatus, CoverageState, SafeStatus, SourceStatus, PriceBasis, CostConfidenceLevel, VisibilityClass, RetentionClass, RedactionState } from "../constants.js";
+import type { BillingType, CostStatus } from "../constants.js";
 
 export interface CostEvent {
   id: string;
@@ -17,42 +17,7 @@ export interface CostEvent {
   inputTokens: number;
   cachedInputTokens: number;
   outputTokens: number;
-  reasoningTokens: number | null;
-  toolCallTokens: number | null;
   costCents: number;
-  currency: string;
-  pricingVersionRef: string | null;
-  /** How the cost was determined (JAC-4530). */
-  priceBasis: PriceBasis;
-  /** Confidence in cost accuracy (JAC-4530). */
-  costConfidence: CostConfidenceLevel;
-  coverageState: CoverageState;
-  sourceStatus: SourceStatus;
-  safeStatus: SafeStatus;
-  confidence: ConfidenceLevel;
-  coverageWarning: string | null;
-  visibilityClass: VisibilityClass;
-  retentionClass: RetentionClass;
-  redactionState: RedactionState;
-  sourcePermissionRef: string | null;
-  tenantRefHash: string | null;
-  subjectRefHashes: string[] | null;
-  sourceDeletedAt: Date | null;
-  tombstoneRef: string | null;
-  policyVersion: string | null;
-  sourceSystem: string;
-  sourceEventId: string | null;
-  sourceEventVersion: string | null;
-  eventKind: string;
-  attemptIndex: number;
-  /** JAC-4532: monotonic sequence number from source. */
-  observedSequence: number | null;
-  /** JAC-4532: supersedes a previous event ID when this is a correction. */
-  supersedesEventId: string | null;
-  /** JAC-4532: deterministic ingest key (adapter key). */
-  ingestId: string;
-  /** JAC-4532: SHA-256 of canonical payload. */
-  payloadHash: string | null;
   occurredAt: Date;
   createdAt: Date;
 }

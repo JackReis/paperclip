@@ -204,7 +204,6 @@ const claudeLocalAdapter: ServerAdapterModule = {
   supportsLocalAgentJwt: true,
   supportsInstructionsBundle: true,
   instructionsPathKey: "instructionsFilePath",
-  instructionsSupplementaryFiles: { claude: "CLAUDE.md" },
   requiresMaterializedRuntimeSkills: false,
   getRuntimeCommandSpec: (config) =>
     buildNpmRuntimeCommandSpec(config, "claude", "@anthropic-ai/claude-code"),

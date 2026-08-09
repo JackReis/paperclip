@@ -165,7 +165,7 @@ export function agentFolderRoutes(db: Db) {
         const agent = await agentSvc.getById(agentId);
         if (agent && agent.name) {
           await writeAgentFolderPointerFile(
-            { id: agent.id, companyId: agent.companyId, name: agent.name, adapterConfig: agent.adapterConfig ?? {}, folderId: agent.folderId ?? folderId },
+            { id: agent.id, companyId: agent.companyId, name: agent.name, adapterConfig: agent.adapterConfig ?? {}, adapterType: agent.adapterType, folderId: agent.folderId ?? folderId },
             folderId,
           ).catch((err) => {
             console.error(`[JAC-4752] Failed to write pointer file for agent ${agent.id}:`, err);
@@ -216,7 +216,7 @@ export function agentFolderRoutes(db: Db) {
       if (folderId) {
         await svc.assignAgents(companyId, folderId, [agentId]);
         await writeAgentFolderPointerFile(
-          { id: agent.id, companyId: agent.companyId, name: agent.name, adapterConfig: agent.adapterConfig ?? {}, folderId },
+          { id: agent.id, companyId: agent.companyId, name: agent.name, adapterConfig: agent.adapterConfig ?? {}, adapterType: agent.adapterType, folderId },
           folderId,
         ).catch((err) => {
           console.error(`[JAC-4752] Failed to write pointer file for agent ${agent.id}:`, err);
