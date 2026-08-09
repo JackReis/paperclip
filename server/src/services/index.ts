@@ -175,4 +175,14 @@ export {
   type CodexAuthReconciliationSummary,
 } from "./codex-auth-reconciliation.js";
 export { reconcilePersistedRuntimeServicesOnStartup, restartDesiredRuntimeServicesOnStartup } from "./workspace-runtime.js";
+export {
+  configureMemoryPlaneObserver,
+  checkHonchoReachability,
+  createLifecycleEvent,
+  publishLifecycleEvent,
+  getObserverConfig,
+  getDeadLetterEntries,
+  clearDeadLetterEntries,
+  type HonchoReachabilityResult,
+} from "./memory-plane-observer.js";
 export { createStorageServiceFromConfig, getStorageService } from "../storage/index.js";
