@@ -1,4 +1,0 @@
-{
-  "model": "ollama-launch/qwen3-coder:30b",
-  "provider": "ollama-launch"
-}

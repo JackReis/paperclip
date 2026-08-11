@@ -5,6 +5,33 @@
   "description": "Schema for the report-kit reusable report template. Pass a valid object to renderReport() to produce a Fable-5-quality report.",
   "type": "object",
   "required": ["title", "generatedAt", "metrics", "sections"],
+  "definitions": {
+    "reportCell": {
+      "description": "Table cell value, either a plain string/number or a status-colored object",
+      "oneOf": [
+        { "type": "string" },
+        { "type": "number" },
+        {
+          "type": "object",
+          "required": ["value"],
+          "properties": {
+            "value": { "type": ["string", "number"], "description": "Cell display value" },
+            "status": { "type": "string", "enum": ["healthy", "warning", "critical", "unknown"], "description": "Status color for the cell" }
+          }
+        }
+      ]
+    },
+    "reportItem": {
+      "description": "List or metrics-grid item with a labeled value and status",
+      "type": "object",
+      "required": ["label", "value", "status"],
+      "properties": {
+        "label": { "type": "string" },
+        "value": { "type": ["string", "number"] },
+        "status": { "type": "string", "enum": ["healthy", "warning", "critical", "unknown"] }
+      }
+    }
+  },
   "properties": {
     "title": {
       "type": "string",
@@ -70,7 +97,7 @@
               "type": { "const": "table", "description": "Table section" },
               "description": { "type": "string", "description": "Optional explanatory text above the content" },
               "headers": { "type": "array", "minItems": 1, "items": { "type": "string" }, "description": "Column headers" },
-              "rows": { "type": "array", "minItems": 1, "items": { "type": "array" }, "description": "Table rows" }
+              "rows": { "type": "array", "minItems": 1, "items": { "type": "array", "minItems": 1, "items": { "$ref": "#/definitions/reportCell" } }, "description": "Table rows" }
             }
           },
           {
@@ -82,7 +109,7 @@
               "title": { "type": "string", "description": "Section heading" },
               "type": { "const": "list", "description": "List section" },
               "description": { "type": "string", "description": "Optional explanatory text above the content" },
-              "items": { "type": "array", "minItems": 1, "items": { "type": "object" }, "description": "List items" }
+              "items": { "type": "array", "minItems": 1, "items": { "$ref": "#/definitions/reportItem" }, "description": "List items" }
             }
           },
           {
@@ -94,7 +121,7 @@
               "title": { "type": "string", "description": "Section heading" },
               "type": { "const": "metrics-grid", "description": "Metrics grid section" },
               "description": { "type": "string", "description": "Optional explanatory text above the content" },
-              "items": { "type": "array", "minItems": 1, "items": { "type": "object" }, "description": "Metric grid items" }
+              "items": { "type": "array", "minItems": 1, "items": { "$ref": "#/definitions/reportItem" }, "description": "Metric grid items" }
             }
           },
           {

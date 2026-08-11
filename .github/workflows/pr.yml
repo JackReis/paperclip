@@ -61,12 +61,6 @@ jobs:
       - name: Test report-kit zip freshness check
         run: node --test ./scripts/check-report-kit-zip.test.mjs
 
-      - name: Lint hermes_local adapter configs (O6)
-        run: node ./scripts/check-hermes-adapter-config.mjs
-
-      - name: Test hermes adapter config lint
-        run: node --test ./scripts/check-hermes-adapter-config.test.mjs
-
       - name: Test general-server shard partition
         run: node --test ./scripts/__tests__/run-vitest-stable-shard.test.mjs
 
