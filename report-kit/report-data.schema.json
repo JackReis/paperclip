@@ -1,0 +1,132 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://paperclip.nousresearch.com/schemas/report-data.json",
+  "title": "Report Data Contract",
+  "description": "Schema for the report-kit reusable report template. Pass a valid object to renderReport() to produce a Fable-5-quality report.",
+  "type": "object",
+  "required": ["title", "generatedAt", "metrics", "sections"],
+  "properties": {
+    "title": {
+      "type": "string",
+      "description": "Report title, displayed as the main heading",
+      "examples": ["Fleet Health Report — 2026-07-30"]
+    },
+    "subtitle": {
+      "type": "string",
+      "description": "Optional subtitle shown below the title",
+      "examples": ["Aegis Cluster · 22 agents"]
+    },
+    "generatedAt": {
+      "type": "string",
+      "format": "date-time",
+      "description": "ISO 8601 timestamp of report generation"
+    },
+    "version": {
+      "type": "string",
+      "description": "Optional report version string",
+      "default": "1.0.0"
+    },
+    "metrics": {
+      "type": "array",
+      "description": "Key-value metric cards displayed at the top of the report",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "required": ["label", "value", "status"],
+        "properties": {
+          "label": {
+            "type": "string",
+            "description": "Metric label (e.g. 'Agents', 'Uptime')"
+          },
+          "value": {
+            "type": ["string", "number"],
+            "description": "Metric value (e.g. '22', '99.7%')"
+          },
+          "status": {
+            "type": "string",
+            "enum": ["healthy", "warning", "critical", "unknown"],
+            "description": "Status determines the botanical SVG indicator color"
+          },
+          "detail": {
+            "type": "string",
+            "description": "Optional sub-text shown below the value"
+          }
+        }
+      }
+    },
+    "sections": {
+      "type": "array",
+      "description": "Report body sections — each is a titled block of content",
+      "items": {
+        "type": "object",
+        "required": ["title", "type"],
+        "properties": {
+          "title": {
+            "type": "string",
+            "description": "Section heading"
+          },
+          "type": {
+            "type": "string",
+            "enum": ["table", "list", "text", "metrics-grid"],
+            "description": "Section content type"
+          },
+          "description": {
+            "type": "string",
+            "description": "Optional explanatory text above the content"
+          },
+          "headers": {
+            "type": "array",
+            "items": { "type": "string" },
+            "description": "Column headers (required for type=table)"
+          },
+          "rows": {
+            "type": "array",
+            "items": {
+              "type": "array",
+              "description": "Row as an array of cell values. A cell may be a string or { value, status } for status-colored cells."
+            },
+            "description": "Table rows (required for type=table)"
+          },
+          "items": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "label": { "type": "string" },
+                "value": { "type": ["string", "number"] },
+                "status": { "type": "string", "enum": ["healthy", "warning", "critical", "unknown"] }
+              }
+            },
+            "description": "List items or metric grid items (required for type=list or type=metrics-grid)"
+          },
+          "body": {
+            "type": "string",
+            "description": "Markdown body text (required for type=text)"
+          }
+        }
+      }
+    },
+    "manifest": {
+      "type": "object",
+      "description": "Optional manifest ledger displayed at the bottom of the report",
+      "properties": {
+        "generatedBy": { "type": "string" },
+        "source": { "type": "string" },
+        "checksum": { "type": "string" },
+        "counts": {
+          "type": "object",
+          "description": "Key-value pairs shown as a compact ledger strip"
+        }
+      }
+    },
+    "guardrail": {
+      "type": "object",
+      "description": "Optional guardrail footer with version and metadata",
+      "properties": {
+        "version": { "type": "string" },
+        "environment": { "type": "string" },
+        "notes": { "type": "string" }
+      }
+    }
+  }
+}
