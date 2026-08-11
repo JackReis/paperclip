@@ -142,18 +142,18 @@ export function scanForAdapterConfigs(roots) {
         // adapter config files, not test data.
         if (relativePath.includes("test") || relativePath.includes("__tests__")) continue;
 
-        // For JSON files, try to parse and check if it looks like an adapterConfig.
+        // For JSON files, try to parse and validate. Any JSON object is
+        // treated as a potential adapter config so that empty/omitted
+        // adapterConfig objects are still flagged by checkAdapterConfig.
         if (entry.name.endsWith(".json")) {
           try {
             const content = readFileSync(filePath, "utf8");
             const parsed = JSON.parse(content);
-            // Heuristic: if the JSON has 'model' or 'provider' keys, it's
-            // likely an adapter config fixture.
-            if (parsed && typeof parsed === "object" && ("model" in parsed || "provider" in parsed)) {
+            if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) {
               results.push({ filePath: relativePath, config: parsed });
             }
           } catch {
-            // Not valid JSON or not an adapter config — skip.
+            // Not valid JSON — skip.
           }
         }
       }
