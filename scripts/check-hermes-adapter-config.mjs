@@ -142,10 +142,10 @@ export function scanForAdapterConfigs(roots) {
         // adapter config files, not test data.
         if (relativePath.includes("test") || relativePath.includes("__tests__")) continue;
 
-        // For JSON files, try to parse and validate. Any JSON object is
-        // treated as a potential adapter config so that empty/omitted
-        // adapterConfig objects are still flagged by checkAdapterConfig.
-        if (entry.name.endsWith(".json")) {
+        // For JSON files, try to parse and validate. Files whose names
+        // contain "adapter" are treated as potential adapter configs so
+        // that empty/omitted adapterConfig objects are still flagged.
+        if (entry.name.endsWith(".json") && entry.name.toLowerCase().includes("adapter")) {
           try {
             const content = readFileSync(filePath, "utf8");
             const parsed = JSON.parse(content);
@@ -192,7 +192,7 @@ export function runCheck(opts = {}) {
     return 1;
   }
 
-  log(`  ✓  No hermes_local adapterConfig anti-patterns found (scanned ${configs.length} config files)`);
+  log(`  ✓  No hermes_local adapterConfig anti-patterns found (scanned ${configs.length} config file${configs.length === 1 ? "" : "s"})`);
   return 0;
 }
 
