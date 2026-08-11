@@ -62,17 +62,16 @@ test("report-data.schema.json is valid JSON Schema draft-07", () => {
   assert.equal(schema["title"], "Report Data Contract");
   assert.deepEqual(schema["required"], ["title", "generatedAt", "metrics", "sections"]);
   assert.ok(schema.properties, "schema must define properties");
+  assert.equal(schema.properties.sections.minItems, 1, "sections must contain at least one item");
   assert.deepEqual(schema.properties.metrics.items.properties.status.enum, ["healthy", "warning", "critical", "unknown"]);
-  assert.deepEqual(schema.properties.sections.items.properties.type.enum, ["table", "list", "text", "metrics-grid"]);
+  assert.ok(Array.isArray(schema.properties.sections.items.oneOf), "sections must be a oneOf of typed section schemas");
+  assert.equal(schema.properties.sections.items.oneOf.length, 4, "sections must support four content types");
+  const sectionTypes = schema.properties.sections.items.oneOf.map((s) => s.properties.type.const);
+  assert.deepEqual(sectionTypes, ["table", "list", "metrics-grid", "text"], "section oneOf must define table, list, metrics-grid, and text");
 });
 
 test("sample-data-devin-deepwiki.json validates against schema", () => {
-  const schema = readJson("report-data.schema.json");
   const data = readJson("sample-data-devin-deepwiki.json");
-
-  for (const req of schema.required) {
-    assert.ok(data[req] !== undefined, `Required field "${req}" must be present`);
-  }
 
   assert.ok(Array.isArray(data.metrics) && data.metrics.length > 0, "metrics must be a non-empty array");
   for (const m of data.metrics) {
@@ -81,10 +80,19 @@ test("sample-data-devin-deepwiki.json validates against schema", () => {
     assert.ok(["healthy", "warning", "critical", "unknown"].includes(m.status), `invalid status: ${m.status}`);
   }
 
-  assert.ok(Array.isArray(data.sections), "sections must be an array");
+  assert.ok(Array.isArray(data.sections) && data.sections.length > 0, "sections must be a non-empty array");
   for (const s of data.sections) {
     assert.ok(s.title, "each section must have a title");
     assert.ok(["table", "list", "text", "metrics-grid"].includes(s.type), `invalid section type: ${s.type}`);
+
+    if (s.type === "table") {
+      assert.ok(Array.isArray(s.headers) && s.headers.length > 0, "table section must have headers");
+      assert.ok(Array.isArray(s.rows) && s.rows.length > 0, "table section must have rows");
+    } else if (s.type === "list" || s.type === "metrics-grid") {
+      assert.ok(Array.isArray(s.items) && s.items.length > 0, `${s.type} section must have items`);
+    } else if (s.type === "text") {
+      assert.ok(typeof s.body === "string" && s.body.length > 0, "text section must have a non-empty body");
+    }
   }
 
   assert.ok(!isNaN(Date.parse(data.generatedAt)), "generatedAt must be a valid date-time");
@@ -222,25 +230,12 @@ test("report-kit.zip contents match current source files (prevents stale zip)", 
     assert.ok(fileInfo, `zip entry "${expected}" not found in listing`);
   }
 
-  // Verify each expected file's size matches between zip and disk
-  const diskSizes = {};
+  // Verify each expected file's bytes match between zip and disk
   for (const expected of expectedFiles) {
-    const stat = readFileSync(`${__dirname}/${expected}`);
-    diskSizes[expected] = stat.length;
-  }
-
-  // zipinfo -v gives detailed info including uncompressed sizes
-  const verboseListing = execSync(`zipinfo -v ${zipPath}`, { encoding: "utf8" });
-
-  for (const expected of expectedFiles) {
-    // Find the file's section in the verbose listing
-    const fileSection = verboseListing.split(`  ${expected}\n`)[1]?.split("\n\n")[0] || "";
-    const sizeMatch = fileSection.match(/file size\s+(\d+)/i);
-    if (sizeMatch) {
-      const zipSize = parseInt(sizeMatch[1], 10);
-      assert.equal(zipSize, diskSizes[expected],
-        `"${expected}": zip size (${zipSize}) differs from disk size (${diskSizes[expected]}) — zip is stale`);
-    }
+    const diskContent = readFileSync(`${__dirname}/${expected}`);
+    const zipContent = execSync(`unzip -p "${zipPath}" "${expected}"`);
+    assert.ok(zipContent.equals(diskContent),
+      `"${expected}": zip content differs from disk content — zip is stale`);
   }
 });
 

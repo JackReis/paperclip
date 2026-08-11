@@ -9,14 +9,14 @@
  * (or other source files) were edited but the zip was not rebuilt, causing
  * distribution consumers to receive outdated content.
  *
- * The check reads the zip archive's uncompressed entry list and sizes (via
- * `zipinfo -v`) and compares them against the actual files on disk. Any
- * mismatch — missing entry, extra entry, or size difference — fails the build.
+ * The check reads the zip archive's uncompressed entry list and compares each
+ * entry's bytes against the actual files on disk. Any mismatch — missing entry,
+ * extra entry, or content difference — fails the build.
  *
  * Run:  node ./scripts/check-report-kit-zip.mjs
  *       node --test ./scripts/check-report-kit-zip.test.mjs
  */
-import { readFileSync, statSync } from "node:fs";
+import { readFileSync } from "node:fs";
 import { execSync } from "node:child_process";
 import path from "node:path";
 
@@ -92,46 +92,29 @@ export function runCheck(opts = {}) {
     }
   }
 
-  // --- 5. Size match per entry (zip vs disk) ---
-  let verboseListing = "";
-  try {
-    verboseListing = execSync(`zipinfo -v "${zipPath}"`, { encoding: "utf8" });
-  } catch {
-    // If verbose listing fails, we skip the size check but report the issue.
-    offenses.push("Could not run zipinfo -v for size verification");
-  }
+  // --- 5. Content match per entry (zip vs disk) ---
+  for (const expected of expectedFiles) {
+    const diskPath = path.join(zipDir, expected);
+    let diskContent;
+    try {
+      diskContent = readFileSync(diskPath);
+    } catch {
+      offenses.push(`disk file not found: ${expected}`);
+      continue;
+    }
 
-  if (verboseListing) {
-    for (const expected of expectedFiles) {
-      const diskPath = path.join(zipDir, expected);
-      let diskSize;
-      try {
-        diskSize = statSync(diskPath).size;
-      } catch {
-        offenses.push(`disk file not found: ${expected}`);
-        continue;
-      }
+    let zipContent;
+    try {
+      zipContent = execSync(`unzip -p "${zipPath}" "${expected}"`);
+    } catch {
+      offenses.push(`could not extract "${expected}" from zip for content verification`);
+      continue;
+    }
 
-      // Find this file's section in the verbose listing.
-      const marker = `  ${expected}\n`;
-      const sectionStart = verboseListing.indexOf(marker);
-      if (sectionStart === -1) {
-        offenses.push(`could not find "${expected}" in zipinfo -v output`);
-        continue;
-      }
-      const sectionStartEnd = sectionStart + marker.length;
-      const sectionEnd = verboseListing.indexOf("\n\n", sectionStartEnd);
-      const section = verboseListing.slice(sectionStartEnd, sectionEnd === -1 ? undefined : sectionEnd);
-
-      const sizeMatch = section.match(/uncompressed size:\s+(\d+)/i);
-      if (sizeMatch) {
-        const zipSize = parseInt(sizeMatch[1], 10);
-        if (zipSize !== diskSize) {
-          offenses.push(
-            `"${expected}": zip size (${zipSize}) differs from disk size (${diskSize}) — zip is stale`,
-          );
-        }
-      }
+    if (!zipContent.equals(diskContent)) {
+      offenses.push(
+        `"${expected}": zip content differs from disk content — zip is stale`,
+      );
     }
   }
 

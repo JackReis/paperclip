@@ -57,53 +57,59 @@
     "sections": {
       "type": "array",
       "description": "Report body sections — each is a titled block of content",
+      "minItems": 1,
       "items": {
-        "type": "object",
-        "required": ["title", "type"],
-        "properties": {
-          "title": {
-            "type": "string",
-            "description": "Section heading"
+        "oneOf": [
+          {
+            "type": "object",
+            "description": "Table section",
+            "additionalProperties": false,
+            "required": ["title", "type", "headers", "rows"],
+            "properties": {
+              "title": { "type": "string", "description": "Section heading" },
+              "type": { "const": "table", "description": "Table section" },
+              "description": { "type": "string", "description": "Optional explanatory text above the content" },
+              "headers": { "type": "array", "minItems": 1, "items": { "type": "string" }, "description": "Column headers" },
+              "rows": { "type": "array", "minItems": 1, "items": { "type": "array" }, "description": "Table rows" }
+            }
           },
-          "type": {
-            "type": "string",
-            "enum": ["table", "list", "text", "metrics-grid"],
-            "description": "Section content type"
+          {
+            "type": "object",
+            "description": "List section",
+            "additionalProperties": false,
+            "required": ["title", "type", "items"],
+            "properties": {
+              "title": { "type": "string", "description": "Section heading" },
+              "type": { "const": "list", "description": "List section" },
+              "description": { "type": "string", "description": "Optional explanatory text above the content" },
+              "items": { "type": "array", "minItems": 1, "items": { "type": "object" }, "description": "List items" }
+            }
           },
-          "description": {
-            "type": "string",
-            "description": "Optional explanatory text above the content"
+          {
+            "type": "object",
+            "description": "Metrics-grid section",
+            "additionalProperties": false,
+            "required": ["title", "type", "items"],
+            "properties": {
+              "title": { "type": "string", "description": "Section heading" },
+              "type": { "const": "metrics-grid", "description": "Metrics grid section" },
+              "description": { "type": "string", "description": "Optional explanatory text above the content" },
+              "items": { "type": "array", "minItems": 1, "items": { "type": "object" }, "description": "Metric grid items" }
+            }
           },
-          "headers": {
-            "type": "array",
-            "items": { "type": "string" },
-            "description": "Column headers (required for type=table)"
-          },
-          "rows": {
-            "type": "array",
-            "items": {
-              "type": "array",
-              "description": "Row as an array of cell values. A cell may be a string or { value, status } for status-colored cells."
-            },
-            "description": "Table rows (required for type=table)"
-          },
-          "items": {
-            "type": "array",
-            "items": {
-              "type": "object",
-              "properties": {
-                "label": { "type": "string" },
-                "value": { "type": ["string", "number"] },
-                "status": { "type": "string", "enum": ["healthy", "warning", "critical", "unknown"] }
-              }
-            },
-            "description": "List items or metric grid items (required for type=list or type=metrics-grid)"
-          },
-          "body": {
-            "type": "string",
-            "description": "Markdown body text (required for type=text)"
+          {
+            "type": "object",
+            "description": "Text section",
+            "additionalProperties": false,
+            "required": ["title", "type", "body"],
+            "properties": {
+              "title": { "type": "string", "description": "Section heading" },
+              "type": { "const": "text", "description": "Text section" },
+              "description": { "type": "string", "description": "Optional explanatory text above the content" },
+              "body": { "type": "string", "minLength": 1, "description": "Markdown body text" }
+            }
           }
-        }
+        ]
       }
     },
     "manifest": {
