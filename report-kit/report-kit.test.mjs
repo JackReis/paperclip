@@ -88,6 +88,10 @@ test("sample-data-devin-deepwiki.json validates against schema", () => {
     if (s.type === "table") {
       assert.ok(Array.isArray(s.headers) && s.headers.length > 0, "table section must have headers");
       assert.ok(Array.isArray(s.rows) && s.rows.length > 0, "table section must have rows");
+      for (let i = 0; i < s.rows.length; i++) {
+        assert.equal(s.rows[i].length, s.headers.length,
+          `table row ${i} must have the same number of cells as headers`);
+      }
     } else if (s.type === "list" || s.type === "metrics-grid") {
       assert.ok(Array.isArray(s.items) && s.items.length > 0, `${s.type} section must have items`);
     } else if (s.type === "text") {
