@@ -325,6 +325,20 @@ function renderStatusIcon(status) {
 /* ── Section renderers ─────────────────────────────────────────── */
 
 function renderTableSection(section) {
+  const headerCount = section.headers ? section.headers.length : 0;
+  if (Array.isArray(section.rows)) {
+    for (let i = 0; i < section.rows.length; i++) {
+      const row = section.rows[i];
+      if (!Array.isArray(row)) {
+        throw new TypeError(`Table row ${i} is not an array`);
+      }
+      if (row.length !== headerCount) {
+        throw new Error(
+          `Table row ${i} has ${row.length} cell(s) but header declares ${headerCount} column(s)`,
+        );
+      }
+    }
+  }
   const thead = section.headers
     ? `<thead><tr>${section.headers.map(h => `<th>${escapeHtml(h)}</th>`).join('')}</tr></thead>`
     : '';
