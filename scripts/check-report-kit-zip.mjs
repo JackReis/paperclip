@@ -17,7 +17,7 @@
  *       node --test ./scripts/check-report-kit-zip.test.mjs
  */
 import { readFileSync } from "node:fs";
-import { execSync } from "node:child_process";
+import { execFileSync } from "node:child_process";
 import path from "node:path";
 
 const __dirname = path.dirname(new URL(import.meta.url).pathname);
@@ -64,7 +64,7 @@ export function runCheck(opts = {}) {
   // --- 3. List entries via zipinfo ---
   let listing;
   try {
-    listing = execSync(`zipinfo -1 "${zipPath}"`, { encoding: "utf8" });
+    listing = execFileSync("zipinfo", ["-1", zipPath], { encoding: "utf8" });
   } catch (e) {
     error(`ERROR: Could not list zip contents with zipinfo: ${e.message}`);
     return 1;
@@ -105,7 +105,7 @@ export function runCheck(opts = {}) {
 
     let zipContent;
     try {
-      zipContent = execSync(`unzip -p "${zipPath}" "${expected}"`);
+      zipContent = execFileSync("unzip", ["-p", zipPath, expected]);
     } catch {
       offenses.push(`could not extract "${expected}" from zip for content verification`);
       continue;
