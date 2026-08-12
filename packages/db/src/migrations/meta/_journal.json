@@ -1468,99 +1468,113 @@
     {
       "idx": 211,
       "version": "7",
-      "when": 1784824200000,
-      "tag": "0211_routine_goal_sync_metadata",
+      "when": 1786129601533,
+      "tag": "0211_bright_morg",
       "breakpoints": true
     },
     {
       "idx": 212,
       "version": "7",
-      "when": 1783025824120,
-      "tag": "0212_environment_custom_image_templates_reconciliation",
+      "when": 1786388759523,
+      "tag": "0212_onboarding_first_task_unique",
       "breakpoints": true
     },
     {
       "idx": 213,
       "version": "7",
-      "when": 1783025924120,
-      "tag": "0213_agent_sessions",
+      "when": 1786467951626,
+      "tag": "0213_complete_mystique",
       "breakpoints": true
     },
     {
       "idx": 214,
       "version": "7",
-      "when": 1775500000000,
-      "tag": "0214_cost_events_coverage_fields",
+      "when": 1784824200000,
+      "tag": "0214_routine_goal_sync_metadata",
       "breakpoints": true
     },
     {
       "idx": 215,
       "version": "7",
-      "when": 1784592001000,
-      "tag": "0215_run_events_coverage",
+      "when": 1783025824120,
+      "tag": "0215_environment_custom_image_templates_reconciliation",
       "breakpoints": true
     },
     {
       "idx": 216,
       "version": "7",
-      "when": 1784592001000,
-      "tag": "0216_productivity_review_trigger_snooze",
+      "when": 1783025924120,
+      "tag": "0216_agent_sessions",
       "breakpoints": true
     },
     {
       "idx": 217,
       "version": "7",
-      "when": 1784592002000,
-      "tag": "0217_cost_events_price_basis",
+      "when": 1775500000000,
+      "tag": "0217_cost_events_coverage_fields",
       "breakpoints": true
     },
     {
       "idx": 218,
       "version": "7",
-      "when": 1784592003000,
-      "tag": "0218_run_events_extended_fields",
+      "when": 1784592001000,
+      "tag": "0218_run_events_coverage",
       "breakpoints": true
     },
     {
       "idx": 219,
       "version": "7",
-      "when": 1784592004000,
-      "tag": "0219_cost_events_privacy_index",
+      "when": 1784592001000,
+      "tag": "0219_productivity_review_trigger_snooze",
       "breakpoints": true
     },
     {
       "idx": 220,
       "version": "7",
-      "when": 1785970000000,
-      "tag": "0220_jac4532_event_identity_idempotency_enforcement",
+      "when": 1784592002000,
+      "tag": "0220_cost_events_price_basis",
       "breakpoints": true
     },
     {
       "idx": 221,
       "version": "7",
-      "when": 1786060000000,
-      "tag": "0221_jac4747_agent_folders",
+      "when": 1784592003000,
+      "tag": "0221_run_events_extended_fields",
       "breakpoints": true
     },
     {
       "idx": 222,
       "version": "7",
-      "when": 1786070000000,
-      "tag": "0222_jac4538_issue_work_products_approval_id",
+      "when": 1784592004000,
+      "tag": "0222_cost_events_privacy_index",
       "breakpoints": true
     },
     {
       "idx": 223,
       "version": "7",
-      "when": 1786129601533,
-      "tag": "0223_bright_morg",
+      "when": 1785970000000,
+      "tag": "0223_jac4532_event_identity_idempotency_enforcement",
       "breakpoints": true
     },
     {
       "idx": 224,
       "version": "7",
+      "when": 1786060000000,
+      "tag": "0224_jac4747_agent_folders",
+      "breakpoints": true
+    },
+    {
+      "idx": 225,
+      "version": "7",
+      "when": 1786070000000,
+      "tag": "0225_jac4538_issue_work_products_approval_id",
+      "breakpoints": true
+    },
+    {
+      "idx": 226,
+      "version": "7",
       "when": 1754617800000,
-      "tag": "0224_jac4538_approvals_artifact_fields",
+      "tag": "0226_jac4538_approvals_artifact_fields",
       "breakpoints": true
     }
   ]
