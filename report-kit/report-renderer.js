@@ -326,26 +326,15 @@ function renderStatusIcon(status) {
 
 function renderTableSection(section) {
   const headerCount = section.headers ? section.headers.length : 0;
-  if (Array.isArray(section.rows)) {
-    for (let i = 0; i < section.rows.length; i++) {
-      const row = section.rows[i];
-      if (!Array.isArray(row)) {
-        throw new TypeError(`Table row ${i} is not an array`);
-      }
-      if (row.length !== headerCount) {
-        throw new Error(
-          `Table row ${i} has ${row.length} cell(s) but header declares ${headerCount} column(s)`,
-        );
-      }
-    }
-  }
   const thead = section.headers
     ? `<thead><tr>${section.headers.map(h => `<th>${escapeHtml(h)}</th>`).join('')}</tr></thead>`
     : '';
   const tbody = section.rows
-    ? `<tbody>${section.rows.map(row =>
-        `<tr>${row.map(cell => `<td>${renderCellValue(cell)}</td>`).join('')}</tr>`
-      ).join('')}</tbody>`
+    ? `<tbody>${section.rows.map(row => {
+        const cells = Array.isArray(row) ? row : [];
+        const normalized = Array.from({ length: headerCount }, (_, i) => cells[i] ?? '');
+        return `<tr>${normalized.map(cell => `<td>${renderCellValue(cell)}</td>`).join('')}</tr>`;
+      }).join('')}</tbody>`
     : '';
   return `<table class="report-table">${thead}${tbody}</table>`;
 }
