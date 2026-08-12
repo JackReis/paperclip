@@ -325,15 +325,13 @@ function renderStatusIcon(status) {
 /* ── Section renderers ─────────────────────────────────────────── */
 
 function renderTableSection(section) {
-  const headerCount = section.headers ? section.headers.length : 0;
   const thead = section.headers
     ? `<thead><tr>${section.headers.map(h => `<th>${escapeHtml(h)}</th>`).join('')}</tr></thead>`
     : '';
   const tbody = section.rows
     ? `<tbody>${section.rows.map(row => {
         const cells = Array.isArray(row) ? row : [];
-        const normalized = Array.from({ length: headerCount }, (_, i) => cells[i] ?? '');
-        return `<tr>${normalized.map(cell => `<td>${renderCellValue(cell)}</td>`).join('')}</tr>`;
+        return `<tr>${cells.map(cell => `<td>${renderCellValue(cell)}</td>`).join('')}</tr>`;
       }).join('')}</tbody>`
     : '';
   return `<table class="report-table">${thead}${tbody}</table>`;
