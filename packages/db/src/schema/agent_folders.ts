@@ -9,6 +9,7 @@ import {
   uniqueIndex,
   uuid,
 } from "drizzle-orm/pg-core";
+import { sql } from "drizzle-orm";
 import { companies } from "./companies.js";
 
 export const agentFolders = pgTable(
@@ -33,12 +34,24 @@ export const agentFolders = pgTable(
       .defaultNow(),
   },
   (table) => ({
-    companyParentSlugIdx: uniqueIndex(
-      "agent_folders_company_parent_slug_uq",
-    ).on(table.companyId, table.parentId, table.slug),
-    companyParentNameIdx: uniqueIndex(
-      "agent_folders_company_parent_name_uq",
-    ).on(table.companyId, table.parentId, table.name),
+    // NOTE: doc/types-only — migrations are hand-authored in this repo
+    // (drizzle-kit generate is NOT the SSOT), so this block must MIRROR the
+    // live DDL in 0228_jac4747_agent_folders.sql exactly; it does not create
+    // anything at runtime. Uniqueness is split root vs. child because Postgres
+    // treats NULL as distinct, so a single (company, parent_id, slug) unique
+    // index would not constrain root folders (parent_id IS NULL).
+    companyParentSlugRootIdx: uniqueIndex("agent_folders_company_parent_slug_uq")
+      .on(table.companyId, table.parentId, table.slug)
+      .where(sql`${table.parentId} IS NULL`),
+    companyParentSlugChildIdx: uniqueIndex("agent_folders_company_parent_slug_child_uq")
+      .on(table.companyId, table.parentId, table.slug)
+      .where(sql`${table.parentId} IS NOT NULL`),
+    companyParentNameRootIdx: uniqueIndex("agent_folders_company_parent_name_root_uq")
+      .on(table.companyId, table.parentId, table.name)
+      .where(sql`${table.parentId} IS NULL`),
+    companyParentNameChildIdx: uniqueIndex("agent_folders_company_parent_name_child_uq")
+      .on(table.companyId, table.parentId, table.name)
+      .where(sql`${table.parentId} IS NOT NULL`),
     companyParentSortIdx: index("agent_folders_company_parent_sort_idx").on(
       table.companyId,
       table.parentId,
