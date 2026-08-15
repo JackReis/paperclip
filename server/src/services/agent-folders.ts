@@ -456,8 +456,20 @@ export function agentFolderService(db: Db, mutationLockHeld = false) {
     if (!folder) return null;
 
     const resolvedPath = filePath ?? AGENTS_ENTRY;
+    // Containment guard: `resolvedPath` is caller-supplied (?path= query). Reject
+    // absolute paths or any `..` traversal so a request cannot read files outside
+    // a folder's instructions directory. Validated once — it is reused for the
+    // folder and every ancestor dir below.
+    const normalizedRelPath = path.normalize(resolvedPath);
+    if (
+      path.isAbsolute(normalizedRelPath) ||
+      normalizedRelPath === ".." ||
+      normalizedRelPath.startsWith(".." + path.sep)
+    ) {
+      throw unprocessable("Instructions path must stay within the folder's instructions directory");
+    }
     const ownDir = resolveFolderInstructionsDir(companyId, folderId);
-    const ownFile = path.join(ownDir, resolvedPath);
+    const ownFile = path.join(ownDir, normalizedRelPath);
 
     let ownContent: string | null = null;
     try {
@@ -475,7 +487,7 @@ export function agentFolderService(db: Db, mutationLockHeld = false) {
       const ancestor = await getFolder(companyId, currentId);
       if (!ancestor) break;
       const ancestorDir = resolveFolderInstructionsDir(companyId, ancestor.id);
-      const ancestorFile = path.join(ancestorDir, resolvedPath);
+      const ancestorFile = path.join(ancestorDir, normalizedRelPath);
       let ancestorContent: string | null = null;
       try {
         ancestorContent = await fs.readFile(ancestorFile, "utf-8");
