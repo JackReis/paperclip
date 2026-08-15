@@ -29,6 +29,11 @@ describeEmbeddedPostgres("FolderMigrationService", () => {
   let tempDb: Awaited<ReturnType<typeof startEmbeddedPostgresTestDatabase>> | null = null;
   let companyId!: string;
   let migrationService!: FolderMigrationService;
+  // Foreign companies created to produce genuinely dangling-within-company
+  // references (a real folder row the self/agent FK accepts, but which lives in
+  // another company so validateInheritance sees it as not-found). Cleaned up
+  // after each test.
+  const foreignCompanyIds: string[] = [];
 
   beforeAll(async () => {
     tempDb = await startEmbeddedPostgresTestDatabase("paperclip-folder-migration-");
@@ -51,7 +56,39 @@ describeEmbeddedPostgres("FolderMigrationService", () => {
     await db.delete(agentFolders).where(eq(agentFolders.companyId, companyId));
     await db.delete(agents).where(eq(agents.companyId, companyId));
     await db.delete(companies).where(eq(companies.id, companyId));
+    // Deleting the foreign company cascades to its agent_folders rows.
+    while (foreignCompanyIds.length > 0) {
+      const foreignId = foreignCompanyIds.pop()!;
+      await db.delete(companies).where(eq(companies.id, foreignId));
+    }
   });
+
+  // Create a folder that lives in a throwaway *other* company and return its id.
+  // The self/agent folder FKs are satisfied (it is a real row), but from the
+  // company under test the reference is genuinely dangling — which is exactly
+  // the broken state validateInheritance must detect. This replaces the old
+  // all-zeros sentinel UUID, which the enforced FK (23503) rejects on insert.
+  async function createForeignFolder(name: string, slug: string) {
+    const foreignCompanyId = randomUUID();
+    await db.insert(companies).values({
+      id: foreignCompanyId,
+      name: "Foreign Company",
+      issuePrefix: `F${foreignCompanyId.replace(/-/g, "").slice(0, 6).toUpperCase()}`,
+      requireBoardApprovalForNewAgents: false,
+    });
+    foreignCompanyIds.push(foreignCompanyId);
+    const [folder] = await db
+      .insert(agentFolders)
+      .values({
+        companyId: foreignCompanyId,
+        name,
+        slug,
+        sortOrder: 0,
+        parentId: null,
+      })
+      .returning();
+    return folder;
+  }
 
   async function createUnassignedAgent(name: string, role: string) {
     const [agent] = await db
@@ -189,7 +226,10 @@ describeEmbeddedPostgres("FolderMigrationService", () => {
     });
 
     it("detects broken folder references (agent pointing to non-existent folder)", async () => {
-      // Create an agent with a folder_id pointing to a non-existent folder
+      // Create an agent whose folder_id points to a folder in another company.
+      // The FK is satisfied (real row), but from this company's perspective the
+      // folder does not exist — a genuinely dangling reference.
+      const foreignFolder = await createForeignFolder("Foreign Folder", "foreign-folder");
       await db
         .insert(agents)
         .values({
@@ -197,7 +237,7 @@ describeEmbeddedPostgres("FolderMigrationService", () => {
           name: "Orphan Agent",
           role: "coordinator",
           adapterType: "process",
-          folderId: "00000000-0000-0000-0000-000000000000",
+          folderId: foreignFolder.id,
         })
         .returning();
 
@@ -249,7 +289,10 @@ describeEmbeddedPostgres("FolderMigrationService", () => {
     });
 
     it("detects broken folder chains (missing parent)", async () => {
-      // Create a folder with a non-existent parent
+      // Create a folder whose parent lives in another company. The self-FK is
+      // satisfied (real row), but from this company's perspective the parent
+      // does not exist — a genuinely dangling parent pointer.
+      const foreignParent = await createForeignFolder("Foreign Parent", "foreign-parent");
       await db
         .insert(agentFolders)
         .values({
@@ -257,7 +300,7 @@ describeEmbeddedPostgres("FolderMigrationService", () => {
           name: "Child Folder",
           slug: "child",
           sortOrder: 0,
-          parentId: "00000000-0000-0000-0000-000000000000",
+          parentId: foreignParent.id,
         })
         .returning();
 
