@@ -1,3 +1,4 @@
+import { randomUUID } from "node:crypto";
 import { pgTable, uuid, text, timestamp, integer, index } from "drizzle-orm/pg-core";
 import { companies } from "./companies.js";
 import { agents } from "./agents.js";
@@ -28,6 +29,15 @@ export const costEvents = pgTable(
     costCents: integer("cost_cents").notNull(),
     occurredAt: timestamp("occurred_at", { withTimezone: true }).notNull(),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    // JAC-4532 idempotency columns. The 0227 migration added these to the table
+    // (ingest_id NOT NULL, default dropped) but the schema was never updated,
+    // so Drizzle inserts omitted ingest_id and hit a NOT NULL violation. Dedup is
+    // keyed on the source_event unique index, not ingest_id, so a generated
+    // fallback here is safe; deterministic ingest_id computation is future work.
+    observedSequence: integer("observed_sequence"),
+    supersedesEventId: text("supersedes_event_id"),
+    ingestId: text("ingest_id").notNull().$defaultFn(() => randomUUID()),
+    payloadHash: text("payload_hash"),
   },
   (table) => ({
     companyOccurredIdx: index("cost_events_company_occurred_idx").on(table.companyId, table.occurredAt),
