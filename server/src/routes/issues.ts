@@ -3412,7 +3412,7 @@ export function issueRoutes(
     );
   }
 
-  async function assertAgentInReviewReviewPath(input: {
+  async function assertInReviewReviewPath(input: {
     existing: {
       id: string;
       companyId: string;
@@ -3422,7 +3422,8 @@ export function issueRoutes(
       monitorNextCheckAt?: Date | null;
     };
     updateFields: Record<string, unknown>;
-    actorType: string;
+    actorType: "agent" | "user";
+    actorId: string;
     actorAgentId?: string | null;
     actorRunId?: string | null;
     reviewInteractionId?: string;
@@ -3430,7 +3431,8 @@ export function issueRoutes(
     const nextStatus = typeof input.updateFields.status === "string"
       ? input.updateFields.status
       : input.existing.status;
-    if (input.actorType !== "agent" || input.existing.status === "in_review" || nextStatus !== "in_review") return null;
+    if (input.existing.status === "in_review" || nextStatus !== "in_review") return null;
+    if (input.actorType !== "agent" && !input.reviewInteractionId) return null;
 
     const interactions = await issueThreadInteractionService(db).listForIssue(input.existing.id);
     const pendingInteractions = interactions.filter((interaction) => interaction.status === "pending");
@@ -3438,8 +3440,12 @@ export function issueRoutes(
       const designatedReviewConfirmation = pendingInteractions.find((interaction) =>
         interaction.id === input.reviewInteractionId
         && (interaction.kind === "request_confirmation" || interaction.kind === "request_checkbox_confirmation")
-        && interaction.createdByAgentId === input.actorAgentId
-        && interaction.sourceRunId === input.actorRunId
+        && (
+          input.actorType === "agent"
+            ? interaction.createdByAgentId === input.actorAgentId
+              && interaction.sourceRunId === input.actorRunId
+            : interaction.createdByUserId === input.actorId
+        )
         && !(
           interaction.kind === "request_confirmation"
           && interaction.payload
@@ -3449,13 +3455,18 @@ export function issueRoutes(
         )
       );
       if (!designatedReviewConfirmation) {
-        throw unprocessable("reviewInteractionId must identify a pending non-tool confirmation created by this agent run", {
+        const creatorDescription = input.actorType === "agent"
+          ? "this agent run"
+          : "this user";
+        throw unprocessable(`reviewInteractionId must identify a pending non-tool confirmation created by ${creatorDescription}`, {
           code: "invalid_review_interaction",
           reviewInteractionId: input.reviewInteractionId,
         });
       }
       return designatedReviewConfirmation.id;
     }
+
+    if (input.actorType !== "agent") return null;
 
     const nextAssigneeUserId = input.updateFields.assigneeUserId === undefined
       ? input.existing.assigneeUserId
@@ -4140,9 +4151,13 @@ export function issueRoutes(
       payload?: unknown;
     },
   ) {
+    const isReviewConfirmationVerdict = await isPendingReviewConfirmationVerdict(issue, interaction);
     if (req.actor.type !== "agent") {
       assertBoard(req);
-      await assertPendingReviewInteractionVerdictAllowed(req, issue, interaction);
+      if (isReviewConfirmationVerdict) {
+        await assertPendingReviewInteractionVerdictAllowed(req, issue, interaction);
+        return "review_verdict" as const;
+      }
       return "standard" as const;
     }
     const actorAgentId = req.actor.agentId;
@@ -4155,7 +4170,6 @@ export function issueRoutes(
     }
     if (await assertLowTrustControlPlaneDenied(req, res, issue.companyId, issue)) return false;
     if (!(await assertAgentIssueMutationAllowed(req, res, issue))) return false;
-    const isReviewConfirmationVerdict = await isPendingReviewConfirmationVerdict(issue, interaction);
     const payload = interaction.payload && typeof interaction.payload === "object"
       ? interaction.payload as { toolAction?: unknown }
       : null;
@@ -4239,11 +4253,15 @@ export function issueRoutes(
       createdByAgentId?: string | null;
       createdByUserId?: string | null;
     },
-    interaction: { status: string },
+    interaction: { kind: string; status: string },
   ) {
     if (
       issue.status !== "in_review"
       || interaction.status !== "pending"
+      || (
+        interaction.kind !== "request_confirmation"
+        && interaction.kind !== "request_checkbox_confirmation"
+      )
       || issue.reviewPolicy == null
       || issue.reviewPolicy === "anyone"
     ) return;
@@ -6416,10 +6434,11 @@ export function issueRoutes(
         ? "owner_completed"
         : outcome;
     const updateFields = sourceIssueStatus ? { status: sourceIssueStatus } : {};
-    await assertAgentInReviewReviewPath({
+    await assertInReviewReviewPath({
       existing,
       updateFields,
-      actorType: req.actor.type,
+      actorType: actor.actorType,
+      actorId: actor.actorId,
       actorAgentId: actor.agentId,
       actorRunId: actor.runId,
     });
@@ -8765,19 +8784,25 @@ export function issueRoutes(
       onBehalfOfUserId: _requestedOnBehalfOfUserId,
       ...updateFields
     } = req.body;
-    const effectiveReviewPolicy = req.body.reviewPolicy === undefined
-      ? existing.reviewPolicy
-      : req.body.reviewPolicy;
-    if (
+    const reviewPolicyChangeRequested =
+      req.body.reviewPolicy !== undefined
+      && req.body.reviewPolicy !== existing.reviewPolicy;
+    const reviewVerdictRequested =
       existing.status === "in_review"
-      && (updateFields.status === "done" || updateFields.status === "cancelled")
-      && effectiveReviewPolicy != null
-      && effectiveReviewPolicy !== "anyone"
+      && (updateFields.status === "done" || updateFields.status === "cancelled");
+    const reviewPolicySensitiveMutationRequested =
+      req.body.reviewPolicy !== undefined
+      || updateFields.status === "done"
+      || updateFields.status === "cancelled";
+    if (
+      (reviewVerdictRequested || reviewPolicyChangeRequested)
+      && existing.reviewPolicy != null
+      && existing.reviewPolicy !== "anyone"
     ) {
       await assertIssueReviewVerdictActorAllowed(db, {
         issue: existing,
         actor: { type: actor.actorType, id: actor.actorId },
-        reviewPolicy: effectiveReviewPolicy,
+        reviewPolicy: existing.reviewPolicy,
       });
     }
     const shouldCancelActiveRunForCancelledStatus =
@@ -9098,14 +9123,19 @@ export function issueRoutes(
       }
     }
 
-    const reviewInteractionId = await assertAgentInReviewReviewPath({
+    const reviewInteractionId = await assertInReviewReviewPath({
       existing,
       updateFields,
-      actorType: req.actor.type,
+      actorType: actor.actorType,
+      actorId: actor.actorId,
       actorAgentId: actor.agentId,
       actorRunId: actor.runId,
       reviewInteractionId: requestedReviewInteractionId,
     });
+    const enteringReviewRequested =
+      existing.status !== "in_review" && updateFields.status === "in_review";
+    const persistReviewActivityTransactionally =
+      enteringReviewRequested || Boolean(reviewInteractionId);
 
     const nextAssigneeAgentId =
       updateFields.assigneeAgentId === undefined ? existing.assigneeAgentId : (updateFields.assigneeAgentId as string | null);
@@ -9184,11 +9214,35 @@ export function issueRoutes(
         ? svc.update(id, issueUpdateData, db, postCommitActivityPublications)
         : svc.update(id, issueUpdateData);
     };
-    const persistBoundReviewActivity = async (
+    const assertLockedReviewPolicyAllowsMutation = async (
+      tx: Parameters<typeof svc.update>[2],
+    ) => {
+      const lockedExisting = await svc.getByIdForUpdate(id, tx);
+      if (!lockedExisting) return false;
+      const lockedPolicyChangeRequested =
+        req.body.reviewPolicy !== undefined
+        && req.body.reviewPolicy !== lockedExisting.reviewPolicy;
+      const lockedReviewVerdictRequested =
+        lockedExisting.status === "in_review"
+        && (updateFields.status === "done" || updateFields.status === "cancelled");
+      if (
+        (lockedReviewVerdictRequested || lockedPolicyChangeRequested)
+        && lockedExisting.reviewPolicy != null
+        && lockedExisting.reviewPolicy !== "anyone"
+      ) {
+        await assertIssueReviewVerdictActorAllowed(tx as unknown as Db, {
+          issue: lockedExisting,
+          actor: { type: actor.actorType, id: actor.actorId },
+          reviewPolicy: lockedExisting.reviewPolicy,
+        });
+      }
+      return true;
+    };
+    const persistReviewTransitionActivity = async (
       tx: Parameters<typeof svc.update>[2],
       updated: NonNullable<Awaited<ReturnType<typeof svc.update>>>,
     ) => {
-      if (!reviewInteractionId) return;
+      if (!persistReviewActivityTransactionally) return;
       const changes = updated.changes ?? {};
       const previous = Object.fromEntries(
         Object.entries(changes).map(([key, change]) => [key, change.from]),
@@ -9209,7 +9263,7 @@ export function issueRoutes(
           identifier: updated.identifier,
           authorizationReason: issueMutationAuthorizationReason,
           changes,
-          reviewInteractionId,
+          ...(reviewInteractionId ? { reviewInteractionId } : {}),
           ...(commentBody ? { source: "comment" } : {}),
           ...(resumeRequested === true ? { resumeIntent: true, followUpRequested: true } : {}),
           ...(interruptedRunId ? { interruptedRunId } : {}),
@@ -9254,47 +9308,43 @@ export function issueRoutes(
       generation: reopenedGeneration,
       finalIssueStatus: () => issue?.status,
     });
+    const decision = transition.decision && decisionId ? transition.decision : null;
+    const shouldUseTransactionalIssueUpdate =
+      Boolean(decision)
+      || shouldRelayStop
+      || persistReviewActivityTransactionally
+      || reviewPolicySensitiveMutationRequested;
     try {
-      if (transition.decision && decisionId) {
-        const decision = transition.decision;
+      if (shouldUseTransactionalIssueUpdate) {
         issue = await db.transaction(async (tx) => {
+          if (
+            reviewPolicySensitiveMutationRequested
+            && !(await assertLockedReviewPolicyAllowsMutation(tx))
+          ) return null;
           const updated = await updateIssue(tx);
           if (!updated) return null;
 
-          await tx.insert(issueExecutionDecisions).values({
-            id: decisionId,
-            companyId: updated.companyId,
-            issueId: updated.id,
-            stageId: decision.stageId,
-            stageType: decision.stageType,
-            actorAgentId: actor.agentId ?? null,
-            actorUserId: actor.actorType === "user" ? actor.actorId : null,
-            outcome: decision.outcome,
-            body: decision.body,
-            createdByRunId: actor.runId ?? null,
-          });
+          if (decision && decisionId) {
+            await tx.insert(issueExecutionDecisions).values({
+              id: decisionId,
+              companyId: updated.companyId,
+              issueId: updated.id,
+              stageId: decision.stageId,
+              stageType: decision.stageType,
+              actorAgentId: actor.agentId ?? null,
+              actorUserId: actor.actorType === "user" ? actor.actorId : null,
+              outcome: decision.outcome,
+              body: decision.body,
+              createdByRunId: actor.runId ?? null,
+            });
+          }
 
           if (shouldRelayStop) {
             stopRelayResult.value = await svc.addStopRelayCommentIfNeeded(updated, tx);
           }
 
-          await persistBoundReviewActivity(tx, updated);
+          await persistReviewTransitionActivity(tx, updated);
 
-          return updated;
-        });
-      } else if (shouldRelayStop) {
-        issue = await db.transaction(async (tx) => {
-          const updated = await updateIssue(tx);
-          if (!updated) return null;
-          stopRelayResult.value = await svc.addStopRelayCommentIfNeeded(updated, tx);
-          await persistBoundReviewActivity(tx, updated);
-          return updated;
-        });
-      } else if (reviewInteractionId) {
-        issue = await db.transaction(async (tx) => {
-          const updated = await updateIssue(tx);
-          if (!updated) return null;
-          await persistBoundReviewActivity(tx, updated);
           return updated;
         });
       } else {
@@ -9480,7 +9530,7 @@ export function issueRoutes(
         activeRecoveryAction: null,
       };
     }
-    if (!reviewInteractionId) await logActivity(db, {
+    if (!persistReviewActivityTransactionally) await logActivity(db, {
       companyId: issue.companyId,
       actorType: actor.actorType,
       actorId: actor.actorId,
@@ -10634,7 +10684,7 @@ export function issueRoutes(
         agentId: actor.agentId,
         runId: actor.runId,
         userId: actor.actorType === "user" ? actor.actorId : null,
-        ...(actor.actorType === "agent" && resolutionAuthorization === "review_verdict"
+        ...(resolutionAuthorization === "review_verdict"
           ? { reviewVerdictAuthorized: true }
           : {}),
       });
@@ -10790,7 +10840,7 @@ export function issueRoutes(
         agentId: actor.agentId,
         runId: actor.runId,
         userId: actor.actorType === "user" ? actor.actorId : null,
-        ...(actor.actorType === "agent" && resolutionAuthorization === "review_verdict"
+        ...(resolutionAuthorization === "review_verdict"
           ? { reviewVerdictAuthorized: true }
           : {}),
       });
