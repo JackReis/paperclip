@@ -592,5 +592,13 @@ describeEmbeddedPostgres("agent folder routes integration", () => {
 
       await fs.rm(childDir, { recursive: true, force: true });
     });
+
+    it("returns 422 for a traversal path (containment enforced at the HTTP layer)", async () => {
+      const folder = await createFolderInDb("Contain HTTP");
+      const res = await request(app).get(
+        `${baseUrl(companyId)}/${folder.id}/instructions-bundle?path=${encodeURIComponent("../../../../etc/passwd")}`,
+      );
+      expect(res.status).toBe(422);
+    });
   });
 });

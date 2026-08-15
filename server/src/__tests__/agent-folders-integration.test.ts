@@ -683,4 +683,44 @@ describeEmbeddedPostgres("agent folders integration", () => {
       expect(result.missingFolderInstructions[0].agentName).toBe("Agent A");
     });
   });
+
+  describe("getInstructionsBundle path containment", () => {
+    it("rejects a parent-traversal path (no arbitrary file read)", async () => {
+      const folder = await svc.create(companyId, { name: "Contain Root" });
+      await expect(
+        svc.getInstructionsBundle(companyId, folder.id, "../../../../etc/passwd"),
+      ).rejects.toMatchObject({ status: 422 });
+    });
+
+    it("rejects an absolute path", async () => {
+      const folder = await svc.create(companyId, { name: "Contain Abs" });
+      await expect(
+        svc.getInstructionsBundle(companyId, folder.id, "/etc/passwd"),
+      ).rejects.toMatchObject({ status: 422 });
+    });
+
+    it("rejects a path that collapses to an escape (foo/../../bar)", async () => {
+      // Proves the guard handles interior `..` that normalize collapses to a
+      // net-upward escape — not just a naive startsWith("..") string check.
+      const folder = await svc.create(companyId, { name: "Contain Collapse" });
+      await expect(
+        svc.getInstructionsBundle(companyId, folder.id, "AGENTS.md/../../../etc/passwd"),
+      ).rejects.toMatchObject({ status: 422 });
+    });
+
+    it("treats backslashes as a literal filename on posix (no read, no throw)", async () => {
+      // Pins current posix behavior: `..\..\x` is a single filename, not a
+      // traversal, so it resolves to a missing file → content null. If this ever
+      // runs on Windows / path.win32 this test should fail loudly.
+      const folder = await svc.create(companyId, { name: "Contain Backslash" });
+      const bundle = await svc.getInstructionsBundle(companyId, folder.id, "..\\..\\etc\\passwd");
+      expect(bundle).toMatchObject({ folderId: folder.id, content: null });
+    });
+
+    it("allows a normal relative path within the instructions dir", async () => {
+      const folder = await svc.create(companyId, { name: "Contain OK" });
+      const bundle = await svc.getInstructionsBundle(companyId, folder.id, "AGENTS.md");
+      expect(bundle).toMatchObject({ folderId: folder.id });
+    });
+  });
 });
