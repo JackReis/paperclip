@@ -1517,92 +1517,99 @@
 		{
 			"idx": 218,
 			"version": "7",
-			"when": 1786643974973,
-			"tag": "0218_routine_goal_sync_metadata",
+			"when": 1786711898729,
+			"tag": "0218_mushy_jack_murdock",
 			"breakpoints": true
 		},
 		{
 			"idx": 219,
 			"version": "7",
-			"when": 1786643974974,
-			"tag": "0219_environment_custom_image_templates_reconciliation",
+			"when": 1786711898730,
+			"tag": "0219_routine_goal_sync_metadata",
 			"breakpoints": true
 		},
 		{
 			"idx": 220,
 			"version": "7",
-			"when": 1786643974975,
-			"tag": "0220_agent_sessions",
+			"when": 1786711898731,
+			"tag": "0220_environment_custom_image_templates_reconciliation",
 			"breakpoints": true
 		},
 		{
 			"idx": 221,
 			"version": "7",
-			"when": 1786643974976,
-			"tag": "0221_cost_events_coverage_fields",
+			"when": 1786711898732,
+			"tag": "0221_agent_sessions",
 			"breakpoints": true
 		},
 		{
 			"idx": 222,
 			"version": "7",
-			"when": 1786643974977,
-			"tag": "0222_run_events_coverage",
+			"when": 1786711898733,
+			"tag": "0222_cost_events_coverage_fields",
 			"breakpoints": true
 		},
 		{
 			"idx": 223,
 			"version": "7",
-			"when": 1786643974978,
-			"tag": "0223_productivity_review_trigger_snooze",
+			"when": 1786711898734,
+			"tag": "0223_run_events_coverage",
 			"breakpoints": true
 		},
 		{
 			"idx": 224,
 			"version": "7",
-			"when": 1786643974979,
-			"tag": "0224_cost_events_price_basis",
+			"when": 1786711898735,
+			"tag": "0224_productivity_review_trigger_snooze",
 			"breakpoints": true
 		},
 		{
 			"idx": 225,
 			"version": "7",
-			"when": 1786643974980,
-			"tag": "0225_run_events_extended_fields",
+			"when": 1786711898736,
+			"tag": "0225_cost_events_price_basis",
 			"breakpoints": true
 		},
 		{
 			"idx": 226,
 			"version": "7",
-			"when": 1786643974981,
-			"tag": "0226_cost_events_privacy_index",
+			"when": 1786711898737,
+			"tag": "0226_run_events_extended_fields",
 			"breakpoints": true
 		},
 		{
 			"idx": 227,
 			"version": "7",
-			"when": 1786643974982,
-			"tag": "0227_jac4532_event_identity_idempotency_enforcement",
+			"when": 1786711898738,
+			"tag": "0227_cost_events_privacy_index",
 			"breakpoints": true
 		},
 		{
 			"idx": 228,
 			"version": "7",
-			"when": 1786643974983,
-			"tag": "0228_jac4747_agent_folders",
+			"when": 1786711898739,
+			"tag": "0228_jac4532_event_identity_idempotency_enforcement",
 			"breakpoints": true
 		},
 		{
 			"idx": 229,
 			"version": "7",
-			"when": 1786643974984,
-			"tag": "0229_jac4538_issue_work_products_approval_id",
+			"when": 1786711898740,
+			"tag": "0229_jac4747_agent_folders",
 			"breakpoints": true
 		},
 		{
 			"idx": 230,
 			"version": "7",
-			"when": 1786643974985,
-			"tag": "0230_jac4538_approvals_artifact_fields",
+			"when": 1786711898741,
+			"tag": "0230_jac4538_issue_work_products_approval_id",
+			"breakpoints": true
+		},
+		{
+			"idx": 231,
+			"version": "7",
+			"when": 1786711898742,
+			"tag": "0231_jac4538_approvals_artifact_fields",
 			"breakpoints": true
 		}
 	]
