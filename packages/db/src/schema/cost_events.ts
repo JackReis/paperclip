@@ -96,6 +96,12 @@ export const costEvents = pgTable(
       table.companyId,
       table.heartbeatRunId,
     ),
+    companyPrivacyIdx: index("cost_events_company_privacy_idx").on(
+      table.companyId,
+      table.visibilityClass,
+      table.retentionClass,
+      table.redactionState,
+    ),
     // Idempotency enforcement (JAC-4532, migration 0227): re-ingest of the
     // same logical event is a no-op via ON CONFLICT DO NOTHING on this composite.
     sourceEventUq: uniqueIndex("cost_events_source_event_uq").on(
