@@ -1525,91 +1525,105 @@
 			"idx": 219,
 			"version": "7",
 			"when": 1786711898730,
-			"tag": "0219_routine_goal_sync_metadata",
+			"tag": "0219_runtime_service_exposure",
 			"breakpoints": true
 		},
 		{
 			"idx": 220,
 			"version": "7",
 			"when": 1786711898731,
-			"tag": "0220_environment_custom_image_templates_reconciliation",
+			"tag": "0220_execution_workspace_runtime_leases",
 			"breakpoints": true
 		},
 		{
 			"idx": 221,
 			"version": "7",
 			"when": 1786711898732,
-			"tag": "0221_agent_sessions",
+			"tag": "0221_routine_goal_sync_metadata",
 			"breakpoints": true
 		},
 		{
 			"idx": 222,
 			"version": "7",
 			"when": 1786711898733,
-			"tag": "0222_cost_events_coverage_fields",
+			"tag": "0222_environment_custom_image_templates_reconciliation",
 			"breakpoints": true
 		},
 		{
 			"idx": 223,
 			"version": "7",
 			"when": 1786711898734,
-			"tag": "0223_run_events_coverage",
+			"tag": "0223_agent_sessions",
 			"breakpoints": true
 		},
 		{
 			"idx": 224,
 			"version": "7",
 			"when": 1786711898735,
-			"tag": "0224_productivity_review_trigger_snooze",
+			"tag": "0224_cost_events_coverage_fields",
 			"breakpoints": true
 		},
 		{
 			"idx": 225,
 			"version": "7",
 			"when": 1786711898736,
-			"tag": "0225_cost_events_price_basis",
+			"tag": "0225_run_events_coverage",
 			"breakpoints": true
 		},
 		{
 			"idx": 226,
 			"version": "7",
 			"when": 1786711898737,
-			"tag": "0226_run_events_extended_fields",
+			"tag": "0226_productivity_review_trigger_snooze",
 			"breakpoints": true
 		},
 		{
 			"idx": 227,
 			"version": "7",
 			"when": 1786711898738,
-			"tag": "0227_cost_events_privacy_index",
+			"tag": "0227_cost_events_price_basis",
 			"breakpoints": true
 		},
 		{
 			"idx": 228,
 			"version": "7",
 			"when": 1786711898739,
-			"tag": "0228_jac4532_event_identity_idempotency_enforcement",
+			"tag": "0228_run_events_extended_fields",
 			"breakpoints": true
 		},
 		{
 			"idx": 229,
 			"version": "7",
 			"when": 1786711898740,
-			"tag": "0229_jac4747_agent_folders",
+			"tag": "0229_cost_events_privacy_index",
 			"breakpoints": true
 		},
 		{
 			"idx": 230,
 			"version": "7",
 			"when": 1786711898741,
-			"tag": "0230_jac4538_issue_work_products_approval_id",
+			"tag": "0230_jac4532_event_identity_idempotency_enforcement",
 			"breakpoints": true
 		},
 		{
 			"idx": 231,
 			"version": "7",
 			"when": 1786711898742,
-			"tag": "0231_jac4538_approvals_artifact_fields",
+			"tag": "0231_jac4747_agent_folders",
+			"breakpoints": true
+		},
+		{
+			"idx": 232,
+			"version": "7",
+			"when": 1786711898743,
+			"tag": "0232_jac4538_issue_work_products_approval_id",
+			"breakpoints": true
+		},
+		{
+			"idx": 233,
+			"version": "7",
+			"when": 1786711898744,
+			"tag": "0233_jac4538_approvals_artifact_fields",
 			"breakpoints": true
 		}
 	]
