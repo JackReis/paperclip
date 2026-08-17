@@ -1,4 +1,5 @@
 import fs from "node:fs/promises";
+import net from "node:net";
 import os from "node:os";
 import path from "node:path";
 
@@ -141,18 +142,42 @@ function createBroker() {
   return { broker, calls };
 }
 
+/**
+ * A real loopback bind probe, matching production's `isLoopbackPortAvailable`.
+ *
+ * The default used to be `async () => true`, which claimed every port in the
+ * dedicated range was free. On a developer or canary host that already runs a
+ * managed lane on `42000`, that lie made the suite allocate a port something
+ * else was listening on — so the spawned guest could not bind, and every
+ * assertion downstream failed for a reason that had nothing to do with the
+ * behaviour under test. It also meant the suite exercised allocation against a
+ * range it never actually checked (PAP-17419; PAP-17255 started this with
+ * "make exposure fixture honor occupied ports").
+ */
+async function isLoopbackPortFree(port: number): Promise<boolean> {
+  return await new Promise<boolean>((resolve) => {
+    const probe = net.createServer();
+    probe.unref();
+    probe.once("error", () => resolve(false));
+    probe.listen(port, "127.0.0.1", () => {
+      probe.close(() => resolve(true));
+    });
+  });
+}
+
 function installDeps(overrides: {
   broker: BrokerClient;
   probeHealth?: () => Promise<boolean>;
   isBrokerAvailable?: () => Promise<boolean>;
   isPortAvailable?: (port: number) => Promise<boolean>;
   diagnoseListenerBinds?: (ports: number[]) => Promise<string | null>;
+  resolveHostname?: () => Promise<string>;
 }) {
   setWorkspaceRuntimeExposureDepsForTests({
     broker: overrides.broker,
-    isPortAvailable: overrides.isPortAvailable ?? (async () => true),
+    isPortAvailable: overrides.isPortAvailable ?? isLoopbackPortFree,
     isBrokerAvailable: overrides.isBrokerAvailable ?? (async () => true),
-    resolveHostname: async () => "runner.tail123.ts.net",
+    resolveHostname: overrides.resolveHostname ?? (async () => "runner.tail123.ts.net"),
     probeHealth: overrides.probeHealth ?? (async () => true),
     now: () => "2026-08-11T00:00:00.000Z",
     // The real /proc-backed diagnosis, not a fake: the fake broker below always
@@ -371,6 +396,48 @@ describe("automatic tailscale_https default for managed worktree runtimes", () =
     expect(calls.slice(0, 2)).toEqual(["reserve", "expose"]);
     expect(second.port).toBe(firstPort);
     expect(second.url).toBe(`https://runner.tail123.ts.net:${firstPort}`);
+  }, 25_000);
+
+  it("releases the in-flight pair claim when hostname resolution fails, so a retry storm cannot exhaust the range", async () => {
+    // The reservation keeps the winning pair's in-process claim on purpose, for
+    // the caller to release on stop/teardown. A hostname failure throws before any
+    // runtime record exists, so that teardown can never run for this pair — and
+    // removing only the broker reservation would leave the claim held. Each retry
+    // would then burn another pair and the lane would report the range exhausted
+    // rather than the real cause, a Tailscale outage.
+    const reservedAppPorts: number[] = [];
+    const broker: BrokerClient = {
+      async reserve(_runtimeId, requested) {
+        reservedAppPorts.push(requested[0]!.port);
+        return { handle: HANDLE, reservedPorts: requested.map((listener) => listener.port) };
+      },
+      async expose() {
+        return { handle: HANDLE, publicPorts: [] };
+      },
+      async remove() {
+        return { removedPorts: [] };
+      },
+      async list() {
+        return [];
+      },
+    };
+    installDeps({
+      broker,
+      resolveHostname: async () => {
+        throw new Error("MagicDNS unavailable");
+      },
+    });
+
+    for (let attempt = 0; attempt < 3; attempt += 1) {
+      await expect(
+        startRuntimeServicesForWorkspaceControl(startInput({ serviceName: "paperclip-dev" })),
+      ).rejects.toThrow(/MagicDNS hostname unavailable/);
+    }
+
+    // Every attempt reserved the same pair. A leaked claim would push each retry
+    // onto a fresh pair instead.
+    expect(reservedAppPorts).toHaveLength(3);
+    expect(new Set(reservedAppPorts).size).toBe(1);
   }, 25_000);
 });
 

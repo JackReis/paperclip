@@ -13,6 +13,7 @@ import {
   DEFAULT_TAILSCALE_HTTPS_EXPOSURE,
   deriveViteHmrPort,
   forceLoopbackBindInCommand,
+  isRuntimeExposureAppPort,
   listWorkspaceServiceCommandDefinitions,
   RUNTIME_EXPOSURE_BIND_HOST,
   RUNTIME_EXPOSURE_BIND_MODE,
@@ -68,6 +69,21 @@ import {
 } from "./runtime-exposure/exposure-manager.js";
 import { diagnoseRuntimeListenerBinds } from "./runtime-exposure/loopback-listener.js";
 import { allocateExposurePortPair } from "./runtime-exposure/port-pair.js";
+import {
+  buildExposureReservationLedger,
+  collectRowExposurePorts,
+  describeExposureReservationDrift,
+  ExposurePortOwnershipConflictError,
+  ExposurePortPairClaims,
+  findExposurePairConflict,
+  findExposureReservationDrift,
+  isExposureAdoptionPermitted,
+  type BrokerMappingSnapshot,
+  type ExposureOwnerIdentity,
+  type ExposureReservationLedger,
+  type InMemoryExposureSnapshot,
+  type PersistedExposureRowSnapshot,
+} from "./runtime-exposure/port-reservation.js";
 import { resolveTailscaleDnsName } from "./runtime-exposure/tailscale-hostname.js";
 
 export function resolveShell(): string {
@@ -216,6 +232,19 @@ const runtimeServicesByReuseKey = new Map<string, string>();
 const runtimeServiceLeasesByRun = new Map<string, string[]>();
 const runtimeProvisionByWorkspace = new Map<string, Promise<void>>();
 const quarantinedRuntimeExposurePorts = new Set<number>();
+/**
+ * Pair-atomic in-process claims for exposure allocations that have not bound a
+ * listener yet. Separate from `inFlightAllocatedPorts` (single ports, non-exposed
+ * runtimes) because an exposure claim must cover the app port and its HMR
+ * companion together or not at all.
+ */
+const exposurePortPairClaims = new ExposurePortPairClaims();
+/**
+ * Execution-workspace statuses that still hold an exclusive lease. `archived`
+ * is the only terminal state; everything else — including `idle` — is a lane an
+ * operator or agent can still return to, so its port pair stays reserved.
+ */
+const OPEN_EXECUTION_WORKSPACE_LEASE_STATUSES = ["active", "idle", "in_review"] as const;
 const DEFAULT_EXECUTE_PROCESS_OUTPUT_BYTES = 256 * 1024;
 export const WORKSPACE_RUNTIME_PORT_ALLOCATION_ATTEMPTS = 32;
 const ACTIVE_RUNTIME_PORT_RESERVATION_STATUSES = ["provisioning", "starting", "running"] as const;
@@ -448,6 +477,7 @@ export async function resetRuntimeServicesForTests(
   runtimeServiceLeasesByRun.clear();
   runtimeProvisionByWorkspace.clear();
   quarantinedRuntimeExposurePorts.clear();
+  exposurePortPairClaims.clear();
   workspaceRuntimeExposureDeps = defaultWorkspaceRuntimeExposureDeps();
 }
 
@@ -3848,22 +3878,188 @@ async function probeEphemeralPort(): Promise<number> {
   });
 }
 
-async function collectReservedExposurePorts(db: Db | undefined, companyId: string): Promise<Set<number>> {
-  const reserved = new Set(quarantinedRuntimeExposurePorts);
-  for (const record of runtimeServicesById.values()) {
-    if (record.companyId !== companyId || !record.exposure) continue;
-    for (const listener of record.exposure.listeners) reserved.add(listener.targetPort);
-  }
-  if (!db) return reserved;
+/**
+ * Execution workspaces whose exclusive lease is still open.
+ *
+ * "Open" is deliberately generous — every non-archived, non-closed status
+ * counts — because the reservation must outlive the *process*, not track it.
+ * A lane that is stopped, torn down, and reported `removed` still owns its
+ * pair until the workspace itself is released (PAP-17419).
+ */
+async function readActiveExecutionWorkspaceLeases(db: Db | undefined, companyId: string): Promise<Set<string>> {
+  if (!db) return new Set<string>();
   const rows = await db
-    .select({ exposure: workspaceRuntimeServices.exposure })
-    .from(workspaceRuntimeServices)
-    .where(eq(workspaceRuntimeServices.companyId, companyId));
-  for (const row of rows) {
-    if (!row.exposure || row.exposure.state === "removed") continue;
-    for (const listener of row.exposure.listeners) reserved.add(listener.targetPort);
+    .select({ id: executionWorkspaces.id })
+    .from(executionWorkspaces)
+    .where(
+      and(
+        eq(executionWorkspaces.companyId, companyId),
+        inArray(executionWorkspaces.status, [...OPEN_EXECUTION_WORKSPACE_LEASE_STATUSES]),
+        isNull(executionWorkspaces.closedAt),
+      ),
+    );
+  return new Set(rows.map((row) => row.id));
+}
+
+/**
+ * Every reservation view the allocator must respect, merged into one ledger.
+ *
+ * This replaced a set-of-ports that only ever saw rows whose `exposure.state`
+ * was not `removed`. That view could not represent the case that actually
+ * broke: a leased workspace whose exposure had been torn down. See
+ * `port-reservation.ts` for why the pair is re-derived from the `port` column.
+ */
+async function buildCompanyExposureReservationLedger(input: {
+  db?: Db;
+  companyId: string;
+  brokerMappings?: BrokerMappingSnapshot[];
+}): Promise<ExposureReservationLedger> {
+  const inMemoryRuntimes: InMemoryExposureSnapshot[] = [];
+  for (const record of runtimeServicesById.values()) {
+    if (record.companyId !== input.companyId || !record.exposure) continue;
+    inMemoryRuntimes.push({
+      runtimeServiceId: record.id,
+      executionWorkspaceId: record.executionWorkspaceId,
+      projectWorkspaceId: record.projectWorkspaceId,
+      issueId: record.issueId,
+      ports: record.exposure.listeners.map((listener) => listener.targetPort),
+    });
   }
-  return reserved;
+
+  const persistedRows: PersistedExposureRowSnapshot[] = input.db
+    ? (
+      await input.db
+        .select({
+          id: workspaceRuntimeServices.id,
+          status: workspaceRuntimeServices.status,
+          port: workspaceRuntimeServices.port,
+          exposure: workspaceRuntimeServices.exposure,
+          executionWorkspaceId: workspaceRuntimeServices.executionWorkspaceId,
+          projectWorkspaceId: workspaceRuntimeServices.projectWorkspaceId,
+          issueId: workspaceRuntimeServices.issueId,
+        })
+        .from(workspaceRuntimeServices)
+        .where(eq(workspaceRuntimeServices.companyId, input.companyId))
+    ).map((row) => ({
+      id: row.id,
+      status: row.status,
+      port: row.port,
+      exposure: row.exposure,
+      executionWorkspaceId: row.executionWorkspaceId,
+      projectWorkspaceId: row.projectWorkspaceId,
+      issueId: row.issueId,
+    }))
+    : [];
+
+  return buildExposureReservationLedger({
+    persistedRows,
+    inMemoryRuntimes,
+    brokerMappings: input.brokerMappings ?? [],
+    quarantinedPorts: quarantinedRuntimeExposurePorts,
+    activeExecutionWorkspaceIds: await readActiveExecutionWorkspaceLeases(input.db, input.companyId),
+    inFlightClaimedPorts: exposurePortPairClaims.activePorts(),
+  });
+}
+
+/**
+ * Rows Paperclip reports stopped/removed whose reserved pair is still live on
+ * the host or still mapped to someone else (PAP-17419 regression #3).
+ *
+ * The point is visibility. A false `stopped`/`removed` row used to be
+ * indistinguishable from a genuinely released one, so the pair silently
+ * returned to the free list and the next managed start collided with — or
+ * adopted — an unrelated workspace's service. Surfacing it does not stop or
+ * mutate the occupying service; that stays the owning issue's call.
+ */
+async function detectPersistedExposureReservationDrift(input: {
+  rows: ReadonlyArray<{
+    id: string;
+    status: string;
+    port: number | null;
+    exposure: RuntimeExposureStatus | null;
+    executionWorkspaceId: string | null;
+    projectWorkspaceId: string | null;
+    issueId: string | null;
+  }>;
+  ownedListeners: Awaited<ReturnType<BrokerClient["list"]>> | null;
+}) {
+  const snapshots: PersistedExposureRowSnapshot[] = input.rows.map((row) => ({
+    id: row.id,
+    status: row.status,
+    port: row.port,
+    exposure: row.exposure,
+    executionWorkspaceId: row.executionWorkspaceId,
+    projectWorkspaceId: row.projectWorkspaceId,
+    issueId: row.issueId,
+  }));
+
+  // Probe only the ports dormant rows actually reserve; a startup sweep must not
+  // walk the whole dedicated range.
+  const candidatePorts = new Set<number>();
+  for (const row of snapshots) {
+    if (row.status !== "stopped" && row.status !== "failed" && row.exposure && row.exposure.state !== "removed") {
+      continue;
+    }
+    for (const port of collectRowExposurePorts(row)) candidatePorts.add(port);
+  }
+
+  const livePorts = new Set<number>();
+  for (const port of candidatePorts) {
+    // "Not bindable" is the liveness signal the rest of this module already uses.
+    const available = await workspaceRuntimeExposureDeps.isPortAvailable(port).catch(() => true);
+    if (!available) livePorts.add(port);
+  }
+
+  return findExposureReservationDrift({
+    persistedRows: snapshots,
+    livePorts,
+    listenerOwners: await readExposureListenerOwners([...livePorts]),
+    brokerMappings: (input.ownedListeners ?? []).map((listener) => ({
+      runtimeId: listener.runtimeId,
+      port: listener.port,
+    })),
+  });
+}
+
+/** Paperclip-owned Serve mappings, or null when the broker cannot be read. */
+async function readBrokerExposureMappings(): Promise<BrokerMappingSnapshot[] | null> {
+  try {
+    const owned = await workspaceRuntimeExposureDeps.broker.list();
+    return owned.map((listener) => ({ runtimeId: listener.runtimeId, port: listener.port }));
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Resolve who owns the process listening on each of a pair's ports.
+ *
+ * A port with no listener is absent from the map; a port with a listener we
+ * cannot attribute maps to `null`, which the mediator treats as a conflict.
+ * Attribution goes through this process's own runtime records: a pid we did not
+ * start is by definition not ours to adopt.
+ */
+async function readExposureListenerOwners(ports: number[]): Promise<Map<number, ExposureOwnerIdentity | null>> {
+  const owners = new Map<number, ExposureOwnerIdentity | null>();
+  for (const port of ports) {
+    const ownerPid = await readLocalServicePortOwner(port).catch(() => null);
+    if (!ownerPid) continue;
+    let identity: ExposureOwnerIdentity | null = null;
+    for (const record of runtimeServicesById.values()) {
+      const recordPid = record.child?.pid ?? null;
+      if (recordPid === null) continue;
+      if (recordPid !== ownerPid && record.processGroupId !== ownerPid) continue;
+      identity = {
+        runtimeServiceId: record.id,
+        executionWorkspaceId: record.executionWorkspaceId,
+        projectWorkspaceId: record.projectWorkspaceId,
+        issueId: record.issueId,
+      };
+      break;
+    }
+    owners.set(port, identity);
+  }
+  return owners;
 }
 
 async function allocateAndReserveExposure(input: {
@@ -3871,34 +4067,85 @@ async function allocateAndReserveExposure(input: {
   companyId: string;
   runtimeId: string;
   config: RuntimeExposureConfigInput;
+  /** Identity claiming the pair; governs every ownership decision below. */
+  claimant: ExposureOwnerIdentity;
   /** Port this runtime already used, preserved when it is still safe to use. */
   preferredAppPort?: number | null;
-}): Promise<{ appPort: number; status: RuntimeExposureStatus; handle: string }> {
-  const reserved = await collectReservedExposurePorts(input.db, input.companyId);
+}): Promise<{ appPort: number; hmrPort: number; status: RuntimeExposureStatus; handle: string }> {
+  const brokerMappings = await readBrokerExposureMappings();
+  const ledger = await buildCompanyExposureReservationLedger({
+    db: input.db,
+    companyId: input.companyId,
+    brokerMappings: brokerMappings ?? [],
+  });
+  // Serve mappings are checked as their own view, not folded into the ledger:
+  // an unreadable broker must not silently downgrade to "no mapping exists".
+  const serveMappingOwners = new Map<number, ExposureOwnerIdentity | null>();
+  for (const mapping of brokerMappings ?? []) {
+    serveMappingOwners.set(mapping.port, ledger.reservationByPort.get(mapping.port)?.owner ?? null);
+  }
+
+  // Reserve only what this claimant may NOT have. A leaseholder restarting its
+  // own lane has to be offered its own pair back, or every restart would walk
+  // the range and undo "keep existing runtime ports when safe" (PAP-17158).
+  // Quarantined ports are withheld from everyone, including the owner.
+  const reserved = new Set<number>();
+  for (const [port, reservation] of ledger.reservationByPort) {
+    if (reservation.source === "quarantine" || !isExposureAdoptionPermitted(reservation.owner, input.claimant)) {
+      reserved.add(port);
+    }
+  }
   const retryable = new Set(["reservation_conflict", "manual_mapping_present", "quarantined"]);
+  const claimed: Array<{ appPort: number; hmrPort: number }> = [];
   let preferredAppPort = input.preferredAppPort ?? null;
-  while (true) {
-    const pair = await allocateExposurePortPair({
-      isPortAvailable: workspaceRuntimeExposureDeps.isPortAvailable,
-      reserved,
-      preferredAppPort,
-    });
-    const result = await reserveExposure(workspaceRuntimeExposureDeps, {
-      runtimeId: input.runtimeId,
-      config: input.config,
-      appPort: pair.appPort,
-    });
-    if (result.handle) {
-      return { appPort: pair.appPort, status: result.status, handle: result.handle };
+  try {
+    while (true) {
+      const pair = await allocateExposurePortPair({
+        isPortAvailable: workspaceRuntimeExposureDeps.isPortAvailable,
+        reserved,
+        preferredAppPort,
+        claimPair: (candidate) => exposurePortPairClaims.claim(candidate),
+      });
+      claimed.push(pair);
+
+      // Complete mediation before the broker is asked for anything: persisted
+      // reservations were already folded into `reserved`, so what remains is the
+      // live host — the listener actually bound, and the Serve mapping actually
+      // published. Either one belonging to a different execution workspace is
+      // terminal, never an adoption.
+      const conflict = findExposurePairConflict({
+        pair,
+        claimant: input.claimant,
+        ledger,
+        listenerOwners: await readExposureListenerOwners([pair.appPort, pair.hmrPort]),
+        serveMappingOwners,
+      });
+      if (conflict) throw new ExposurePortOwnershipConflictError(conflict);
+
+      const result = await reserveExposure(workspaceRuntimeExposureDeps, {
+        runtimeId: input.runtimeId,
+        config: input.config,
+        appPort: pair.appPort,
+      });
+      if (result.handle) {
+        // Keep this pair's claim; the caller releases it on stop/teardown.
+        claimed.pop();
+        return { appPort: pair.appPort, hmrPort: pair.hmrPort, status: result.status, handle: result.handle };
+      }
+      if (!result.status.lastError || !retryable.has(result.status.lastError)) {
+        throw new Error(`HTTPS exposure reservation failed: ${result.status.lastError ?? "unknown broker error"}`);
+      }
+      reserved.add(pair.appPort);
+      reserved.add(pair.hmrPort);
+      // The preference lost its race with a conflicting/manual/quarantined
+      // mapping; drop it so the retry scans instead of re-offering the same port.
+      preferredAppPort = null;
     }
-    if (!result.status.lastError || !retryable.has(result.status.lastError)) {
-      throw new Error(`HTTPS exposure reservation failed: ${result.status.lastError ?? "unknown broker error"}`);
-    }
-    reserved.add(pair.appPort);
-    reserved.add(pair.hmrPort);
-    // The preference lost its race with a conflicting/manual/quarantined
-    // mapping; drop it so the retry scans instead of re-offering the same port.
-    preferredAppPort = null;
+  } finally {
+    // Every pair this call took but did not hand back — rejected candidates and
+    // the in-flight pair on a thrown failure — goes back immediately. Leaving
+    // them held would burn the range down over a retry storm.
+    for (const pair of claimed) exposurePortPairClaims.release(pair);
   }
 }
 
@@ -4964,6 +5211,12 @@ async function spawnLocalRuntimeService(input: StartLocalRuntimeServiceInput): P
         companyId: input.agent.companyId,
         runtimeId,
         config: exposureConfig,
+        claimant: {
+          runtimeServiceId: runtimeId,
+          executionWorkspaceId: input.executionWorkspaceId ?? null,
+          projectWorkspaceId: input.workspace.workspaceId,
+          issueId: input.issue?.id ?? null,
+        },
         preferredAppPort: stoppedReuseCandidate?.port ?? (explicitPort > 0 ? explicitPort : null),
       })
     : null;
@@ -5032,6 +5285,16 @@ async function spawnLocalRuntimeService(input: StartLocalRuntimeServiceInput): P
       await workspaceRuntimeExposureDeps.broker
         .remove(runtimeId, reservedExposure.handle)
         .catch(() => undefined);
+      // The reservation deliberately keeps the winning pair's in-process claim for
+      // the caller to release on stop/teardown. No runtime record exists yet, so
+      // that teardown path can never run for this pair — releasing the broker
+      // reservation alone would leave the claim held. A hostname outage would then
+      // burn one pair per attempt, and a retry storm inside the claim TTL would
+      // report the range exhausted rather than the real cause.
+      exposurePortPairClaims.release({
+        appPort: reservedExposure.appPort,
+        hmrPort: reservedExposure.hmrPort,
+      });
       throw new Error("HTTPS exposure failed: Tailscale MagicDNS hostname unavailable");
     }
   }
@@ -5578,6 +5841,13 @@ async function cleanupRecordExposure(
     ports,
   });
   for (const port of result.quarantinedPorts) quarantinedRuntimeExposurePorts.add(port);
+  // Drop the in-process pair claim on teardown. The *lease* reservation is what
+  // still protects the pair from another workspace (PAP-17419) — this only
+  // releases the short-lived hold that keeps concurrent allocators apart, and
+  // keeping it would block this very lane's own restart.
+  if (record.port !== null && isRuntimeExposureAppPort(record.port)) {
+    exposurePortPairClaims.release({ appPort: record.port, hmrPort: deriveViteHmrPort(record.port) });
+  }
   if (result.status.state === "removed") {
     record.exposureHandle = null;
     record.exposure = options?.preserveFailure && previous.state === "failed"
@@ -6719,7 +6989,15 @@ export async function reconcilePersistedRuntimeServicesOnStartup(db: Db) {
   const readDeclaredExposureIntent = await buildPersistedRuntimeExposureIntentLookup(db);
 
   let ownedExposureListeners: Awaited<ReturnType<BrokerClient["list"]>> | null = [];
-  if (rows.some((row) => row.exposure && row.exposure.state !== "removed")) {
+  // Also fetch when a row merely *reserves* a dedicated-range port. The row that
+  // matters most to PAP-17419 is exactly the one with `exposure.state ===
+  // "removed"`: it claims nothing, yet its leased pair can still be mapped by
+  // someone else. Skipping the broker read for those rows is what let a false
+  // `removed` go unnoticed.
+  if (rows.some((row) => (
+    (row.exposure && row.exposure.state !== "removed")
+    || (row.port !== null && isRuntimeExposureAppPort(row.port))
+  ))) {
     try {
       ownedExposureListeners = await workspaceRuntimeExposureDeps.broker.list();
     } catch {
@@ -6727,11 +7005,54 @@ export async function reconcilePersistedRuntimeServicesOnStartup(db: Db) {
     }
   }
 
+  const exposureReservationDrift = await detectPersistedExposureReservationDrift({
+    rows,
+    ownedListeners: ownedExposureListeners,
+  });
+  const companyIdByRowId = new Map(rows.map((row) => [row.id, row.companyId] as const));
+  for (const entry of exposureReservationDrift) {
+    const description = describeExposureReservationDrift(entry);
+    console.warn(`[workspace-runtime] exposure reservation drift: ${description}`);
+    const companyId = companyIdByRowId.get(entry.runtimeServiceId);
+    if (!companyId) continue;
+    await logActivity(db, {
+      companyId,
+      actorType: "system",
+      actorId: "workspace_runtime",
+      action: "workspace_runtime.exposure_reservation_drift",
+      entityType: entry.owner.executionWorkspaceId ? "execution_workspace" : "workspace_runtime_service",
+      entityId: entry.owner.executionWorkspaceId ?? entry.runtimeServiceId,
+      issueId: entry.owner.issueId,
+      details: {
+        description,
+        runtimeServiceId: entry.runtimeServiceId,
+        port: entry.port,
+        reason: entry.reason,
+        executionWorkspaceId: entry.owner.executionWorkspaceId,
+        conflictingExecutionWorkspaceId: entry.conflictingOwner?.executionWorkspaceId ?? null,
+        conflictingRuntimeServiceId: entry.conflictingOwner?.runtimeServiceId ?? null,
+      },
+    }).catch(() => undefined);
+  }
+
   let reconciled = 0;
   let adopted = 0;
   let stopped = 0;
   let backfilled = 0;
+  const driftedRuntimeServiceIds = new Set(exposureReservationDrift.map((entry) => entry.runtimeServiceId));
   for (const row of rows) {
+    // PAP-17419: this row's reserved pair is live, or Serve-mapped, under an
+    // identity that is not this row's. Every branch below is unsafe for such a
+    // row — cleanup would remove a mapping that is now someone else's, adoption
+    // would take over another execution workspace's service and re-attribute it
+    // here, and the health branch would terminate it outright. None of that is
+    // this sweep's call to make, so leave the row and the occupying service
+    // exactly as they are. The drift is already reported above, and the ledger
+    // keeps the pair reserved so no start can be handed it either.
+    if (driftedRuntimeServiceIds.has(row.id)) {
+      reconciled += 1;
+      continue;
+    }
     if (row.status === "stopped" && row.exposure && row.exposure.state !== "removed") {
       // This branch is a GLOBAL sweep: `rows` spans every execution workspace and
       // company on the host, at any age, and it runs on every server start. It
@@ -6957,6 +7278,8 @@ export async function reconcilePersistedRuntimeServicesOnStartup(db: Db) {
     backfilled,
     restarted: desiredState.restarted,
     restartFailed: desiredState.failed,
+    /** Stopped/removed rows whose reserved ports are live or mapped elsewhere. */
+    exposureReservationDrift,
   };
 }
 
