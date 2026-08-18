@@ -117,6 +117,7 @@ import {
   environmentCustomImageTerminalSessionTokenSchema,
   environmentCustomImageTemplateSchema,
   finishEnvironmentCustomImageSetupSessionSchema,
+  relinkEnvironmentCustomImageTemplateSchema,
   updateEnvironmentSchema,
   probeEnvironmentConfigSchema,
   startEnvironmentCustomImageSetupSessionSchema,
@@ -638,6 +639,11 @@ const environmentCustomImageSetupSessionFinishResultSchema =
 const environmentCustomImageTemplateRollbackResultSchema = z.object({
   activeTemplate: environmentCustomImageTemplateSchema,
   supersededTemplate: environmentCustomImageTemplateSchema,
+}).strict();
+
+const environmentCustomImageTemplateRelinkResultSchema = z.object({
+  template: environmentCustomImageTemplateSchema,
+  classification: z.enum(["knob_only", "boot_source_drift", "unclassified"]),
 }).strict();
 
 const workTimelineQuerySchema = z.object({
@@ -5587,6 +5593,26 @@ registry.registerPath({
     401: r.unauthorized,
     403: r.forbidden,
     404: r.notFound,
+  },
+});
+
+registry.registerPath({
+  method: "post",
+  path: "/api/environments/{environmentId}/custom-image-template/relink",
+  tags: ["environments"],
+  summary: "Relink a detached environment customImage template to the current config",
+  request: {
+    params: z.object({ environmentId: z.string() }),
+    query: environmentCustomImageCompanyQuerySchema,
+    body: jsonBody(relinkEnvironmentCustomImageTemplateSchema),
+  },
+  responses: {
+    200: r.ok(environmentCustomImageTemplateRelinkResultSchema),
+    400: r.badRequest,
+    401: r.unauthorized,
+    403: r.forbidden,
+    404: r.notFound,
+    409: r.conflict,
   },
 });
 
