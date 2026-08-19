@@ -335,6 +335,18 @@ function buildCodexRpcWindow(label: string, window: CodexRpcWindow | null | unde
   };
 }
 
+function codexRpcWindowLabel(
+  prefix: string,
+  fallback: string,
+  window: CodexRpcWindow | null | undefined,
+): string {
+  const durationSeconds =
+    typeof window?.windowDurationMins === "number" && Number.isFinite(window.windowDurationMins)
+      ? window.windowDurationMins * 60
+      : null;
+  return `${prefix}${secondsToWindowLabel(durationSeconds, fallback)} limit`;
+}
+
 function parseCreditBalance(value: string | number | null | undefined): string | null {
   if (typeof value === "number" && Number.isFinite(value)) {
     return `$${value.toFixed(2)} remaining`;
@@ -372,9 +384,15 @@ export function mapCodexRpcQuota(result: CodexRpcRateLimitsResult, account?: Cod
       limitId === "codex"
         ? ""
         : `${limit.limitName ?? limitId} · `;
-    const primary = buildCodexRpcWindow(`${prefix}5h limit`, limit.primary);
+    const primary = buildCodexRpcWindow(
+      codexRpcWindowLabel(prefix, "5h", limit.primary),
+      limit.primary,
+    );
     if (primary) windows.push(primary);
-    const secondary = buildCodexRpcWindow(`${prefix}Weekly limit`, limit.secondary);
+    const secondary = buildCodexRpcWindow(
+      codexRpcWindowLabel(prefix, "Weekly", limit.secondary),
+      limit.secondary,
+    );
     if (secondary) windows.push(secondary);
     if (limitId === "codex" && limit.credits && limit.credits.unlimited !== true) {
       windows.push({
