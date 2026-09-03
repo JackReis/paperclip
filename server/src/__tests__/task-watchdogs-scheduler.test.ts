@@ -788,6 +788,80 @@ describeEmbeddedPostgres("task watchdog scheduler", () => {
     expect(watchdogIssues).toHaveLength(1);
   });
 
+  describe("JAC-5160: stop-classifier self-comment fingerprint churn throttle", () => {
+    it("throttles re-triggers for the same fingerprint within the throttle window when the review is open", async () => {
+      // Simulate the churn loop: watchdog fires, agent posts confirm-only comment (no
+      // pending interaction/approval), comment route calls queueTaskWatchdogEvaluation.
+      // The throttle should suppress the re-trigger while the existing watchdog issue
+      // has a valid review disposition (done/blocked/valid in_review).
+      const companyId = await seedCompany();
+      const sourceId = await seedIssue(companyId, { identifier: "WDOG-THROTTLE", status: "done" });
+      const agentId = await seedAgent(companyId);
+      await seedWatchdog(companyId, sourceId, agentId);
+      const { service, wakes } = createService();
+
+      // First trigger: watchdog fires normally.
+      const first = await service.reconcileTaskWatchdogs({ companyId });
+      expect(first).toMatchObject({ checked: 1, triggered: 1 });
+      expect(wakes).toHaveLength(1);
+
+      const [firstWatchdog] = await db.select().from(issueWatchdogs).where(eq(issueWatchdogs.issueId, sourceId));
+      const watchdogIssueId = firstWatchdog!.watchdogIssueId!;
+
+      // Watchdog agent posts a confirm-only comment — no pending interaction/approval.
+      // Leave the issue in "done" status (a valid review disposition per isWatchdogReviewDisposition).
+
+      // Simulate comment route calling reconcileForIssueAndAncestors immediately after.
+      // The throttle should suppress the re-trigger because:
+      // (a) originFingerprint === stopFingerprint (same fingerprint)
+      // (b) lastTriggeredAt was recent (within throttle window)
+      // (c) issue is in "done" (valid review disposition)
+      const throttled = await service.reconcileForIssueAndAncestors(companyId, watchdogIssueId);
+      expect(throttled).toMatchObject({ checked: 1, triggered: 0 });
+      expect(wakes).toHaveLength(1); // no additional wake
+
+      const [afterThrottle] = await db.select().from(issueWatchdogs).where(eq(issueWatchdogs.issueId, sourceId));
+      expect(afterThrottle?.triggerCount).toBe(1); // still only 1 trigger
+    });
+
+    it("does NOT throttle when the watchdog issue is stale in_review (needs fresh wake)", async () => {
+      // When the watchdog issue is in in_review without a pending interaction/approval,
+      // watchdogIssueNeedsFreshWake returns true and we must re-trigger despite the throttle.
+      const companyId = await seedCompany();
+      const sourceId = await seedIssue(companyId, { identifier: "WDOG-STALE-NO-THROTTLE", status: "done" });
+      const agentId = await seedAgent(companyId);
+      await seedWatchdog(companyId, sourceId, agentId);
+      const { service, wakes } = createService();
+
+      const first = await service.reconcileTaskWatchdogs({ companyId });
+      expect(first).toMatchObject({ checked: 1, triggered: 1 });
+
+      const [firstWatchdog] = await db.select().from(issueWatchdogs).where(eq(issueWatchdogs.issueId, sourceId));
+      const watchdogIssueId = firstWatchdog!.watchdogIssueId!;
+
+      // Simulate watchdog issue stuck in stale in_review (no assigneeUserId, executionState, or pending paths).
+      await db
+        .update(issues)
+        .set({
+          status: "in_review",
+          assigneeAgentId: null,
+          assigneeUserId: null,
+          executionState: null,
+          monitorNextCheckAt: null,
+        })
+        .where(eq(issues.id, watchdogIssueId));
+
+      // Should re-trigger despite recent lastTriggeredAt because in_review without
+      // a review path is not a valid review disposition (watchdogIssueNeedsFreshWake = true).
+      const retriggered = await service.reconcileTaskWatchdogs({ companyId });
+      expect(retriggered).toMatchObject({ checked: 1, triggered: 1 });
+      expect(wakes).toHaveLength(2);
+
+      const [afterRetrigger] = await db.select().from(issueWatchdogs).where(eq(issueWatchdogs.issueId, sourceId));
+      expect(afterRetrigger?.triggerCount).toBe(2);
+    });
+  });
+
   it("handles an armed cutoff when no watchdogs are active", async () => {
     const companyId = await seedCompany();
     const { service } = createService();

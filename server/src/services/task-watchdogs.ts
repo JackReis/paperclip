@@ -38,6 +38,14 @@ const TASK_WATCHDOG_TERMINAL_RUN_STATUSES = ["succeeded", "interrupted", "failed
 // false-positive stopped-subtree review. The periodic watchdog reconciler
 // re-evaluates after the window, so a genuinely idle issue still triggers.
 const TASK_WATCHDOG_FIRST_RUN_GRACE_MS = 15_000;
+// Minimum interval between re-triggers for the same stopped fingerprint on the
+// same watchdog. Prevents tight-wake loops when a watchdog issue lands in
+// in_review without a proper review disposition (e.g. the agent posts a plain
+// confirm-only comment rather than creating a pending interaction/approval).
+// The comment POST route fires queueTaskWatchdogEvaluation synchronously, and
+// without the waiting_on_gate guard (JAC-3882) or this debounce, the same
+// fingerprint can re-trigger every few seconds. See JAC-5160.
+const TASK_WATCHDOG_RETRIGGER_THROTTLE_MS = 120_000;
 
 type ActorFields = {
   agentId?: string | null;
@@ -1515,6 +1523,7 @@ export function taskWatchdogService(db: Db, deps: TaskWatchdogServiceDeps = {}) 
           originFingerprint: input.classification.stopFingerprint,
         }) ?? fallback
         : fallback;
+      const fingerprintAlreadyMatched = !shouldReopen && watchdogIssue.originFingerprint === input.classification.stopFingerprint;
       if (!shouldReopen && watchdogIssue.originFingerprint !== input.classification.stopFingerprint) {
         await db
           .update(issues)
@@ -1522,26 +1531,34 @@ export function taskWatchdogService(db: Db, deps: TaskWatchdogServiceDeps = {}) 
           .where(and(eq(issues.companyId, input.watchdog.companyId), eq(issues.id, watchdogIssue.id)));
         watchdogIssue.originFingerprint = input.classification.stopFingerprint;
       }
-      await issuesSvc.addComment(
-        watchdogIssue.id,
-        buildStoppedFingerprintComment({
-          sourceIssue: input.sourceIssue,
-          stopFingerprint: input.classification.stopFingerprint,
-          stoppedLeaves: input.classification.stoppedLeaves,
-          pendingInteractionsByIssueId: input.classification.pendingInteractionsByIssueId,
-          resumed: true,
-        }),
-        { runId: input.runId ?? null },
-        {
-          authorType: "system",
-          metadata: stoppedFingerprintMetadata({
-            sourceIssueId: input.sourceIssue.id,
+      // Only post a "resumed" comment when we actually changed state (reopened
+      // the issue or updated its fingerprint). Posting a comment on an issue
+      // whose fingerprint already matches triggers queueTaskWatchdogEvaluation
+      // via the comment route, which re-enters evaluateWatchdog and can tight-
+      // loop if the watchdog agent keeps the issue in in_review without a
+      // proper review disposition. See JAC-5160.
+      if (!fingerprintAlreadyMatched) {
+        await issuesSvc.addComment(
+          watchdogIssue.id,
+          buildStoppedFingerprintComment({
+            sourceIssue: input.sourceIssue,
             stopFingerprint: input.classification.stopFingerprint,
-            waitsByIssueId: input.classification.stopSnapshot.waitsByIssueId,
+            stoppedLeaves: input.classification.stoppedLeaves,
+            pendingInteractionsByIssueId: input.classification.pendingInteractionsByIssueId,
             resumed: true,
           }),
-        },
-      );
+          { runId: input.runId ?? null },
+          {
+            authorType: "system",
+            metadata: stoppedFingerprintMetadata({
+              sourceIssueId: input.sourceIssue.id,
+              stopFingerprint: input.classification.stopFingerprint,
+              waitsByIssueId: input.classification.stopSnapshot.waitsByIssueId,
+              resumed: true,
+            }),
+          },
+        );
+      }
       return watchdogIssue;
     }
 
@@ -1640,6 +1657,43 @@ export function taskWatchdogService(db: Db, deps: TaskWatchdogServiceDeps = {}) 
         ))
         .then((rows) => rows[0] ?? null)
       : null;
+    // JAC-5160: throttle re-triggers for the same fingerprint. The guard fires only when:
+    // (a) the existing watchdog issue was *opened* for this exact fingerprint
+    //     (originFingerprint matches), meaning a trigger already fired for it, AND
+    // (b) that trigger was recent (within RETRIGGER_THROTTLE_MS), AND
+    // (c) the existing watchdog issue is in a valid review disposition — not a stale
+    //     in_review that legitimately needs a fresh wake. Without (c), the throttle
+    //     would block re-waking a watchdog review stuck with no pending review path.
+    // Using originFingerprint (not lastObservedFingerprint) prevents false positives
+    // when the classifier sees a new fingerprint before the old review completes: the
+    // live-run branch updates lastObservedFingerprint to the new fingerprint but does
+    // not update originFingerprint on the existing issue, so the throttle correctly
+    // skips when the fingerprints diverge.
+    const evaluatedAtMs = toEpochMs(input.evaluatedAt) ?? Date.now();
+    if (
+      watchdog.lastTriggeredAt &&
+      existingWatchdogIssue?.originFingerprint === classification.stopFingerprint &&
+      toEpochMs(watchdog.lastTriggeredAt) != null &&
+      evaluatedAtMs - toEpochMs(watchdog.lastTriggeredAt)! >= 0 &&
+      evaluatedAtMs - toEpochMs(watchdog.lastTriggeredAt)! < TASK_WATCHDOG_RETRIGGER_THROTTLE_MS
+    ) {
+      const throttleHasPendingReviewPath = existingWatchdogIssue.status === "in_review"
+        ? await watchdogIssueHasPendingReviewPath(watchdog.companyId, existingWatchdogIssue.id)
+        : false;
+      if (isWatchdogReviewDisposition(existingWatchdogIssue, throttleHasPendingReviewPath)) {
+        return {
+          state: "already_reviewed" as const,
+          reason: `Throttled: same stopped fingerprint was triggered within the last ${TASK_WATCHDOG_RETRIGGER_THROTTLE_MS / 1000}s and the review is still open.`,
+          includedIssueIds: classification.includedIssueIds,
+          stopFingerprint: classification.stopFingerprint,
+          stoppedLeaves: classification.stoppedLeaves,
+          stopSnapshot: classification.stopSnapshot,
+          pendingInteractionsByIssueId: classification.pendingInteractionsByIssueId,
+          pendingApprovalsByIssueId: classification.pendingApprovalsByIssueId,
+        };
+      }
+    }
+
     if (await sameFingerprintWatchdogReviewIsStillOpen(existingWatchdogIssue, classification.stopFingerprint)) {
       if (
         watchdog.watchdogIssueId !== existingWatchdogIssue!.id ||
