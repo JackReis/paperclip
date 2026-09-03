@@ -397,4 +397,96 @@ describe("paperclip MCP tools", () => {
 
     expect(response.content[0]?.text).toContain("must not contain '..'");
   });
+
+  it("redacts sensitive fields in list agents response", async () => {
+    const fetchMock = vi.fn().mockResolvedValue(
+      mockJsonResponse([
+        {
+          id: "agent-1",
+          name: "Test Agent",
+          token: "secret-token-123",
+          authToken: "auth-secret-456",
+          devicePrivateKeyPem: "-----BEGIN PRIVATE KEY-----...",
+          config: {
+            apiKey: "api-secret-789",
+            publicData: "public-value",
+          },
+        },
+      ]),
+    );
+    vi.stubGlobal("fetch", fetchMock);
+
+    const tool = getTool("paperclipListAgents");
+    const response = await tool.execute({ companyId: "11111111-1111-1111-1111-111111111111" });
+
+    const text = response.content[0]?.text || "";
+    expect(text).toContain("Test Agent");
+    expect(text).toContain("public-value");
+    expect(text).toContain("***REDACTED***");
+    expect(text).not.toContain("secret-token-123");
+    expect(text).not.toContain("auth-secret-456");
+    expect(text).not.toContain("-----BEGIN PRIVATE KEY-----");
+    expect(text).not.toContain("api-secret-789");
+  });
+
+  it("redacts sensitive fields in get agent response", async () => {
+    const fetchMock = vi.fn().mockResolvedValue(
+      mockJsonResponse({
+        id: "agent-1",
+        name: "Test Agent",
+        token: "secret-token-xyz",
+        nested: {
+          password: "password-secret",
+          publicInfo: "visible",
+        },
+      }),
+    );
+    vi.stubGlobal("fetch", fetchMock);
+
+    const tool = getTool("paperclipGetAgent");
+    const response = await tool.execute({ agentId: "agent-1" });
+
+    const text = response.content[0]?.text || "";
+    expect(text).toContain("Test Agent");
+    expect(text).toContain("visible");
+    expect(text).toContain("***REDACTED***");
+    expect(text).not.toContain("secret-token-xyz");
+    expect(text).not.toContain("password-secret");
+  });
+
+  it("redacts sensitive fields recursively in nested objects and arrays", async () => {
+    const fetchMock = vi.fn().mockResolvedValue(
+      mockJsonResponse({
+        id: "agent-1",
+        name: "Agent",
+        token: "leaked-token",
+        config: {
+          apiKey: "leaked-api-key",
+          nested: {
+            secret: "deep-secret",
+            normalField: "safe-value",
+          },
+        },
+        environments: [
+          { password: "env-pass", visible: "ok" },
+          { apiToken: "env-token", visible: "ok2" },
+        ],
+      }),
+    );
+    vi.stubGlobal("fetch", fetchMock);
+
+    const tool = getTool("paperclipGetAgent");
+    const response = await tool.execute({ agentId: "agent-1" });
+
+    const text = response.content[0]?.text || "";
+    expect(text).toContain("safe-value");
+    expect(text).toContain("ok");
+    expect(text).toContain("ok2");
+    expect(text).toContain("***REDACTED***");
+    expect(text).not.toContain("leaked-token");
+    expect(text).not.toContain("leaked-api-key");
+    expect(text).not.toContain("deep-secret");
+    expect(text).not.toContain("env-pass");
+    expect(text).not.toContain("env-token");
+  });
 });
