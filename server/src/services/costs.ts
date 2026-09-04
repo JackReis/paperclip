@@ -5,6 +5,11 @@ import { activityLog, agents, companies, costEvents, heartbeatRuns, issues, proj
 import { notFound, unprocessable } from "../errors.js";
 import { budgetService, type BudgetServiceHooks } from "./budgets.js";
 import { visibleIssueCondition } from "./issue-visibility.js";
+import {
+  computePaperclipRunEventKey,
+  computePayloadHash,
+  computeSourceEventId,
+} from "@paperclipai/shared";
 
 export interface CostDateRange {
   from?: Date;
@@ -64,6 +69,23 @@ export function costService(db: Db, budgetHooks: BudgetServiceHooks = {}) {
         throw unprocessable("Agent does not belong to company");
       }
 
+      // JAC-4532: Compute deterministic ingest_id for idempotency
+      const payloadForHash = {
+        ...data,
+        companyId,
+        occurredAt: data.occurredAt,
+      };
+      const payloadHash = computePayloadHash(payloadForHash);
+      const usageUpdatedAt = data.occurredAt.toISOString();
+      const ingestId = computePaperclipRunEventKey({
+        runId: data.heartbeatRunId ?? undefined,
+        usageUpdatedAt,
+        payloadHash,
+      });
+      const sourceEventId = data.heartbeatRunId
+        ? computeSourceEventId({ runId: data.heartbeatRunId, usageUpdatedAt })
+        : undefined;
+
       const event = await db
         .insert(costEvents)
         .values({
@@ -72,6 +94,9 @@ export function costService(db: Db, budgetHooks: BudgetServiceHooks = {}) {
           biller: data.biller ?? data.provider,
           billingType: data.billingType ?? "unknown",
           cachedInputTokens: data.cachedInputTokens ?? 0,
+          ingestId,
+          payloadHash,
+          sourceEventId,
         })
         .returning()
         .then((rows) => rows[0]);

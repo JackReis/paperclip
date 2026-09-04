@@ -2413,3 +2413,7 @@ export {
   type FeatureTier,
   type InstanceFeatureKey,
 } from "./feature-catalog.js";
+
+// JAC-4532: Event identity utilities
+export { computePaperclipRunEventKey, computePayloadHash, computeSourceEventId } from "./utils/event-identity.js";
+export { stableStringify } from "./utils/json.js";
